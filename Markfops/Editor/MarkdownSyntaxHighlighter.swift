@@ -20,7 +20,7 @@ final class MarkdownSyntaxHighlighter: NSObject, NSTextStorageDelegate {
     /// Public entry point for full re-highlight (e.g. after programmatic text replacement).
     func highlightAll(in storage: NSTextStorage) {
         let fullRange = NSRange(location: 0, length: storage.length)
-        guard !fullRange.isEmpty else { return }
+        guard fullRange.length > 0 else { return }
         highlight(textStorage: storage, in: fullRange)
     }
 
@@ -36,7 +36,7 @@ final class MarkdownSyntaxHighlighter: NSObject, NSTextStorageDelegate {
     }
 
     private func highlight(textStorage: NSTextStorage, in range: NSRange) {
-        guard !range.isEmpty, NSMaxRange(range) <= textStorage.length else { return }
+        guard range.length > 0, NSMaxRange(range) <= textStorage.length else { return }
         isHighlighting = true
         defer { isHighlighting = false }
 
