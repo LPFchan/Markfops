@@ -173,6 +173,14 @@ final class DocumentStore {
         removeDocument(id: id)
     }
 
+    private func removeDocument(id: UUID) {
+        guard let idx = documents.firstIndex(where: { $0.id == id }) else { return }
+        documents.remove(at: idx)
+        if activeID == id {
+            activeID = documents.isEmpty ? nil : documents[min(idx, documents.count - 1)].id
+        }
+    }
+
     // MARK: - Tab order
 
     func moveTab(fromOffsets: IndexSet, toOffset: Int) {
