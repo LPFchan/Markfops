@@ -65,11 +65,11 @@ final class DocumentStore {
 
         if doc.isDirty {
             let alert = NSAlert()
-            alert.messageText = "Save changes to \"\(doc.displayTitle)\"?"
-            alert.informativeText = "Your changes will be lost if you don't save them."
-            alert.addButton(withTitle: "Save")
-            alert.addButton(withTitle: "Don't Save")
-            alert.addButton(withTitle: "Cancel")
+            alert.messageText = String(format: NSLocalizedString("Save changes to \"%@\"?", comment: "Alert title when closing a tab with unsaved changes"), doc.displayTitle)
+            alert.informativeText = NSLocalizedString("Your changes will be lost if you don't save them.", comment: "Alert body for unsaved changes")
+            alert.addButton(withTitle: NSLocalizedString("Save", comment: "Save button"))
+            alert.addButton(withTitle: NSLocalizedString("Don't Save", comment: "Discard button"))
+            alert.addButton(withTitle: NSLocalizedString("Cancel", comment: "Cancel button"))
 
             switch alert.runModal() {
             case .alertFirstButtonReturn:
@@ -129,11 +129,11 @@ final class DocumentStore {
 
         let names = dirtyDocs.map(\.displayTitle).joined(separator: ", ")
         let alert = NSAlert()
-        alert.messageText = "You have unsaved changes"
-        alert.informativeText = "Unsaved documents: \(names)"
-        alert.addButton(withTitle: "Review Unsaved…")
-        alert.addButton(withTitle: "Quit Anyway")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = NSLocalizedString("You have unsaved changes", comment: "Quit alert title")
+        alert.informativeText = String(format: NSLocalizedString("Unsaved documents: %@", comment: "Quit alert body listing document names"), names)
+        alert.addButton(withTitle: NSLocalizedString("Review Unsaved\u{2026}", comment: "Save before quitting"))
+        alert.addButton(withTitle: NSLocalizedString("Quit Anyway", comment: "Quit without saving"))
+        alert.addButton(withTitle: NSLocalizedString("Cancel", comment: "Cancel quit"))
 
         switch alert.runModal() {
         case .alertFirstButtonReturn:

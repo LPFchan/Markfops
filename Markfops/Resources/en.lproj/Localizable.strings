@@ -1,0 +1,55 @@
+/* Sidebar */
+"Documents" = "Documents";
+"New Document" = "New Document";
+
+/* Horizontal tab bar */
+"New Tab  ⌘T" = "New Tab  ⌘T";
+
+/* Toolbar */
+"Mode" = "Mode";
+"Toggle Edit / Preview  ⌘⇧P" = "Toggle Edit / Preview  ⌘⇧P";
+"Edit" = "Edit";
+"Preview" = "Preview";
+
+/* File menu */
+"New" = "New";
+"New Tab" = "New Tab";
+"Open…" = "Open…";
+"Save" = "Save";
+"Save As…" = "Save As…";
+"Close Tab" = "Close Tab";
+
+/* View menu */
+"View" = "View";
+"Toggle Edit / Preview" = "Toggle Edit / Preview";
+"Next Tab" = "Next Tab";
+"Previous Tab" = "Previous Tab";
+
+/* Format menu */
+"Format" = "Format";
+"Bold" = "Bold";
+"Italic" = "Italic";
+"Inline Code" = "Inline Code";
+
+/* Welcome screen */
+"Markfops" = "Markfops";
+"Lightweight Markdown editor for macOS" = "Lightweight Markdown editor for macOS";
+"Open…" = "Open…";
+"Drop a .md file anywhere to open it" = "Drop a .md file anywhere to open it";
+
+/* Settings */
+"Editor" = "Editor";
+"Font Size" = "Font Size";
+"Font" = "Font";
+
+/* Alerts — close tab with unsaved changes */
+"Save changes to \"%@\"?" = "Save changes to \"%@\"?";
+"Your changes will be lost if you don't save them." = "Your changes will be lost if you don't save them.";
+"Don't Save" = "Don't Save";
+"Cancel" = "Cancel";
+
+/* Alerts — quit with unsaved changes */
+"You have unsaved changes" = "You have unsaved changes";
+"Unsaved documents: %@" = "Unsaved documents: %@";
+"Review Unsaved\u{2026}" = "Review Unsaved\u{2026}";
+"Quit Anyway" = "Quit Anyway";
