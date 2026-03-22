@@ -1,0 +1,90 @@
+name: Markfops
+
+options:
+  bundleIdPrefix: com.markfops
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+packages:
+  libcmark_gfm:
+    url: https://github.com/KristopherGBaker/libcmark_gfm
+    branch: main
+  swift-collections:
+    url: https://github.com/apple/swift-collections
+    from: "1.0.0"
+
+targets:
+  Markfops:
+    type: application
+    platform: macOS
+    sources:
+      - path: Markfops
+        excludes:
+          - Resources/Assets.xcassets
+          - Resources/preview-light.css
+          - Resources/preview-dark.css
+          - Resources/Info.plist
+          - Resources/Markfops.entitlements
+    resources:
+      - path: Markfops/Resources/Assets.xcassets
+      - path: Markfops/Resources/preview-light.css
+      - path: Markfops/Resources/preview-dark.css
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.markfops.Markfops
+        SWIFT_VERSION: "5.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        CODE_SIGN_ENTITLEMENTS: Markfops/Resources/Markfops.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+    entitlements:
+      path: Markfops/Resources/Markfops.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-write: true
+    info:
+      path: Markfops/Resources/Info.plist
+      properties:
+        CFBundleName: Markfops
+        CFBundleDisplayName: Markfops
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleVersion: "1"
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleIconFile: AppIcon
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Markdown Document
+            LSItemContentTypes:
+              - net.daringfireball.markdown
+              - public.plain-text
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            CFBundleTypeExtensions:
+              - md
+              - markdown
+              - txt
+        NSPrincipalClass: NSApplication
+        NSHighResolutionCapable: true
+        NSSupportsAutomaticTermination: false
+        NSSupportsSuddenTermination: false
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+    dependencies:
+      - package: libcmark_gfm
+        product: libcmark_gfm
+      - package: swift-collections
+        product: Collections
+
+  MarkfopsTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: MarkfopsTests
+    dependencies:
+      - target: Markfops
+    settings:
+      base:
+        SWIFT_VERSION: "5.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
