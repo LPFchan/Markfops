@@ -36,9 +36,9 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
               let docView = scrollView.documentView else { return }
         let visibleRect = scrollView.contentView.documentVisibleRect
         let totalHeight = docView.bounds.height
-        guard totalHeight > visibleRect.height else { return }
-        let midY = visibleRect.minY + visibleRect.height / 2
-        document.scrollRatio = max(0, min(1, Double(midY / totalHeight)))
+        let scrollableHeight = totalHeight - visibleRect.height
+        guard scrollableHeight > 0 else { document.scrollRatio = 0; return }
+        document.scrollRatio = max(0, min(1, Double(visibleRect.minY / scrollableHeight)))
     }
 
     func scrollToRatio(_ ratio: Double) {
@@ -46,10 +46,9 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
               let scrollView = tv.enclosingScrollView else { return }
         let totalHeight = tv.bounds.height
         let visibleHeight = scrollView.contentView.bounds.height
-        let targetMidY = CGFloat(ratio) * totalHeight
-        let targetY = targetMidY - visibleHeight / 2
-        let clampedY = max(0, min(totalHeight - visibleHeight, targetY))
-        scrollView.contentView.scroll(to: NSPoint(x: 0, y: clampedY))
+        let scrollableHeight = totalHeight - visibleHeight
+        let targetY = max(0, min(scrollableHeight, CGFloat(ratio) * scrollableHeight))
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 

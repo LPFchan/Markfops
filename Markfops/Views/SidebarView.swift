@@ -27,20 +27,33 @@ struct SidebarView: View {
 
             Divider()
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(store.documents) { document in
-                        TabItemView(
-                            document: document,
-                            isActive: store.activeID == document.id,
-                            onSelect: { store.activeID = document.id },
-                            onClose: { store.close(id: document.id) },
-                            onTOCTap: onTOCTap
-                        )
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(store.documents) { document in
+                            DocumentTabView(
+                                document: document,
+                                isActive: store.activeID == document.id,
+                                style: .sidebar,
+                                onSelect: { store.activeID = document.id },
+                                onClose: { store.close(id: document.id) },
+                                onTOCTap: onTOCTap
+                            )
+                            .id(document.id)
+                        }
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                }
+                .onChange(of: store.activeID) { _, newID in
+                    guard let id = newID else { return }
+                    // Delay slightly so the TOC spring animation finishes before scrolling
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(id, anchor: .top)
+                        }
                     }
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
             }
 
             Spacer()

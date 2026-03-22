@@ -1,6 +1,8 @@
 import SwiftUI
 
-struct HorizontalTabBarView: View {
+/// Scrollable tab pill row — used both as a standalone bar (when sidebar is visible
+/// but a secondary bar is needed) and as the toolbar's principal item in compact mode.
+struct TabPillRowView: View {
     @Environment(DocumentStore.self) private var store
 
     var body: some View {
@@ -8,9 +10,10 @@ struct HorizontalTabBarView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 4) {
                     ForEach(store.documents) { document in
-                        TabPillView(
+                        DocumentTabView(
                             document: document,
                             isActive: store.activeID == document.id,
+                            style: .compact,
                             onSelect: { store.activeID = document.id },
                             onClose: { store.close(id: document.id) }
                         )
@@ -42,8 +45,15 @@ struct HorizontalTabBarView: View {
                 }
             }
         }
-        .background(Color(NSColor.windowBackgroundColor))
-        .overlay(Divider(), alignment: .bottom)
-        .frame(height: 42)
+    }
+}
+
+/// Standalone horizontal tab bar shown below the toolbar (legacy / fallback use).
+struct HorizontalTabBarView: View {
+    var body: some View {
+        TabPillRowView()
+            .background(Color(NSColor.windowBackgroundColor))
+            .overlay(Divider(), alignment: .bottom)
+            .frame(height: 42)
     }
 }

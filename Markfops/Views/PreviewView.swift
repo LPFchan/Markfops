@@ -149,8 +149,7 @@ struct PreviewView: NSViewRepresentable {
                         scrollThrottle = null;
                         var total = document.documentElement.scrollHeight - window.innerHeight;
                         if (total > 0) {
-                            var midRatio = (window.scrollY + window.innerHeight / 2) / (total + window.innerHeight);
-                            window.webkit.messageHandlers.scrollChanged.postMessage(midRatio);
+                            window.webkit.messageHandlers.scrollChanged.postMessage(window.scrollY / total);
                         }
                     }, 100);
                 }, { passive: true });
@@ -163,8 +162,8 @@ struct PreviewView: NSViewRepresentable {
                 pendingScrollRatio = nil
                 let scrollJS = """
                 (function() {
-                    var total = document.documentElement.scrollHeight - window.innerHeight;
-                    if (total > 0) { window.scrollTo(0, Math.round(\(ratio) * (total + window.innerHeight) - window.innerHeight / 2)); }
+                    var scrollable = document.documentElement.scrollHeight - window.innerHeight;
+                    if (scrollable > 0) { window.scrollTo(0, Math.round(\(ratio) * scrollable)); }
                 })();
                 """
                 webView.evaluateJavaScript(scrollJS)

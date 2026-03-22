@@ -15,6 +15,8 @@ final class Document: Identifiable {
     @ObservationIgnored var scrollRatio: Double
     var headings: [HeadingNode]
     var isTOCExpanded: Bool
+    /// IDs of TOC headings the user has collapsed (hides their descendant headings).
+    var collapsedHeadingIDs: Set<String> = []
 
     init(fileURL: URL? = nil, rawText: String = "") {
         self.id = UUID()
@@ -32,6 +34,18 @@ final class Document: Identifiable {
         HeadingParser.firstH1Title(in: rawText)
             ?? fileURL?.deletingPathExtension().lastPathComponent
             ?? "Untitled"
+    }
+
+    /// Like displayTitle but strips a leading emoji (and any space after it) so it
+    /// isn't shown twice when the emoji is already displayed in the favicon badge.
+    var sidebarDisplayTitle: String {
+        let title = displayTitle
+        guard let first = title.unicodeScalars.first,
+              first.properties.isEmoji,
+              first.value > 0x238C else { return title }
+        // dropFirst() drops one Swift Character (= full grapheme cluster, handles ZWJ emoji)
+        let rest = String(title.dropFirst())
+        return rest.hasPrefix(" ") ? String(rest.dropFirst()) : rest
     }
 
     var faviconLetter: String {
