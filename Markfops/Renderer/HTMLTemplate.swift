@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 /// Wraps an HTML fragment from cmark-gfm into a full page document.
 enum HTMLTemplate {
@@ -29,9 +30,13 @@ enum HTMLTemplate {
         """
     }
 
-    static func currentPage(body: String) -> String {
-        let isDark = NSApp.effectiveAppearance.name == .darkAqua
-            || NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    static func currentPage(body: String, colorScheme: ColorScheme? = nil) -> String {
+        let isDark: Bool
+        if let scheme = colorScheme {
+            isDark = scheme == .dark
+        } else {
+            isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        }
         return page(body: body, isDark: isDark)
     }
 }

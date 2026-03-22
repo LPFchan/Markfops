@@ -5,6 +5,7 @@ struct EditorContainerView: View {
     var configuration: EditorConfiguration
     var scrollToLine: Int?
 
+    @Environment(\.colorScheme) private var colorScheme
     @State private var htmlContent: String = ""
     @State private var isDragTargeted = false
 
@@ -42,11 +43,15 @@ struct EditorContainerView: View {
                 refreshPreview(from: document.rawText)
             }
         }
+        // Re-render preview when system appearance changes
+        .onChange(of: colorScheme) { _, _ in
+            if document.mode == .preview { refreshPreview(from: document.rawText) }
+        }
     }
 
     private func refreshPreview(from text: String) {
         let fragment = MarkdownRenderer.renderHTML(from: text)
-        htmlContent = HTMLTemplate.currentPage(body: fragment)
+        htmlContent = HTMLTemplate.currentPage(body: fragment, colorScheme: colorScheme)
     }
 
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
