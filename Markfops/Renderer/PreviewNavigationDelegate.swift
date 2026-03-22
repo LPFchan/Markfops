@@ -1,7 +1,9 @@
 import WebKit
 
 /// Intercepts link clicks in the preview and opens them in the default browser.
+/// Also tracks the last-loaded HTML so PreviewView can skip redundant reloads.
 final class PreviewNavigationDelegate: NSObject, WKNavigationDelegate {
+    var lastLoadedHTML: String = ""
 
     func webView(
         _ webView: WKWebView,

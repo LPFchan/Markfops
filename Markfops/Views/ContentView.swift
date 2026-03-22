@@ -21,7 +21,10 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
             VStack(spacing: 0) {
-                HorizontalTabBarView()
+                // Show inline tab bar only when sidebar is hidden — they serve the same purpose
+                if columnVisibility == .detailOnly {
+                    HorizontalTabBarView()
+                }
 
                 if let document = store.activeDocument {
                     @Bindable var doc = document

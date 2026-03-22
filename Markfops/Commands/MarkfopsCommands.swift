@@ -60,6 +60,20 @@ struct MarkfopsCommands: Commands {
                 store?.selectPrevious()
             }
             .keyboardShortcut("[", modifiers: [.command, .shift])
+
+            Divider()
+
+            Button("Increase Font Size") {
+                let size = UserDefaults.standard.double(forKey: "editorFontSize")
+                UserDefaults.standard.set(min((size > 0 ? size : 15) + 1, 32), forKey: "editorFontSize")
+            }
+            .keyboardShortcut("=", modifiers: .command)
+
+            Button("Decrease Font Size") {
+                let size = UserDefaults.standard.double(forKey: "editorFontSize")
+                UserDefaults.standard.set(max((size > 0 ? size : 15) - 1, 10), forKey: "editorFontSize")
+            }
+            .keyboardShortcut("-", modifiers: .command)
         }
 
         CommandMenu("Format") {
