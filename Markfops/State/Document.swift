@@ -7,8 +7,12 @@ final class Document: Identifiable {
     var fileURL: URL?
     var rawText: String
     var isDirty: Bool
+    /// Text as of the last save or open — used to detect whether undo restored the clean state.
+    var savedText: String
     var mode: EditMode
-    var scrollPosition: CGFloat
+    /// Scroll position as a ratio [0,1] of the document height. @ObservationIgnored
+    /// to avoid re-rendering the entire view hierarchy on every scroll event.
+    @ObservationIgnored var scrollRatio: Double
     var headings: [HeadingNode]
     var isTOCExpanded: Bool
 
@@ -16,9 +20,10 @@ final class Document: Identifiable {
         self.id = UUID()
         self.fileURL = fileURL
         self.rawText = rawText
+        self.savedText = rawText
         self.isDirty = false
         self.mode = .edit
-        self.scrollPosition = 0
+        self.scrollRatio = 0
         self.headings = []
         self.isTOCExpanded = false
     }

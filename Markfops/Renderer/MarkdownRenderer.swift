@@ -33,8 +33,10 @@ enum MarkdownRenderer {
         }
         defer { cmark_node_free(doc) }
 
-        guard let htmlPtr = cmark_render_html(doc, options, nil) else {
-            return ""
+        // Pass the extensions list from the parser so GFM renderers (table, etc.) are invoked.
+        let exts = cmark_parser_get_syntax_extensions(parser)
+        guard let htmlPtr = cmark_render_html(doc, options, exts) else {
+            return "<p><em>Render failed.</em></p>"
         }
         let html = String(cString: htmlPtr)
         free(htmlPtr)

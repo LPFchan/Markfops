@@ -22,12 +22,21 @@ enum HeadingParser {
     }
 
     /// Parses all ATX headings (# through ######) and returns HeadingNode array.
+    /// Lines inside fenced code blocks (``` or ~~~) are ignored.
     static func parseHeadings(in text: String) -> [HeadingNode] {
         var nodes: [HeadingNode] = []
         let lines = text.components(separatedBy: "\n")
+        var insideFence = false
 
         for (lineNumber, line) in lines.enumerated() {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            // Toggle fence state on opening/closing ``` or ~~~
+            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
+                insideFence.toggle()
+                continue
+            }
+            guard !insideFence else { continue }
             guard trimmed.hasPrefix("#") else { continue }
 
             var level = 0

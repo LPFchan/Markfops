@@ -1,30 +1,63 @@
 import AppKit
-import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
-    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        // Access store from window's content to check dirty docs
-        // The check is handled in ContentView's onReceive of terminateNotification
-        return .terminateNow
+    /// Single source of truth — owned here so all lifecycle callbacks can reach it.
+    let store = DocumentStore()
+
+    // MARK: - Launch
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        restoreLastSession()
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        return true
-    }
-
-    // Handle files opened from Finder / drag onto Dock icon
-    func application(_ application: NSApplication, open urls: [URL]) {
-        guard let store = findDocumentStore() else { return }
-        for url in urls {
-            store.open(url: url)
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        DispatchQueue.main.async {
+            // Autosave the window frame so position/size survives restarts.
+            NSApp.mainWindow?.setFrameAutosaveName("MarkfopsMain")
+            // Set initial proxy icon for the active document (if a file was restored).
+            NSApp.mainWindow?.representedURL = self.store.activeDocument?.fileURL
         }
     }
 
-    private func findDocumentStore() -> DocumentStore? {
-        // Retrieve store from the key window's environment via notification
-        // The store is also accessible via AppDelegate's stored reference if needed.
-        // For simplicity, post a notification that ContentView handles.
-        return nil
+    // MARK: - Quit
+
+    /// Returns .terminateLater so we can show a sheet; replies via NSApp.reply after user decides.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let dirty = store.documents.filter(\.isDirty)
+        guard !dirty.isEmpty else { return .terminateNow }
+        store.reviewUnsavedForQuit { shouldQuit in
+            NSApp.reply(toApplicationShouldTerminate: shouldQuit)
+        }
+        return .terminateLater
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
+    }
+
+    // MARK: - Open from Finder / Dock drag
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls { store.open(url: url) }
+    }
+
+    // MARK: - Session persistence
+
+    func applicationWillTerminate(_ notification: Notification) {
+        persistSession()
+    }
+
+    private func restoreLastSession() {
+        let strings = UserDefaults.standard.stringArray(forKey: "lastOpenDocuments") ?? []
+        let urls = strings
+            .compactMap { URL(string: $0) }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+        for url in urls { store.open(url: url) }
+    }
+
+    private func persistSession() {
+        let strings = store.documents.compactMap { $0.fileURL?.absoluteString }
+        UserDefaults.standard.set(strings, forKey: "lastOpenDocuments")
     }
 }

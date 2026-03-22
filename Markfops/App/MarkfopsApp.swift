@@ -3,15 +3,14 @@ import SwiftUI
 @main
 struct MarkfopsApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @State private var store = DocumentStore()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environment(store)
-                .focusedSceneValue(\.documentStore, store)
+                .environment(appDelegate.store)
+                .focusedSceneValue(\.documentStore, appDelegate.store)
                 .onOpenURL { url in
-                    store.open(url: url)
+                    appDelegate.store.open(url: url)
                 }
                 .frame(minWidth: 700, minHeight: 500)
         }

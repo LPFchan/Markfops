@@ -44,11 +44,13 @@ targets:
         ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: ""
+        CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: YES
     entitlements:
       path: Markfops/Resources/Markfops.entitlements
       properties:
-        com.apple.security.app-sandbox: true
+        com.apple.security.app-sandbox: false
         com.apple.security.files.user-selected.read-write: true
+        com.apple.security.network.client: true
     info:
       path: Markfops/Resources/Info.plist
       properties:

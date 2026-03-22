@@ -1,0 +1,51 @@
+name: Release
+
+# Trigger: push a version tag, e.g. `git tag v1.0.0 && git push origin v1.0.0`
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  release:
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build & Archive
+        run: |
+          xcodebuild archive \
+            -project Markfops.xcodeproj \
+            -scheme Markfops \
+            -destination "generic/platform=macOS" \
+            -archivePath "$RUNNER_TEMP/Markfops.xcarchive" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Extract .app and zip
+        run: |
+          APP=$(find "$RUNNER_TEMP/Markfops.xcarchive" -name "Markfops.app" | head -1)
+          VERSION="${GITHUB_REF_NAME}"
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/Markfops-$VERSION.zip"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ runner.temp }}/Markfops-${{ github.ref_name }}.zip
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            1. Download and unzip `Markfops-${{ github.ref_name }}.zip`
+            2. Move `Markfops.app` to your Applications folder
+            3. First launch: right-click → **Open** (Gatekeeper warning — app is unsigned)
+
+            Or bypass Gatekeeper from Terminal:
+            ```
+            xattr -dr com.apple.quarantine /Applications/Markfops.app
+            ```

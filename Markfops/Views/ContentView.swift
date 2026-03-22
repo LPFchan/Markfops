@@ -6,7 +6,7 @@ struct ContentView: View {
     @AppStorage("editorFontFamily") private var fontFamily: String = "SF Mono"
 
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var scrollToLine: Int? = nil
+    @State private var scrollToHeading: HeadingNode? = nil
 
     private var editorConfig: EditorConfiguration {
         var config = EditorConfiguration.default
@@ -21,8 +21,8 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
             VStack(spacing: 0) {
-                // Show inline tab bar only when sidebar is hidden AND multiple docs are open
-                if columnVisibility == .detailOnly && store.documents.count > 1 {
+                // Show tab bar whenever sidebar is collapsed
+                if columnVisibility == .detailOnly {
                     HorizontalTabBarView()
                 }
 
@@ -31,7 +31,7 @@ struct ContentView: View {
                     EditorContainerView(
                         document: document,
                         configuration: editorConfig,
-                        scrollToLine: scrollToLine
+                        scrollToHeading: scrollToHeading
                     )
                     .toolbar {
                         ModeToggleToolbarItem(mode: $doc.mode)
@@ -50,14 +50,24 @@ struct ContentView: View {
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleWindowDrop(providers: providers)
         }
-        .onAppear { }
+        .onChange(of: store.activeDocument?.isDirty) { _, isDirty in
+            NSApp.mainWindow?.isDocumentEdited = isDirty ?? false
+        }
+        .onChange(of: store.activeDocument?.fileURL) { _, url in
+            NSApp.mainWindow?.representedURL = url
+        }
+        .onChange(of: store.activeID) { _, _ in
+            let doc = store.activeDocument
+            NSApp.mainWindow?.representedURL = doc?.fileURL
+            NSApp.mainWindow?.isDocumentEdited = doc?.isDirty ?? false
+        }
     }
 
     private func handleTOCTap(_ heading: HeadingNode) {
-        scrollToLine = heading.lineNumber
-        // Reset after a tick so future taps to same line still trigger
+        scrollToHeading = heading
+        // Reset after a tick so future taps to the same heading still trigger
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            scrollToLine = nil
+            scrollToHeading = nil
         }
     }
 

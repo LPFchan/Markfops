@@ -29,6 +29,7 @@ final class DocumentStore {
         }
         let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         let doc = Document(fileURL: url, rawText: text)
+        doc.headings = HeadingParser.parseHeadings(in: text)
         documents.append(doc)
         activeID = doc.id
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
@@ -41,6 +42,7 @@ final class DocumentStore {
             return
         }
         try document.rawText.write(to: url, atomically: true, encoding: .utf8)
+        document.savedText = document.rawText
         document.isDirty = false
         updateProxyIcon(for: document)
     }
@@ -52,6 +54,7 @@ final class DocumentStore {
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
         try document.rawText.write(to: url, atomically: true, encoding: .utf8)
+        document.savedText = document.rawText
         document.fileURL = url
         document.isDirty = false
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
@@ -73,7 +76,6 @@ final class DocumentStore {
 
     func rename(_ document: Document) {
         guard let currentURL = document.fileURL else {
-            // Untitled — treat as Save As
             try? saveAs(document)
             return
         }
@@ -132,11 +134,13 @@ final class DocumentStore {
         alert.informativeText = NSLocalizedString("Your unsaved changes will be lost.", comment: "Revert alert body")
         alert.addButton(withTitle: NSLocalizedString("Revert", comment: "Revert confirm button"))
         alert.addButton(withTitle: NSLocalizedString("Cancel", comment: "Cancel button"))
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
-        document.rawText = text
-        document.isDirty = false
-        document.headings = HeadingParser.parseHeadings(in: text)
+        showAlert(alert) { response in
+            guard response == .alertFirstButtonReturn else { return }
+            guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
+            document.rawText = text
+            document.isDirty = false
+            document.headings = HeadingParser.parseHeadings(in: text)
+        }
     }
 
     // MARK: - Export as PDF
@@ -147,8 +151,6 @@ final class DocumentStore {
         panel.nameFieldStringValue = document.displayTitle + ".pdf"
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        // Render via WKWebView off-screen
         let html = HTMLTemplate.currentPage(body: MarkdownRenderer.renderHTML(from: document.rawText))
         PDFExporter.export(html: html, to: url)
     }
@@ -157,20 +159,23 @@ final class DocumentStore {
 
     func close(id: UUID) {
         guard let doc = documents.first(where: { $0.id == id }) else { return }
-        if doc.isDirty {
-            let alert = NSAlert()
-            alert.messageText = String(format: NSLocalizedString("Save changes to \"%@\"?", comment: "Alert title when closing a tab with unsaved changes"), doc.displayTitle)
-            alert.informativeText = NSLocalizedString("Your changes will be lost if you don't save them.", comment: "Alert body for unsaved changes")
-            alert.addButton(withTitle: NSLocalizedString("Save", comment: "Save button"))
-            alert.addButton(withTitle: NSLocalizedString("Don't Save", comment: "Discard button"))
-            alert.addButton(withTitle: NSLocalizedString("Cancel", comment: "Cancel button"))
-            switch alert.runModal() {
-            case .alertFirstButtonReturn: try? save(doc)
+        guard doc.isDirty else { removeDocument(id: id); return }
+
+        let alert = NSAlert()
+        alert.messageText = String(format: NSLocalizedString("Save changes to \"%@\"?", comment: "Alert title when closing a tab with unsaved changes"), doc.displayTitle)
+        alert.informativeText = NSLocalizedString("Your changes will be lost if you don't save them.", comment: "Alert body for unsaved changes")
+        alert.addButton(withTitle: NSLocalizedString("Save", comment: "Save button"))
+        alert.addButton(withTitle: NSLocalizedString("Don't Save", comment: "Discard button"))
+        alert.addButton(withTitle: NSLocalizedString("Cancel", comment: "Cancel button"))
+        showAlert(alert) { [weak self] response in
+            guard let self else { return }
+            switch response {
+            case .alertFirstButtonReturn: try? self.save(doc)
             case .alertSecondButtonReturn: break
-            default: return
+            default: return  // Cancel — don't close
             }
+            self.removeDocument(id: id)
         }
-        removeDocument(id: id)
     }
 
     private func removeDocument(id: UUID) {
@@ -199,41 +204,62 @@ final class DocumentStore {
         activeID = documents[(idx - 1 + documents.count) % documents.count].id
     }
 
-    // MARK: - Proxy icon
+    func selectTab(at index: Int) {
+        guard index >= 0, index < documents.count else { return }
+        activeID = documents[index].id
+    }
+
+    // MARK: - Proxy icon + dirty close button
 
     private func updateProxyIcon(for document: Document) {
         NSApp.mainWindow?.representedURL = document.fileURL
         NSApp.mainWindow?.title = document.displayTitle
+        NSApp.mainWindow?.isDocumentEdited = document.isDirty
     }
 
-    // MARK: - Quit handling
+    // MARK: - Quit handling (called by AppDelegate, async sheet)
 
-    func checkUnsavedBeforeQuit() -> Bool {
-        let dirtyDocs = documents.filter(\.isDirty)
-        guard !dirtyDocs.isEmpty else { return true }
-        let names = dirtyDocs.map(\.displayTitle).joined(separator: ", ")
+    func reviewUnsavedForQuit(completion: @escaping (Bool) -> Void) {
+        let dirty = documents.filter(\.isDirty)
+        guard !dirty.isEmpty else { completion(true); return }
+        let names = dirty.map(\.displayTitle).joined(separator: ", ")
         let alert = NSAlert()
         alert.messageText = NSLocalizedString("You have unsaved changes", comment: "Quit alert title")
         alert.informativeText = String(format: NSLocalizedString("Unsaved documents: %@", comment: "Quit alert body listing document names"), names)
         alert.addButton(withTitle: NSLocalizedString("Review Unsaved\u{2026}", comment: "Save before quitting"))
         alert.addButton(withTitle: NSLocalizedString("Quit Anyway", comment: "Quit without saving"))
         alert.addButton(withTitle: NSLocalizedString("Cancel", comment: "Cancel quit"))
-        switch alert.runModal() {
-        case .alertFirstButtonReturn:
-            for doc in dirtyDocs { try? save(doc) }
-            return true
-        case .alertSecondButtonReturn:
-            return true
-        default:
-            return false
+        showAlert(alert) { [weak self] response in
+            guard let self else { completion(false); return }
+            switch response {
+            case .alertFirstButtonReturn:
+                for doc in dirty { try? self.save(doc) }
+                completion(true)
+            case .alertSecondButtonReturn:
+                completion(true)
+            default:
+                completion(false)
+            }
         }
     }
 
     // MARK: - Helpers
 
+    /// Shows an NSAlert as a sheet when a main window is available, falls back to modal.
+    private func showAlert(_ alert: NSAlert, completion: @escaping (NSApplication.ModalResponse) -> Void) {
+        if let window = NSApp.mainWindow {
+            alert.beginSheetModal(for: window, completionHandler: completion)
+        } else {
+            completion(alert.runModal())
+        }
+    }
+
     private func presentError(_ error: Error) {
-        let alert = NSAlert(error: error)
-        alert.runModal()
+        if let window = NSApp.mainWindow {
+            NSAlert(error: error).beginSheetModal(for: window)
+        } else {
+            NSAlert(error: error).runModal()
+        }
     }
 }
 

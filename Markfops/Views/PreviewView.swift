@@ -16,6 +16,14 @@ final class PreviewBridge {
     func resetEditingFlag() {
         coordinator?.isEditingInView = false
     }
+
+    func scrollToHeading(_ heading: HeadingNode) {
+        coordinator?.scrollToHeading(heading)
+    }
+
+    func setPendingScrollRatio(_ ratio: Double) {
+        coordinator?.pendingScrollRatio = ratio
+    }
 }
 
 // MARK: - View
@@ -28,10 +36,12 @@ struct PreviewView: NSViewRepresentable {
     let htmlContent: String
     let bridge: PreviewBridge
     var onTextChange: ((String) -> Void)?
+    var onScrollChange: ((Double) -> Void)?
 
     func makeNSView(context: Context) -> WKWebView {
         let userContent = WKUserContentController()
         userContent.add(context.coordinator, name: "textChanged")
+        userContent.add(context.coordinator, name: "scrollChanged")
 
         let config = WKWebViewConfiguration()
         config.userContentController = userContent
@@ -42,6 +52,7 @@ struct PreviewView: NSViewRepresentable {
 
         context.coordinator.webView = webView
         context.coordinator.onTextChange = onTextChange
+        context.coordinator.onScrollChange = onScrollChange
         bridge.coordinator = context.coordinator
 
         if !htmlContent.isEmpty {
@@ -54,11 +65,13 @@ struct PreviewView: NSViewRepresentable {
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.onTextChange = onTextChange
+        context.coordinator.onScrollChange = onScrollChange
 
         // Don't reload while the user is actively editing inside the web view.
-        guard !context.coordinator.isEditingInView,
-              !htmlContent.isEmpty,
-              htmlContent != context.coordinator.lastLoadedHTML else { return }
+        let isEditing = context.coordinator.isEditingInView
+        let isEmpty = htmlContent.isEmpty
+        let isSame = htmlContent == context.coordinator.lastLoadedHTML
+        guard !isEditing, !isEmpty, !isSame else { return }
 
         context.coordinator.lastLoadedHTML = htmlContent
         webView.loadHTMLString(htmlContent, baseURL: nil)
@@ -73,16 +86,21 @@ struct PreviewView: NSViewRepresentable {
         var lastLoadedHTML: String = ""
         var isEditingInView = false
         var onTextChange: ((String) -> Void)?
+        var onScrollChange: ((Double) -> Void)?
+        /// Ratio [0,1] to scroll to once the next page load finishes.
+        var pendingScrollRatio: Double?
 
-        // JS posts debounced innerText here after the user pauses typing.
+        // JS posts messages here: debounced innerText ("textChanged") and scroll ratio ("scrollChanged").
         func userContentController(
             _ userContentController: WKUserContentController,
             didReceive message: WKScriptMessage
         ) {
-            guard message.name == "textChanged",
-                  let text = message.body as? String else { return }
-            isEditingInView = true
-            onTextChange?(text)
+            if message.name == "textChanged", let text = message.body as? String {
+                isEditingInView = true
+                onTextChange?(text)
+            } else if message.name == "scrollChanged", let ratio = message.body as? Double {
+                onScrollChange?(ratio)
+            }
         }
 
         // After HTML loads, enable editing and wire up JS helpers.
@@ -122,9 +140,61 @@ struct PreviewView: NSViewRepresentable {
                     if (e.key === 'i') { e.preventDefault(); document.execCommand('italic'); }
                     if (e.key === 'u') { e.preventDefault(); /* underline — no-op in md */ }
                 });
+
+                // Report scroll position (throttled) so Swift can sync back to editor
+                var scrollThrottle;
+                window.addEventListener('scroll', function() {
+                    if (scrollThrottle) return;
+                    scrollThrottle = setTimeout(function() {
+                        scrollThrottle = null;
+                        var total = document.documentElement.scrollHeight - window.innerHeight;
+                        if (total > 0) {
+                            var midRatio = (window.scrollY + window.innerHeight / 2) / (total + window.innerHeight);
+                            window.webkit.messageHandlers.scrollChanged.postMessage(midRatio);
+                        }
+                    }, 100);
+                }, { passive: true });
             })();
             """
             webView.evaluateJavaScript(js)
+
+            // Apply deferred scroll ratio now that the page is ready
+            if let ratio = pendingScrollRatio {
+                pendingScrollRatio = nil
+                let scrollJS = """
+                (function() {
+                    var total = document.documentElement.scrollHeight - window.innerHeight;
+                    if (total > 0) { window.scrollTo(0, Math.round(\(ratio) * (total + window.innerHeight) - window.innerHeight / 2)); }
+                })();
+                """
+                webView.evaluateJavaScript(scrollJS)
+            }
+        }
+
+        /// Scroll to a heading in the preview and flash it with a highlight.
+        func scrollToHeading(_ heading: HeadingNode) {
+            let escaped = heading.title
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "'", with: "\\'")
+            let js = """
+            (function() {
+                var all = document.querySelectorAll('h1,h2,h3,h4,h5,h6');
+                var target = null;
+                for (var h of all) {
+                    if (h.textContent.trim() === '\(escaped)') { target = h; break; }
+                }
+                if (!target) return;
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                target.style.transition = 'background-color 0.1s ease-in';
+                target.style.borderRadius = '4px';
+                target.style.backgroundColor = 'rgba(255,200,0,0.35)';
+                setTimeout(function() {
+                    target.style.transition = 'background-color 0.7s ease-out';
+                    target.style.backgroundColor = 'transparent';
+                }, 300);
+            })();
+            """
+            webView?.evaluateJavaScript(js)
         }
 
         /// Pull the current plain text out of the editable article element.

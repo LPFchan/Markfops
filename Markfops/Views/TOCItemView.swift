@@ -2,12 +2,12 @@ import SwiftUI
 
 struct TOCItemView: View {
     let heading: HeadingNode
+    let isHighlighted: Bool
     let onTap: () -> Void
 
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 4) {
-                // Indent based on heading level
                 Spacer()
                     .frame(width: CGFloat((heading.level - 1)) * 12)
 
@@ -17,7 +17,7 @@ struct TOCItemView: View {
 
                 Text(heading.title)
                     .font(.system(size: 12))
-                    .foregroundColor(.primary)
+                    .foregroundColor(isHighlighted ? .accentColor : .primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
 
@@ -25,7 +25,12 @@ struct TOCItemView: View {
             }
             .padding(.vertical, 2)
             .padding(.horizontal, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(isHighlighted ? Color.accentColor.opacity(0.15) : Color.clear)
+            )
         }
         .buttonStyle(.plain)
+        .animation(.easeOut(duration: 0.25), value: isHighlighted)
     }
 }

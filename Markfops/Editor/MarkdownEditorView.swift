@@ -1,6 +1,17 @@
 import AppKit
 import SwiftUI
 
+// MARK: - EditorBridge
+
+/// Lets EditorContainerView call into the TextViewCoordinator after the NSViewRepresentable is set up.
+final class EditorBridge {
+    weak var coordinator: TextViewCoordinator?
+
+    func scrollToRatio(_ ratio: Double) {
+        coordinator?.scrollToRatio(ratio)
+    }
+}
+
 // MARK: - NSTextView subclass
 
 final class MarkdownNSTextView: NSTextView {
@@ -43,6 +54,21 @@ final class MarkdownNSTextView: NSTextView {
         }
     }
 
+    override func printView(_ sender: Any?) {
+        let printInfo = NSPrintInfo.shared.copy() as! NSPrintInfo
+        printInfo.horizontalPagination = .fit
+        printInfo.isHorizontallyCentered = true
+        printInfo.isVerticallyCentered = false
+        let op = NSPrintOperation(view: self, printInfo: printInfo)
+        op.showsPrintPanel = true
+        op.showsProgressPanel = true
+        if let win = window {
+            op.runModal(for: win, delegate: nil, didRun: nil, contextInfo: nil)
+        } else {
+            op.run()
+        }
+    }
+
     func wrapSelection(prefix: String, suffix: String) {
         let sel = selectedRange()
         guard sel.location != NSNotFound else { return }
@@ -63,6 +89,7 @@ struct EditorView: NSViewRepresentable {
     var document: Document
     var configuration: EditorConfiguration
     var scrollToLine: Int?
+    var editorBridge: EditorBridge?
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
@@ -78,6 +105,7 @@ struct EditorView: NSViewRepresentable {
         textView.isRichText = false
         textView.allowsUndo = true
         textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
@@ -97,6 +125,7 @@ struct EditorView: NSViewRepresentable {
         context.coordinator.highlighter.configuration = configuration
         textView.textStorage?.delegate = context.coordinator.highlighter
         context.coordinator.textView = textView
+        editorBridge?.coordinator = context.coordinator
 
         scrollView.documentView = textView
 
@@ -104,6 +133,14 @@ struct EditorView: NSViewRepresentable {
         if let storage = textView.textStorage, !text.isEmpty {
             context.coordinator.highlighter.highlightAll(in: storage)
         }
+
+        // Track scroll position for mode-switch sync
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(TextViewCoordinator.scrollViewDidLiveScroll(_:)),
+            name: NSScrollView.didLiveScrollNotification,
+            object: scrollView
+        )
 
         return scrollView
     }

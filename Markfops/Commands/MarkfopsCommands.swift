@@ -80,6 +80,11 @@ struct MarkfopsCommands: Commands {
 
             Divider()
 
+            Button("Print…") {
+                NSApp.sendAction(#selector(NSView.printView(_:)), to: nil, from: nil)
+            }
+            .keyboardShortcut("p", modifiers: .command)
+
             Button("Export as PDF…") {
                 guard let doc = store?.activeDocument else { return }
                 store?.exportAsPDF(doc)
@@ -94,8 +99,35 @@ struct MarkfopsCommands: Commands {
             .keyboardShortcut("w", modifiers: .command)
         }
 
-        // MARK: View menu
-        CommandMenu("View") {
+        // MARK: Find (Edit menu, after pasteboard group)
+        CommandGroup(after: .pasteboard) {
+            Menu("Find") {
+                Button("Find…") { triggerFinder(.showFindInterface) }
+                    .keyboardShortcut("f", modifiers: .command)
+                    .disabled(store?.activeDocument?.mode != .edit)
+
+                Button("Find and Replace…") { triggerFinder(.showReplaceInterface) }
+                    .keyboardShortcut("f", modifiers: [.command, .option])
+                    .disabled(store?.activeDocument?.mode != .edit)
+
+                Divider()
+
+                Button("Find Next") { triggerFinder(.nextMatch) }
+                    .keyboardShortcut("g", modifiers: .command)
+                    .disabled(store?.activeDocument?.mode != .edit)
+
+                Button("Find Previous") { triggerFinder(.previousMatch) }
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
+                    .disabled(store?.activeDocument?.mode != .edit)
+
+                Button("Use Selection for Find") { triggerFinder(.setSearchString) }
+                    .keyboardShortcut("e", modifiers: .command)
+                    .disabled(store?.activeDocument?.mode != .edit)
+            }
+        }
+
+        // MARK: View menu — inject after the built-in toolbar group to avoid creating a duplicate "View" menu
+        CommandGroup(after: .toolbar) {
             Button("Toggle Edit / Preview") {
                 guard let doc = store?.activeDocument else { return }
                 doc.mode = doc.mode == .edit ? .preview : .edit
@@ -113,6 +145,40 @@ struct MarkfopsCommands: Commands {
                 store?.selectPrevious()
             }
             .keyboardShortcut("[", modifiers: [.command, .shift])
+
+            Divider()
+
+            // Cmd+1…9: switch to tab N; Cmd+0: switch to last tab
+            Button("Select Tab 1") { store?.selectTab(at: 0) }
+                .keyboardShortcut("1", modifiers: .command)
+                .disabled((store?.documents.count ?? 0) < 1)
+            Button("Select Tab 2") { store?.selectTab(at: 1) }
+                .keyboardShortcut("2", modifiers: .command)
+                .disabled((store?.documents.count ?? 0) < 2)
+            Button("Select Tab 3") { store?.selectTab(at: 2) }
+                .keyboardShortcut("3", modifiers: .command)
+                .disabled((store?.documents.count ?? 0) < 3)
+            Button("Select Tab 4") { store?.selectTab(at: 3) }
+                .keyboardShortcut("4", modifiers: .command)
+                .disabled((store?.documents.count ?? 0) < 4)
+            Button("Select Tab 5") { store?.selectTab(at: 4) }
+                .keyboardShortcut("5", modifiers: .command)
+                .disabled((store?.documents.count ?? 0) < 5)
+            Button("Select Tab 6") { store?.selectTab(at: 5) }
+                .keyboardShortcut("6", modifiers: .command)
+                .disabled((store?.documents.count ?? 0) < 6)
+            Button("Select Tab 7") { store?.selectTab(at: 6) }
+                .keyboardShortcut("7", modifiers: .command)
+                .disabled((store?.documents.count ?? 0) < 7)
+            Button("Select Tab 8") { store?.selectTab(at: 7) }
+                .keyboardShortcut("8", modifiers: .command)
+                .disabled((store?.documents.count ?? 0) < 8)
+            Button("Select Tab 9") { store?.selectTab(at: 8) }
+                .keyboardShortcut("9", modifiers: .command)
+                .disabled((store?.documents.count ?? 0) < 9)
+            Button("Select Last Tab") { store?.activeID = store?.documents.last?.id }
+                .keyboardShortcut("0", modifiers: .command)
+                .disabled((store?.documents.count ?? 0) == 0)
 
             Divider()
 
@@ -156,6 +222,13 @@ struct MarkfopsCommands: Commands {
             }
             .keyboardShortcut("v", modifiers: [.command, .option, .shift])
         }
+    }
+
+    /// Forwards a text finder action to the first responder regardless of current focus.
+    private func triggerFinder(_ action: NSTextFinder.Action) {
+        let item = NSMenuItem()
+        item.tag = action.rawValue
+        NSApp.sendAction(#selector(NSTextView.performTextFinderAction(_:)), to: nil, from: item)
     }
 
     private func openFile() {
