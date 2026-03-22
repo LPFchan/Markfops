@@ -12,7 +12,7 @@ options:
 packages:
   libcmark_gfm:
     url: https://github.com/KristopherGBaker/libcmark_gfm
-    branch: main
+    branch: master
   swift-collections:
     url: https://github.com/apple/swift-collections
     from: "1.0.0"

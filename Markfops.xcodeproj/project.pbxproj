@@ -628,7 +628,7 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/KristopherGBaker/libcmark_gfm";
 			requirement = {
-				branch = main;
+				branch = master;
 				kind = branch;
 			};
 		};
