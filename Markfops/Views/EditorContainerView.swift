@@ -8,6 +8,7 @@ struct EditorContainerView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var htmlContent: String = ""
     @State private var isDragTargeted = false
+    @State private var bridge = PreviewBridge()
 
     var body: some View {
         Group {
@@ -19,8 +20,15 @@ struct EditorContainerView: View {
                     configuration: configuration,
                     scrollToLine: scrollToLine
                 )
+
             case .preview:
-                PreviewView(htmlContent: htmlContent)
+                PreviewView(htmlContent: htmlContent, bridge: bridge) { editedText in
+                    // WYSIWYG edits from the viewer arrive here (debounced 400ms)
+                    document.rawText = editedText
+                    document.isDirty = true
+                    // Update headings so sidebar TOC stays in sync
+                    document.headings = HeadingParser.parseHeadings(in: editedText)
+                }
             }
         }
         .overlay(
@@ -34,18 +42,32 @@ struct EditorContainerView: View {
             handleDrop(providers: providers)
         }
         .onChange(of: document.rawText, initial: true) { _, newText in
-            if document.mode == .preview {
-                refreshPreview(from: newText)
-            }
+            // Only push a fresh render when the change came from the editor (not from
+            // the WYSIWYG view syncing back its own edits) and preview is visible.
+            guard document.mode == .preview,
+                  bridge.coordinator?.isEditingInView != true else { return }
+            refreshPreview(from: newText)
         }
-        .onChange(of: document.mode) { _, newMode in
-            if newMode == .preview {
+        .onChange(of: document.mode) { oldMode, newMode in
+            if oldMode == .preview && newMode == .edit {
+                // Extract final viewer text before handing off to NSTextView
+                bridge.extractText { text in
+                    if !text.isEmpty {
+                        document.rawText = text
+                        document.headings = HeadingParser.parseHeadings(in: text)
+                    }
+                    bridge.resetEditingFlag()
+                }
+            } else if newMode == .preview {
+                bridge.resetEditingFlag()
                 refreshPreview(from: document.rawText)
             }
         }
-        // Re-render preview when system appearance changes
         .onChange(of: colorScheme) { _, _ in
-            if document.mode == .preview { refreshPreview(from: document.rawText) }
+            if document.mode == .preview {
+                bridge.resetEditingFlag()
+                refreshPreview(from: document.rawText)
+            }
         }
     }
 

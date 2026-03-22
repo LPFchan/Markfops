@@ -18,7 +18,6 @@
 		1CBFD8563DE8AC10A9D37BB9 /* FindReplaceBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF2BCBDD65A92722203488B3 /* FindReplaceBar.swift */; };
 		1F56B58BFA0C13FDC10A028B /* PreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35ABE72586B11782CBEF1196 /* PreviewView.swift */; };
 		244ECCE7A99431A581667DE0 /* EditMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9DC1A7625D654E0BA585E10 /* EditMode.swift */; };
-		2D62B3A9CACA83C4C43E5E80 /* PreviewNavigationDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC681233B59F888859E58958 /* PreviewNavigationDelegate.swift */; };
 		3F2BDA9D46E8FF6AC6D6DF9B /* MarkfopsCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C916E9DBBDC508AC9B40C6 /* MarkfopsCommands.swift */; };
 		4773F129D7E392E1E516AC2B /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14011151494BB8C871B4D646 /* AppDelegate.swift */; };
 		51151CAB4FFDDC744AD66BFB /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = DAD2AA09699D1444F08346FB /* Localizable.strings */; };
@@ -32,6 +31,7 @@
 		928B97786537075AB7956F9B /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2138F5AC97A090E4B6272FB3 /* SidebarView.swift */; };
 		95B40AB0A6E715F4F419AB71 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68C64074880ABB02F29BF99B /* SettingsView.swift */; };
 		991E9BBEAB1CC4AD8C135045 /* HorizontalTabBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 680F15DCD240DD2819574D40 /* HorizontalTabBarView.swift */; };
+		9F061AB4D3F43EFC7BB45EE6 /* PDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F05D215E01EBC0B400953604 /* PDFExporter.swift */; };
 		A2429F9EC0E81A0422EACD46 /* HeadingNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4625617133DDEF9653F91CA /* HeadingNode.swift */; };
 		B0E795820CE68F8DE414613B /* MarkdownEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D67A2CE029ADE8669191CD1 /* MarkdownEditorView.swift */; };
 		E0C3F0B655B41483DB893661 /* EditorContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82E44B05505F730184B28AED /* EditorContainerView.swift */; };
@@ -83,7 +83,7 @@
 		CFB5DBBC98ED92CDEC01BA31 /* HeadingParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeadingParserTests.swift; sourceTree = "<group>"; };
 		DF2BCBDD65A92722203488B3 /* FindReplaceBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindReplaceBar.swift; sourceTree = "<group>"; };
 		E5A38073AFAC4D127F4B5E82 /* DocumentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStore.swift; sourceTree = "<group>"; };
-		EC681233B59F888859E58958 /* PreviewNavigationDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewNavigationDelegate.swift; sourceTree = "<group>"; };
+		F05D215E01EBC0B400953604 /* PDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExporter.swift; sourceTree = "<group>"; };
 		F0AF7585BE2B913F939DFAED /* Markfops.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Markfops.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -135,7 +135,6 @@
 			children = (
 				0DCA6FE1E92902863C9859DD /* HTMLTemplate.swift */,
 				8BABF61C15310FD3F71CDE50 /* MarkdownRenderer.swift */,
-				EC681233B59F888859E58958 /* PreviewNavigationDelegate.swift */,
 			);
 			path = Renderer;
 			sourceTree = "<group>";
@@ -212,6 +211,7 @@
 		C1E940C3A47CCAAD33C2FECB /* FileIO */ = {
 			isa = PBXGroup;
 			children = (
+				F05D215E01EBC0B400953604 /* PDFExporter.swift */,
 			);
 			path = FileIO;
 			sourceTree = "<group>";
@@ -350,7 +350,7 @@
 				0F3DB7DCF1EBB8111808A9C0 /* MarkdownSyntaxHighlighter.swift in Sources */,
 				012F13E675D8CB2ECB471333 /* MarkfopsApp.swift in Sources */,
 				3F2BDA9D46E8FF6AC6D6DF9B /* MarkfopsCommands.swift in Sources */,
-				2D62B3A9CACA83C4C43E5E80 /* PreviewNavigationDelegate.swift in Sources */,
+				9F061AB4D3F43EFC7BB45EE6 /* PDFExporter.swift in Sources */,
 				1F56B58BFA0C13FDC10A028B /* PreviewView.swift in Sources */,
 				95B40AB0A6E715F4F419AB71 /* SettingsView.swift in Sources */,
 				928B97786537075AB7956F9B /* SidebarView.swift in Sources */,

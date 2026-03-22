@@ -6,8 +6,10 @@ struct ModeToggleToolbarItem: ToolbarContent {
     var body: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             Picker("Mode", selection: $mode) {
-                Label("Edit", systemImage: "pencil").tag(EditMode.edit)
-                Label("Preview", systemImage: "eye").tag(EditMode.preview)
+                Label("Edit", systemImage: "pencil")
+                    .tag(EditMode.edit)
+                Label("Preview", systemImage: "eye")
+                    .tag(EditMode.preview)
             }
             .pickerStyle(.segmented)
             .frame(width: 110)

@@ -18,7 +18,7 @@ struct MarkfopsApp: App {
         .commands {
             MarkfopsCommands()
         }
-        .defaultSize(width: 1100, height: 700)
+        .defaultSize(width: 660, height: 700)
 
         Settings {
             SettingsView()

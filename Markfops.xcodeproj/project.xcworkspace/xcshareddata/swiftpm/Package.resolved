@@ -1,0 +1,24 @@
+{
+  "originHash" : "6aea753b4d0def9f3ee60c25c74d11153b603453f770487f13077c7c0ad0e3cb",
+  "pins" : [
+    {
+      "identity" : "libcmark_gfm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/KristopherGBaker/libcmark_gfm",
+      "state" : {
+        "branch" : "master",
+        "revision" : "3e8c4238a4657a12411c82aa1e43a89930c9881f"
+      }
+    },
+    {
+      "identity" : "swift-collections",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-collections",
+      "state" : {
+        "revision" : "6675bc0ff86e61436e615df6fc5174e043e57924",
+        "version" : "1.4.1"
+      }
+    }
+  ],
+  "version" : 3
+}

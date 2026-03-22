@@ -21,8 +21,8 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
             VStack(spacing: 0) {
-                // Show inline tab bar only when sidebar is hidden — they serve the same purpose
-                if columnVisibility == .detailOnly {
+                // Show inline tab bar only when sidebar is hidden AND multiple docs are open
+                if columnVisibility == .detailOnly && store.documents.count > 1 {
                     HorizontalTabBarView()
                 }
 
@@ -50,11 +50,7 @@ struct ContentView: View {
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleWindowDrop(providers: providers)
         }
-        .onAppear {
-            if store.documents.isEmpty {
-                store.newDocument()
-            }
-        }
+        .onAppear { }
     }
 
     private func handleTOCTap(_ heading: HeadingNode) {
