@@ -10,6 +10,7 @@
 		012F13E675D8CB2ECB471333 /* MarkfopsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1E1392B3F2270B4776011B /* MarkfopsApp.swift */; };
 		02BBEC589FB91DCD1A819A3D /* Document.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61E7B956C2E09B3B85798093 /* Document.swift */; };
 		0709B30A7683170F86F4D3B7 /* Collections in Frameworks */ = {isa = PBXBuildFile; productRef = 58F3F796AEC3FCCE686F9178 /* Collections */; };
+		A83F5E2C1B4D7098E6F5A3C2B /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = C05F7E4D3D6F90B1A2B8C5D41 /* Sparkle */; };
 		0F3DB7DCF1EBB8111808A9C0 /* MarkdownSyntaxHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9715758E602896E139E741BE /* MarkdownSyntaxHighlighter.swift */; };
 		1206DCA30D179D228DF1E42F /* MarkdownRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9474347D5E720593FBBE8726 /* MarkdownRendererTests.swift */; };
 		13B38088C65798132F2C2CCF /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BABF61C15310FD3F71CDE50 /* MarkdownRenderer.swift */; };
@@ -96,6 +97,7 @@
 			files = (
 				FF758F7E1D37D8AC8C93D7F4 /* libcmark_gfm in Frameworks */,
 				0709B30A7683170F86F4D3B7 /* Collections in Frameworks */,
+				A83F5E2C1B4D7098E6F5A3C2B /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -274,6 +276,7 @@
 			packageProductDependencies = (
 				DF868D31CDAF6E5ADD270D37 /* libcmark_gfm */,
 				58F3F796AEC3FCCE686F9178 /* Collections */,
+				C05F7E4D3D6F90B1A2B8C5D41 /* Sparkle */,
 			);
 			productName = Markfops;
 			productReference = F0AF7585BE2B913F939DFAED /* Markfops.app */;
@@ -307,6 +310,7 @@
 			packageReferences = (
 				28D51CE0126EEE93980B58A9 /* XCRemoteSwiftPackageReference "libcmark_gfm" */,
 				461F70195D51CF98A09EE36C /* XCRemoteSwiftPackageReference "swift-collections" */,
+				B94F6E3D2C5E809A1F7A4C3D2 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = D151A72D4CDA8B589F5BCB9B /* Products */;
@@ -646,6 +650,14 @@
 				minimumVersion = 1.0.0;
 			};
 		};
+		B94F6E3D2C5E809A1F7A4C3D2 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.6.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -658,6 +670,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 28D51CE0126EEE93980B58A9 /* XCRemoteSwiftPackageReference "libcmark_gfm" */;
 			productName = libcmark_gfm;
+		};
+		C05F7E4D3D6F90B1A2B8C5D41 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B94F6E3D2C5E809A1F7A4C3D2 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

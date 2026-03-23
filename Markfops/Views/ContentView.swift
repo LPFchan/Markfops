@@ -31,26 +31,14 @@ struct ContentView: View {
                 )
                 .toolbar {
                     if columnVisibility == .detailOnly {
-                        // Compact mode: pills fill the center (principal), toggle is right-aligned
-                        // (primaryAction). Separating them gives pills maximum horizontal space.
+                        // Pills fill the centered principal area; toggle sits at the trailing edge.
+                        // minWidth: 700 (MarkfopsApp.swift) ensures .primaryAction never overflows to >>.
                         ToolbarItem(placement: .principal) {
                             TabPillRowView()
                                 .frame(maxWidth: .infinity)
                         }
-                        ToolbarItem(placement: .primaryAction) {
-                            Picker("Mode", selection: $doc.mode) {
-                                Label("Edit",    systemImage: "pencil").tag(EditMode.edit)
-                                Label("Preview", systemImage: "eye"   ).tag(EditMode.preview)
-                            }
-                            .pickerStyle(.segmented)
-                            .frame(width: 100)
-                            .fixedSize()
-                            .help("Toggle Edit / Preview  ⌘⇧P")
-                        }
-                    } else {
-                        // Sidebar mode: toggle sits in the trailing toolbar area.
-                        ModeToggleToolbarItem(mode: $doc.mode)
                     }
+                    ModeToggleToolbarItem(mode: $doc.mode)
                 }
             } else {
                 WelcomeView()
@@ -58,11 +46,8 @@ struct ContentView: View {
                         if columnVisibility == .detailOnly {
                             ToolbarItem(placement: .principal) {
                                 TabPillRowView()
-                                    .frame(maxWidth: 600)
+                                    .frame(maxWidth: .infinity)
                             }
-                        }
-                        ToolbarItem(placement: .primaryAction) {
-                            EmptyView()
                         }
                     }
             }

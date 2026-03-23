@@ -5,6 +5,12 @@ struct MarkfopsCommands: Commands {
     @FocusedValue(\.sidebarVisibility) private var sidebarVisibility
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") {
+                (NSApp.delegate as? AppDelegate)?.updaterController.checkForUpdates(nil)
+            }
+        }
+
         // MARK: File menu
         CommandGroup(replacing: .newItem) {
             Button("New") {

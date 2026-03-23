@@ -1,5 +1,5 @@
 {
-  "originHash" : "6aea753b4d0def9f3ee60c25c74d11153b603453f770487f13077c7c0ad0e3cb",
+  "originHash" : "f67a8dd81ad99bb586249c91c05e3ede4c56b48b7c5b1d57723641e53e1ebacc",
   "pins" : [
     {
       "identity" : "libcmark_gfm",
@@ -8,6 +8,15 @@
       "state" : {
         "branch" : "master",
         "revision" : "3e8c4238a4657a12411c82aa1e43a89930c9881f"
+      }
+    },
+    {
+      "identity" : "sparkle",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sparkle-project/Sparkle",
+      "state" : {
+        "revision" : "21d8df80440b1ca3b65fa82e40782f1e5a9e6ba2",
+        "version" : "2.9.0"
       }
     },
     {

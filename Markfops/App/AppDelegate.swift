@@ -1,9 +1,13 @@
 import AppKit
+import Sparkle
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Single source of truth — owned here so all lifecycle callbacks can reach it.
     let store = DocumentStore()
+
+    /// Sparkle 2 — feed URL and signing key live in `Info.plist` (`SUFeedURL`, `SUPublicEDKey`).
+    let updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     // MARK: - Launch
 

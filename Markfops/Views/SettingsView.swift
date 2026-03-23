@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -6,6 +7,12 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Updates") {
+                Button("Check for Updates…") {
+                    (NSApp.delegate as? AppDelegate)?.updaterController.checkForUpdates(nil)
+                }
+            }
+
             Section("Editor") {
                 HStack {
                     Text("Font Size")
@@ -22,6 +29,6 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 360, height: 180)
+        .frame(width: 360, height: 240)
     }
 }
