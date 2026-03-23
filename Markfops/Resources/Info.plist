@@ -66,5 +66,9 @@
 	<false/>
 	<key>NSSupportsSuddenTermination</key>
 	<false/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://lpfchan.github.io/Markfops/appcast.xml</string>
 </dict>
 </plist>
