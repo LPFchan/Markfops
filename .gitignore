@@ -35,3 +35,8 @@ build/
 # Editor swap files
 *.swp
 *~
+
+# Sparkle signing (never commit)
+sparkle_private*.key
+Sparkle_private*.key
+*.sparkle.pem

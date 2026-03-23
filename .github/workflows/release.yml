@@ -9,9 +9,21 @@ on:
 jobs:
   release:
     runs-on: macos-15
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # DMG packaging: https://github.com/saihgupr/DMGMaker (CLI — pinned for reproducible CI)
+      - name: Checkout DMGMaker
+        uses: actions/checkout@v4
+        with:
+          repository: saihgupr/DMGMaker
+          ref: v1.0.3
+          path: dmgtool
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
@@ -27,25 +39,65 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Extract .app and zip
+      - name: Build DMG (DMGMaker)
         run: |
+          set -euo pipefail
           APP=$(find "$RUNNER_TEMP/Markfops.xcarchive" -name "Markfops.app" | head -1)
           VERSION="${GITHUB_REF_NAME}"
-          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/Markfops-$VERSION.zip"
+          STAGING="$RUNNER_TEMP/dmg-staging"
+          mkdir -p "$STAGING"
+          ditto "$APP" "$STAGING/Markfops.app"
+          cd dmgtool
+          swift run -c release "DMG Maker" --app "$STAGING/Markfops.app" --name "Markfops-${VERSION}"
+          DMG="$STAGING/Markfops-${VERSION}.dmg"
+          test -f "$DMG"
+          echo "DMG_PATH=$DMG" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ runner.temp }}/Markfops-${{ github.ref_name }}.zip
+          files: ${{ env.DMG_PATH }}
           generate_release_notes: true
           body: |
             ## Installation
 
-            1. Download and unzip `Markfops-${{ github.ref_name }}.zip`
-            2. Move `Markfops.app` to your Applications folder
+            1. Download `Markfops-${{ github.ref_name }}.dmg` and open it
+            2. Drag **Markfops** into **Applications**
             3. First launch: right-click → **Open** (Gatekeeper warning — app is unsigned)
 
             Or bypass Gatekeeper from Terminal:
             ```
             xattr -dr com.apple.quarantine /Applications/Markfops.app
             ```
+
+      # Must match Sparkle SPM pin in Package.resolved (generate_appcast / sign_update)
+      - name: Publish Sparkle appcast to GitHub Pages
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SPARKLE_PRIVATE_KEY:-}" ]; then
+            echo "::error::Repository secret SPARKLE_PRIVATE_KEY is not set (export with Sparkle generate_keys -x, then gh secret set)."
+            exit 1
+          fi
+          SPARKLE_VER=2.9.0
+          curl -sL "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VER}/Sparkle-${SPARKLE_VER}.tar.xz" | tar -xJf - -C "$RUNNER_TEMP" bin
+          VERSION="${GITHUB_REF_NAME}"
+          ARCHIVE_DIR="$RUNNER_TEMP/sparkle-archives"
+          mkdir -p "$ARCHIVE_DIR"
+          cp "$DMG_PATH" "$ARCHIVE_DIR/Markfops-${VERSION}.dmg"
+          cp docs/appcast.xml "$ARCHIVE_DIR/appcast.xml"
+          DOWNLOAD_PREFIX="https://github.com/${{ github.repository }}/releases/download/${VERSION}/"
+          echo "$SPARKLE_PRIVATE_KEY" | "$RUNNER_TEMP/bin/generate_appcast" --ed-key-file - \
+            --download-url-prefix "$DOWNLOAD_PREFIX" \
+            --maximum-versions 0 \
+            "$ARCHIVE_DIR"
+          rm -rf dmgtool
+          git fetch origin main
+          git checkout -B main origin/main
+          cp "$ARCHIVE_DIR/appcast.xml" docs/appcast.xml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/appcast.xml
+          git diff --staged --quiet || git commit -m "Update Sparkle appcast for ${VERSION}"
+          git push origin main
