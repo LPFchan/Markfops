@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MarkfopsCommands: Commands {
     @FocusedValue(\.documentStore) private var store
+    @FocusedValue(\.sidebarVisibility) private var sidebarVisibility
 
     var body: some Commands {
         // MARK: File menu
@@ -15,6 +16,23 @@ struct MarkfopsCommands: Commands {
                 store?.newDocument()
             }
             .keyboardShortcut("t", modifiers: .command)
+
+            Button("New Window") {
+                let newStore = DocumentStore()
+                newStore.newDocument()
+                let rootView = ContentView()
+                    .environment(newStore)
+                    .focusedSceneValue(\.documentStore, newStore)
+                    .frame(minWidth: 700, minHeight: 500)
+                let controller = NSHostingController(rootView: rootView)
+                let window = NSWindow(contentViewController: controller)
+                window.setContentSize(NSSize(width: 900, height: 650))
+                window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+                newStore.managedWindow = window
+                window.center()
+                window.makeKeyAndOrderFront(nil)
+            }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
 
             Button("Open…") {
                 openFile()
@@ -92,11 +110,19 @@ struct MarkfopsCommands: Commands {
 
             Divider()
 
-            Button("Close Tab") {
-                guard let id = store?.activeID else { return }
-                store?.close(id: id)
+            Button(store?.documents.isEmpty ?? true ? "Close Window" : "Close Tab") {
+                if let s = store, !s.documents.isEmpty, let id = s.activeID {
+                    s.close(id: id)
+                } else {
+                    NSApp.keyWindow?.performClose(nil)
+                }
             }
             .keyboardShortcut("w", modifiers: .command)
+
+            Button("Close Window") {
+                NSApp.keyWindow?.performClose(nil)
+            }
+            .keyboardShortcut("w", modifiers: [.command, .shift])
         }
 
         // MARK: Find (Edit menu, after pasteboard group)
@@ -134,6 +160,17 @@ struct MarkfopsCommands: Commands {
             }
             .keyboardShortcut("p", modifiers: [.command, .shift])
 
+            Button(sidebarVisibility?.wrappedValue == .detailOnly ? "Show Sidebar" : "Hide Sidebar") {
+                withAnimation {
+                    if sidebarVisibility?.wrappedValue == .detailOnly {
+                        sidebarVisibility?.wrappedValue = .all
+                    } else {
+                        sidebarVisibility?.wrappedValue = .detailOnly
+                    }
+                }
+            }
+            .keyboardShortcut("\\", modifiers: .command)
+
             Divider()
 
             Button("Next Tab") {
@@ -145,40 +182,6 @@ struct MarkfopsCommands: Commands {
                 store?.selectPrevious()
             }
             .keyboardShortcut("[", modifiers: [.command, .shift])
-
-            Divider()
-
-            // Cmd+1…9: switch to tab N; Cmd+0: switch to last tab
-            Button("Select Tab 1") { store?.selectTab(at: 0) }
-                .keyboardShortcut("1", modifiers: .command)
-                .disabled((store?.documents.count ?? 0) < 1)
-            Button("Select Tab 2") { store?.selectTab(at: 1) }
-                .keyboardShortcut("2", modifiers: .command)
-                .disabled((store?.documents.count ?? 0) < 2)
-            Button("Select Tab 3") { store?.selectTab(at: 2) }
-                .keyboardShortcut("3", modifiers: .command)
-                .disabled((store?.documents.count ?? 0) < 3)
-            Button("Select Tab 4") { store?.selectTab(at: 3) }
-                .keyboardShortcut("4", modifiers: .command)
-                .disabled((store?.documents.count ?? 0) < 4)
-            Button("Select Tab 5") { store?.selectTab(at: 4) }
-                .keyboardShortcut("5", modifiers: .command)
-                .disabled((store?.documents.count ?? 0) < 5)
-            Button("Select Tab 6") { store?.selectTab(at: 5) }
-                .keyboardShortcut("6", modifiers: .command)
-                .disabled((store?.documents.count ?? 0) < 6)
-            Button("Select Tab 7") { store?.selectTab(at: 6) }
-                .keyboardShortcut("7", modifiers: .command)
-                .disabled((store?.documents.count ?? 0) < 7)
-            Button("Select Tab 8") { store?.selectTab(at: 7) }
-                .keyboardShortcut("8", modifiers: .command)
-                .disabled((store?.documents.count ?? 0) < 8)
-            Button("Select Tab 9") { store?.selectTab(at: 8) }
-                .keyboardShortcut("9", modifiers: .command)
-                .disabled((store?.documents.count ?? 0) < 9)
-            Button("Select Last Tab") { store?.activeID = store?.documents.last?.id }
-                .keyboardShortcut("0", modifiers: .command)
-                .disabled((store?.documents.count ?? 0) == 0)
 
             Divider()
 

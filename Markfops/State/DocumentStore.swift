@@ -5,9 +5,6 @@ import Observation
 final class DocumentStore {
     private(set) var documents: [Document] = []
     var activeID: UUID?
-    /// Non-nil while a tab drag is in flight. Set by onDrag, cleared by onDrop.performDrop
-    /// or by the mouse-up monitor when no drop target accepted the drag (→ detach).
-    var draggingDocumentID: UUID? = nil
 
     var activeDocument: Document? {
         guard let id = activeID else { return nil }
@@ -35,6 +32,7 @@ final class DocumentStore {
         doc.headings = HeadingParser.parseHeadings(in: text)
         documents.append(doc)
         activeID = doc.id
+        doc.startWatching()
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
         return doc
     }
@@ -48,6 +46,7 @@ final class DocumentStore {
         document.savedText = document.rawText
         document.isDirty = false
         updateProxyIcon(for: document)
+        document.startWatching()
     }
 
     func saveAs(_ document: Document) throws {
@@ -62,6 +61,7 @@ final class DocumentStore {
         document.isDirty = false
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
         updateProxyIcon(for: document)
+        document.startWatching()
     }
 
     // MARK: - Duplicate
@@ -76,6 +76,26 @@ final class DocumentStore {
     }
 
     // MARK: - Rename
+
+    /// Inline rename: renames the file on disk using `newBaseName` (no extension).
+    /// Called from the tab-pill text field; context-menu "Rename…" still uses `rename(_:)`.
+    func renameInline(document: Document, newBaseName: String) {
+        guard let currentURL = document.fileURL else { return }
+        let newURL = currentURL.deletingLastPathComponent()
+            .appendingPathComponent(newBaseName)
+            .appendingPathExtension("md")
+        guard newURL != currentURL else { return }
+        do {
+            try FileManager.default.moveItem(at: currentURL, to: newURL)
+            document.fileURL = newURL
+            document.isDirty = false
+            NSDocumentController.shared.noteNewRecentDocumentURL(newURL)
+            updateProxyIcon(for: document)
+            document.startWatching()
+        } catch {
+            presentError(error)
+        }
+    }
 
     func rename(_ document: Document) {
         guard let currentURL = document.fileURL else {
@@ -96,6 +116,7 @@ final class DocumentStore {
             document.isDirty = false
             NSDocumentController.shared.noteNewRecentDocumentURL(newURL)
             updateProxyIcon(for: document)
+            document.startWatching()
         } catch {
             presentError(error)
         }
@@ -126,6 +147,7 @@ final class DocumentStore {
         document.isDirty = false
         NSDocumentController.shared.noteNewRecentDocumentURL(newURL)
         updateProxyIcon(for: document)
+        document.startWatching()
     }
 
     // MARK: - Revert to Saved
@@ -181,13 +203,22 @@ final class DocumentStore {
         }
     }
 
-    private func removeDocument(id: UUID) {
+    // internal (not private) so cross-window drop delegate and file-watch teardown can call it
+    func removeDocument(id: UUID) {
         guard let idx = documents.firstIndex(where: { $0.id == id }) else { return }
+        documents[idx].stopWatching()
         documents.remove(at: idx)
         if activeID == id {
             activeID = documents.isEmpty ? nil : documents[min(idx, documents.count - 1)].id
         }
+        // Close this window if it was a single-tab detached window and is now empty.
+        if documents.isEmpty, let win = managedWindow {
+            DispatchQueue.main.async { win.performClose(nil) }
+        }
     }
+
+    /// Set by `detachToNewWindow` so a window that loses its last tab auto-closes.
+    @ObservationIgnored weak var managedWindow: NSWindow?
 
     // MARK: - Detach to new window
 
@@ -213,18 +244,27 @@ final class DocumentStore {
         window.title = document.displayTitle
         window.setContentSize(NSSize(width: 900, height: 650))
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        // Track this window so the store can close it when its last tab is removed.
+        newStore.managedWindow = window
 
-        // Cascade 20 pt below/right of the source window
-        if let src = NSApp.windows.first(where: { $0.isMainWindow }) {
+        // Cascade 20 pt below/right of the key window
+        if let src = NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isMainWindow }) {
             window.setFrameOrigin(NSPoint(x: src.frame.minX + 20,
                                           y: src.frame.maxY - window.frame.height - 20))
         } else {
             window.center()
         }
         window.makeKeyAndOrderFront(nil)
+        TabDragState.shared.reset()
     }
 
     // MARK: - Tab order
+
+    func insertDocument(_ document: Document, at index: Int) {
+        let clamped = max(0, min(index, documents.count))
+        documents.insert(document, at: clamped)
+        activeID = document.id
+    }
 
     func moveTab(fromOffsets: IndexSet, toOffset: Int) {
         documents.move(fromOffsets: fromOffsets, toOffset: toOffset)
@@ -309,9 +349,18 @@ struct DocumentStoreFocusKey: FocusedValueKey {
     typealias Value = DocumentStore
 }
 
+struct SidebarVisibilityKey: FocusedValueKey {
+    typealias Value = Binding<NavigationSplitViewVisibility>
+}
+
 extension FocusedValues {
     var documentStore: DocumentStore? {
         get { self[DocumentStoreFocusKey.self] }
         set { self[DocumentStoreFocusKey.self] = newValue }
+    }
+
+    var sidebarVisibility: Binding<NavigationSplitViewVisibility>? {
+        get { self[SidebarVisibilityKey.self] }
+        set { self[SidebarVisibilityKey.self] = newValue }
     }
 }

@@ -36,9 +36,11 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
               let docView = scrollView.documentView else { return }
         let visibleRect = scrollView.contentView.documentVisibleRect
         let totalHeight = docView.bounds.height
-        let scrollableHeight = totalHeight - visibleRect.height
-        guard scrollableHeight > 0 else { document.scrollRatio = 0; return }
-        document.scrollRatio = max(0, min(1, Double(visibleRect.minY / scrollableHeight)))
+        guard totalHeight > 0 else { document.scrollRatio = 0; return }
+        // Capture the center of the visible viewport (not the top edge) so the
+        // same content stays centered when switching between edit and preview modes.
+        let centerY = visibleRect.minY + visibleRect.height / 2
+        document.scrollRatio = max(0, min(1, Double(centerY / totalHeight)))
     }
 
     func scrollToRatio(_ ratio: Double) {
@@ -47,7 +49,10 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         let totalHeight = tv.bounds.height
         let visibleHeight = scrollView.contentView.bounds.height
         let scrollableHeight = totalHeight - visibleHeight
-        let targetY = max(0, min(scrollableHeight, CGFloat(ratio) * scrollableHeight))
+        // ratio * totalHeight gives the absolute Y of the center of what was visible;
+        // subtract half the viewport height to position it at the center.
+        let centerY = CGFloat(ratio) * totalHeight
+        let targetY = max(0, min(scrollableHeight, centerY - visibleHeight / 2))
         scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }

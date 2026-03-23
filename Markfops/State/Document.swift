@@ -18,6 +18,8 @@ final class Document: Identifiable {
     /// IDs of TOC headings the user has collapsed (hides their descendant headings).
     var collapsedHeadingIDs: Set<String> = []
 
+    @ObservationIgnored private var fileWatchSource: DispatchSourceFileSystemObject?
+
     init(fileURL: URL? = nil, rawText: String = "") {
         self.id = UUID()
         self.fileURL = fileURL
@@ -29,6 +31,45 @@ final class Document: Identifiable {
         self.headings = []
         self.isTOCExpanded = false
     }
+
+    // MARK: - File watching
+
+    /// Starts watching the file at `fileURL` for external changes using kqueue (event-driven,
+    /// not polling — energy-efficient). Reloads content when another process writes the file,
+    /// but only if the document has no unsaved edits.
+    func startWatching() {
+        stopWatching()
+        guard let url = fileURL else { return }
+        let fd = Darwin.open(url.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd, eventMask: [.write, .rename], queue: .main)
+        source.setEventHandler { [weak self, weak source] in
+            guard let self, let source else { return }
+            // .rename means the file was moved/deleted — stop watching the stale fd.
+            if source.data.contains(.rename) {
+                self.stopWatching()
+                return
+            }
+            guard !self.isDirty,
+                  let url = self.fileURL,
+                  let text = try? String(contentsOf: url, encoding: .utf8),
+                  text != self.rawText else { return }
+            self.rawText = text
+            self.savedText = text
+            self.headings = HeadingParser.parseHeadings(in: text)
+        }
+        source.setCancelHandler { Darwin.close(fd) }
+        source.resume()
+        fileWatchSource = source
+    }
+
+    func stopWatching() {
+        fileWatchSource?.cancel()
+        fileWatchSource = nil
+    }
+
+    deinit { stopWatching() }
 
     var displayTitle: String {
         HeadingParser.firstH1Title(in: rawText)

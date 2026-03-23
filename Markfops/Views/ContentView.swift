@@ -19,7 +19,7 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            SidebarView(onTOCTap: handleTOCTap)
+            SidebarView(onTOCTap: handleTOCTap, columnVisibility: $columnVisibility)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
             if let document = store.activeDocument {
@@ -30,14 +30,29 @@ struct ContentView: View {
                     scrollToHeading: scrollToHeading
                 )
                 .toolbar {
-                    // Compact mode: tab bar lives in the toolbar principal slot
                     if columnVisibility == .detailOnly {
+                        // Compact mode: pill row + toggle share the principal slot.
+                        // Principal never overflows, so the toggle is always visible.
                         ToolbarItem(placement: .principal) {
-                            TabPillRowView()
-                                .frame(maxWidth: 600)
+                            HStack(spacing: 10) {
+                                TabPillRowView()
+                                // Thin divider visually separates pills from toggle
+                                Divider()
+                                    .frame(height: 18)
+                                Picker("Mode", selection: $doc.mode) {
+                                    Label("Edit",    systemImage: "pencil").tag(EditMode.edit)
+                                    Label("Preview", systemImage: "eye"   ).tag(EditMode.preview)
+                                }
+                                .pickerStyle(.segmented)
+                                .frame(width: 100)
+                                .fixedSize()
+                                .help("Toggle Edit / Preview  ⌘⇧P")
+                            }
                         }
+                    } else {
+                        // Sidebar mode: toggle sits in the trailing toolbar area.
+                        ModeToggleToolbarItem(mode: $doc.mode)
                     }
-                    ModeToggleToolbarItem(mode: $doc.mode)
                 }
             } else {
                 WelcomeView()
@@ -54,8 +69,21 @@ struct ContentView: View {
                     }
             }
         }
+        .focusedValue(\.sidebarVisibility, $columnVisibility)
         // In compact mode hide the window title — tabs serve as the label
         .navigationTitle(columnVisibility == .detailOnly ? "" : (store.activeDocument?.displayTitle ?? "Markfops"))
+        // Hidden Cmd+1-9 / Cmd+0 shortcuts for tab selection — not in Commands so they don't create menu items
+        .background {
+            VStack {
+                ForEach(1..<10, id: \.self) { i in
+                    Button("") { store.selectTab(at: i - 1) }
+                        .keyboardShortcut(KeyEquivalent(Character(String(i))), modifiers: .command)
+                }
+                Button("") { store.activeID = store.documents.last?.id }
+                    .keyboardShortcut("0", modifiers: .command)
+            }
+            .opacity(0)
+        }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleWindowDrop(providers: providers)
         }

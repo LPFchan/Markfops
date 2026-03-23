@@ -34,6 +34,7 @@
 		9F061AB4D3F43EFC7BB45EE6 /* PDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F05D215E01EBC0B400953604 /* PDFExporter.swift */; };
 		A2429F9EC0E81A0422EACD46 /* HeadingNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4625617133DDEF9653F91CA /* HeadingNode.swift */; };
 		B0E795820CE68F8DE414613B /* MarkdownEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D67A2CE029ADE8669191CD1 /* MarkdownEditorView.swift */; };
+		B89DCC60EA80687073D32DFD /* TabDragState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3813E1BAFCCEA6FB9393425E /* TabDragState.swift */; };
 		E0C3F0B655B41483DB893661 /* EditorContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82E44B05505F730184B28AED /* EditorContainerView.swift */; };
 		E1A62CC049CF14792278BAC2 /* EditorConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A68CE2DA2091BB9E61384381 /* EditorConfiguration.swift */; };
 		FB2755379609C59596A212D3 /* TOCItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E95C68DC8DB05D8DEE49B9A /* TOCItemView.swift */; };
@@ -59,6 +60,7 @@
 		14011151494BB8C871B4D646 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		2138F5AC97A090E4B6272FB3 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		35ABE72586B11782CBEF1196 /* PreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewView.swift; sourceTree = "<group>"; };
+		3813E1BAFCCEA6FB9393425E /* TabDragState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabDragState.swift; sourceTree = "<group>"; };
 		3AD38016280157D603C3E2CB /* TextViewCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextViewCoordinator.swift; sourceTree = "<group>"; };
 		4CF153CF61BA07386D4CD9AB /* FaviconBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaviconBadge.swift; sourceTree = "<group>"; };
 		4D67A2CE029ADE8669191CD1 /* MarkdownEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEditorView.swift; sourceTree = "<group>"; };
@@ -107,6 +109,7 @@
 				E5A38073AFAC4D127F4B5E82 /* DocumentStore.swift */,
 				B9DC1A7625D654E0BA585E10 /* EditMode.swift */,
 				B4625617133DDEF9653F91CA /* HeadingNode.swift */,
+				3813E1BAFCCEA6FB9393425E /* TabDragState.swift */,
 			);
 			path = State;
 			sourceTree = "<group>";
@@ -355,6 +358,7 @@
 				95B40AB0A6E715F4F419AB71 /* SettingsView.swift in Sources */,
 				928B97786537075AB7956F9B /* SidebarView.swift in Sources */,
 				FB2755379609C59596A212D3 /* TOCItemView.swift in Sources */,
+				B89DCC60EA80687073D32DFD /* TabDragState.swift in Sources */,
 				67FE4B0CF38EF072113055C6 /* TabItemView.swift in Sources */,
 				6172E1D5C4DA62D60D855851 /* TabPillView.swift in Sources */,
 				16A02CC39F0DAE666A2604C2 /* TextViewCoordinator.swift in Sources */,

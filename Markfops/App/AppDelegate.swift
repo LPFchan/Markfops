@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Launch
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        NSWindow.allowsAutomaticWindowTabbing = false  // remove View > "Show Tab Bar" / "Show All Tabs"
         restoreLastSession()
     }
 

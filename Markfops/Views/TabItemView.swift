@@ -1,6 +1,20 @@
 import SwiftUI
 import AppKit
 
+// MARK: - NSView background that prevents the window from moving when a tab pill is pressed.
+// Critical in compact/toolbar mode: without this, the toolbar intercepts mouseDown events
+// for window dragging before SwiftUI's .onDrag gets them.
+
+private struct TabBackground: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { Backing() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private class Backing: NSView {
+        override var mouseDownCanMoveWindow: Bool { false }
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    }
+}
+
 // MARK: - Shared context menu (identical between sidebar and compact)
 
 struct DocumentContextMenu: View {
@@ -52,27 +66,49 @@ struct DocumentContextMenu: View {
 struct DocumentDropDelegate: DropDelegate {
     let targetDocument: Document
     let store: DocumentStore
+    /// Called with the target index when the drag enters this pill, nil when it exits or drops.
+    var onInsertionIndexChange: ((Int?) -> Void)?
 
     func validateDrop(info: DropInfo) -> Bool {
-        guard let id = store.draggingDocumentID else { return false }
+        guard let id = TabDragState.shared.draggingDocumentID else { return false }
         return id != targetDocument.id
     }
 
     func dropEntered(info: DropInfo) {
-        guard let dragging = store.draggingDocumentID,
-              dragging != targetDocument.id,
-              let fromIdx = store.documents.firstIndex(where: { $0.id == dragging }),
+        guard let draggingID = TabDragState.shared.draggingDocumentID,
+              draggingID != targetDocument.id else { return }
+
+        if let toIdx = store.documents.firstIndex(where: { $0.id == targetDocument.id }) {
+            onInsertionIndexChange?(toIdx)
+        }
+
+        guard let fromIdx = store.documents.firstIndex(where: { $0.id == draggingID }),
               let toIdx   = store.documents.firstIndex(where: { $0.id == targetDocument.id })
         else { return }
+
         withAnimation(.spring(duration: 0.2)) {
             store.moveTab(fromOffsets: IndexSet(integer: fromIdx),
                           toOffset: toIdx > fromIdx ? toIdx + 1 : toIdx)
         }
     }
 
+    func dropExited(info: DropInfo) {
+        onInsertionIndexChange?(nil)
+    }
+
     func performDrop(info: DropInfo) -> Bool {
-        // A tab accepted the drop — cancel the pending detach
-        store.draggingDocumentID = nil
+        onInsertionIndexChange?(nil)
+        guard let draggingID = TabDragState.shared.draggingDocumentID else { return false }
+
+        let sourceStore = TabDragState.shared.sourceStore
+        TabDragState.shared.clear()
+
+        if let src = sourceStore, src !== store,
+           let doc = src.documents.first(where: { $0.id == draggingID }),
+           let toIdx = store.documents.firstIndex(where: { $0.id == targetDocument.id }) {
+            src.removeDocument(id: draggingID)
+            store.insertDocument(doc, at: toIdx)
+        }
         return true
     }
 
@@ -90,12 +126,20 @@ struct SidebarTabRowView: View {
     @Binding var isTOCVisible: Bool
     let onSelect: () -> Void
     let onClose: () -> Void
+    /// True when this row has been dragged far enough horizontally to trigger detach-to-window.
+    var isInDetachZone: Bool = false
 
     @State private var isHovered        = false
     @State private var isFaviconHovered = false
+    @State private var isCloseHovered   = false
+    @State private var isRenaming       = false
+    @State private var renameText       = ""
+    @FocusState private var renameFieldFocused: Bool
+    @State private var renameTask: Task<Void, Never>? = nil
 
     var body: some View {
         HStack(spacing: 8) {
+
             // Favicon slot: shows TOC chevron on hover
             ZStack {
                 FaviconBadge(
@@ -126,48 +170,122 @@ struct SidebarTabRowView: View {
             .onHover { isFaviconHovered = $0 }
             .animation(.easeInOut(duration: 0.15), value: isFaviconHovered)
 
-            Text(document.sidebarDisplayTitle)
-                .font(.system(size: 13))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .foregroundColor(isActive ? .primary : .secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .mask(trailingFadeMask)
-                .animation(.easeOut(duration: 0.18), value: isHovered)
-                .animation(.easeOut(duration: 0.18), value: document.isDirty)
-                .overlay(alignment: .trailing) { closeSlot }
+            // Title / rename field / detach indicator
+            Group {
+                if isRenaming {
+                    TextField("", text: $renameText)
+                        .font(.system(size: 13))
+                        .focused($renameFieldFocused)
+                        .onSubmit { commitRename() }
+                        .onKeyPress(.escape) { isRenaming = false; return .handled }
+                        .onAppear { renameFieldFocused = true }
+                } else if isInDetachZone {
+                    Label("New Window", systemImage: "macwindow")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.accentColor)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(document.sidebarDisplayTitle)
+                        .font(.system(size: 13))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .foregroundColor(isActive ? .primary : .secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .mask(trailingFadeMask)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(.easeOut(duration: 0.18), value: isInDetachZone)
+
+            // Close button — fixed width, always at trailing edge
+            if !isRenaming {
+                closeSlot
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isActive ? Color(NSColor.controlAccentColor).opacity(0.15) : Color.clear)
+            RoundedRectangle(cornerRadius: isInDetachZone ? 4 : 6)
+                .fill(isActive
+                    ? Color(NSColor.controlAccentColor).opacity(0.15)
+                    : Color.clear)
+                .animation(.spring(duration: 0.2), value: isInDetachZone)
         )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            // Single tap: rename when already active (Finder-style), select otherwise
-            if isActive { store.rename(document) } else { onSelect() }
+        .overlay {
+            if isInDetachZone {
+                RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(Color.accentColor, lineWidth: 1.5)
+                    .transition(.opacity)
+            }
         }
-        .onHover { isHovered = $0 }
+        .contentShape(Rectangle())
+        // Rename: only schedule when this doc is already active (not on switch-to).
+        .onTapGesture {
+            if isActive {
+                scheduleRename()
+            } else {
+                renameTask?.cancel()
+                onSelect()
+            }
+        }
+        // Cancel rename when mouse leaves or this row loses active state.
+        .onHover { hovered in
+            isHovered = hovered
+            if !hovered { renameTask?.cancel() }
+        }
+        .onChange(of: isActive) { _, active in
+            if !active {
+                renameTask?.cancel()
+                isRenaming = false
+            }
+        }
         .contextMenu { DocumentContextMenu(document: document, onClose: onClose) }
-        // Solid background so scrolling TOC content doesn't bleed through the pinned header
         .background(Color(NSColor.windowBackgroundColor))
+        .background(TabBackground())
+    }
+
+    // MARK: - Rename
+
+    private func scheduleRename() {
+        renameTask?.cancel()
+        renameTask = Task { @MainActor in
+            do {
+                try await Task.sleep(for: .milliseconds(400))
+            } catch { return }
+            guard isHovered, !isRenaming,
+                  TabDragState.shared.draggingDocumentID == nil else { return }
+            if let url = document.fileURL {
+                renameText = url.deletingPathExtension().lastPathComponent
+                isRenaming = true
+            } else {
+                try? store.saveAs(document)
+            }
+        }
+    }
+
+    private func commitRename() {
+        let name = renameText.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { isRenaming = false; return }
+        store.renameInline(document: document, newBaseName: name)
+        isRenaming = false
     }
 
     // MARK: - Styling
 
+    /// Fade the title text into where the close button starts (right edge of the text frame).
     private var trailingFadeMask: LinearGradient {
         let fade = isHovered || document.isDirty
         return LinearGradient(
             stops: [
                 .init(color: .black, location: 0),
-                .init(color: .black, location: fade ? 0.60 : 1.0),
-                .init(color: .clear,  location: fade ? 0.90 : 1.0),
+                .init(color: .black, location: fade ? 0.72 : 1.0),
+                .init(color: .clear,  location: fade ? 1.00 : 1.0),
             ],
             startPoint: .leading, endPoint: .trailing
         )
     }
 
+    /// Close (×) slot — fixed 20×20pt frame so the text width never jumps.
     private var closeSlot: some View {
         ZStack {
             Circle()
@@ -181,11 +299,19 @@ struct SidebarTabRowView: View {
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
-            .frame(width: 22, height: 22)   // expanded hit target (icon stays 9pt)
+            .frame(width: 20, height: 20)
             .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color(NSColor.quaternaryLabelColor))
+                    .opacity(isCloseHovered ? 0.8 : 0)
+            )
+            .onHover { isCloseHovered = $0 }
             .opacity(isHovered ? 1 : 0)
         }
+        .frame(width: 20, height: 20)
         .animation(.easeOut(duration: 0.18), value: isHovered)
+        .animation(.easeOut(duration: 0.12), value: isCloseHovered)
     }
 }
 
@@ -197,8 +323,17 @@ struct DocumentTabView: View {
     let isActive: Bool
     let onSelect: () -> Void
     let onClose: () -> Void
+    /// Set from the parent (pillCell) when the drag has left the tab bar vertically.
+    var isInDetachZone: Bool = false
+    /// Dynamic width passed from TabPillRowView; nil = hug content.
+    var pillWidth: CGFloat? = nil
 
-    @State private var isHovered = false
+    @State private var isHovered      = false
+    @State private var isCloseHovered = false
+    @State private var isRenaming     = false
+    @State private var renameText     = ""
+    @FocusState private var renameFieldFocused: Bool
+    @State private var renameTask: Task<Void, Never>? = nil
 
     var body: some View {
         HStack(spacing: 5) {
@@ -209,34 +344,115 @@ struct DocumentTabView: View {
                 hasH1: document.headings.contains(where: { $0.level == 1 })
             )
 
-            Text(document.sidebarDisplayTitle)
-                .font(.system(size: 12))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: 120)
-                .mask(trailingFadeMask)
-                .animation(.easeOut(duration: 0.18), value: isHovered)
-                .animation(.easeOut(duration: 0.18), value: document.isDirty)
-                .overlay(alignment: .trailing) { closeSlot }
+            // Title / rename field / detach indicator — fills remaining space
+            Group {
+                if isRenaming {
+                    TextField("", text: $renameText)
+                        .font(.system(size: 12))
+                        .focused($renameFieldFocused)
+                        .frame(maxWidth: .infinity)
+                        .onSubmit { commitRename() }
+                        .onKeyPress(.escape) { isRenaming = false; return .handled }
+                        .onAppear { renameFieldFocused = true }
+                } else if isInDetachZone {
+                    Label("New Window", systemImage: "macwindow")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.accentColor)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .lineLimit(1)
+                } else {
+                    Text(document.sidebarDisplayTitle)
+                        .font(.system(size: 12))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .mask(trailingFadeMask)
+                }
+            }
+            .animation(.easeOut(duration: 0.18), value: isInDetachZone)
+            .animation(.easeOut(duration: 0.18), value: isRenaming)
+
+            // Close button — right-pinned, fixed 16×16pt
+            if !isRenaming {
+                closeSlot
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
+        .frame(width: pillWidth)
+        // Shape morphs from rounded pill → squarish window as pill enters detach zone
         .background(
-            RoundedRectangle(cornerRadius: 7)
-                .fill(isActive
-                    ? Color(NSColor.controlAccentColor).opacity(0.15)
-                    : (isHovered ? Color(NSColor.quaternaryLabelColor) : Color.clear))
+            RoundedRectangle(cornerRadius: isInDetachZone ? 3 : 7)
+                .fill(backgroundFill)
+                .animation(.spring(duration: 0.2), value: isInDetachZone)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 7)
-                .stroke(isActive ? Color.accentColor.opacity(0.3) : Color.clear, lineWidth: 1)
+            RoundedRectangle(cornerRadius: isInDetachZone ? 3 : 7)
+                .stroke(
+                    isInDetachZone
+                        ? Color.accentColor
+                        : (isActive ? Color.accentColor.opacity(0.3) : Color.clear),
+                    lineWidth: isInDetachZone ? 1.5 : 1
+                )
+                .animation(.spring(duration: 0.2), value: isInDetachZone)
         )
         .contentShape(Rectangle())
+        .background(TabBackground())
+        // Rename: only schedule when already the active doc.
         .onTapGesture {
-            if isActive { store.rename(document) } else { onSelect() }
+            if isActive {
+                scheduleRename()
+            } else {
+                renameTask?.cancel()
+                onSelect()
+            }
         }
-        .onHover { isHovered = $0 }
+        .onHover { hovered in
+            isHovered = hovered
+            if !hovered { renameTask?.cancel() }
+        }
+        // Cancel rename when this pill becomes inactive (user clicked another tab).
+        .onChange(of: isActive) { _, active in
+            if !active {
+                renameTask?.cancel()
+                isRenaming = false
+            }
+        }
         .contextMenu { DocumentContextMenu(document: document, onClose: onClose) }
+    }
+
+    // MARK: - Rename
+
+    private func scheduleRename() {
+        renameTask?.cancel()
+        renameTask = Task { @MainActor in
+            do {
+                try await Task.sleep(for: .milliseconds(400))
+            } catch { return }
+            guard isHovered, !isRenaming,
+                  TabDragState.shared.draggingDocumentID == nil else { return }
+            if let url = document.fileURL {
+                renameText = url.deletingPathExtension().lastPathComponent
+                isRenaming = true
+            } else {
+                try? store.saveAs(document)
+            }
+        }
+    }
+
+    private func commitRename() {
+        let name = renameText.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { isRenaming = false; return }
+        store.renameInline(document: document, newBaseName: name)
+        isRenaming = false
+    }
+
+    // MARK: - Styling
+
+    private var backgroundFill: Color {
+        if isActive { return Color(NSColor.controlAccentColor).opacity(0.15) }
+        if isHovered { return Color(NSColor.quaternaryLabelColor) }
+        return Color.clear
     }
 
     private var trailingFadeMask: LinearGradient {
@@ -244,8 +460,8 @@ struct DocumentTabView: View {
         return LinearGradient(
             stops: [
                 .init(color: .black, location: 0),
-                .init(color: .black, location: fade ? 0.60 : 1.0),
-                .init(color: .clear,  location: fade ? 0.90 : 1.0),
+                .init(color: .black, location: fade ? 0.70 : 1.0),
+                .init(color: .clear,  location: fade ? 1.00 : 1.0),
             ],
             startPoint: .leading, endPoint: .trailing
         )
@@ -264,10 +480,18 @@ struct DocumentTabView: View {
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
-            .frame(width: 20, height: 20)   // expanded hit target (was 14)
+            .frame(width: 16, height: 16)
             .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color(NSColor.quaternaryLabelColor))
+                    .opacity(isCloseHovered ? 0.8 : 0)
+            )
+            .onHover { isCloseHovered = $0 }
             .opacity(isHovered ? 1 : 0)
         }
+        .frame(width: 16, height: 16)
         .animation(.easeOut(duration: 0.18), value: isHovered)
+        .animation(.easeOut(duration: 0.12), value: isCloseHovered)
     }
 }

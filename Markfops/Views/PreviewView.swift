@@ -42,8 +42,11 @@ final class PreviewBridge {
         if let webView = coordinator?.webView {
             let js = """
             (function() {
-                var scrollable = document.documentElement.scrollHeight - window.innerHeight;
-                if (scrollable > 0) { window.scrollTo(0, Math.round(\(ratio) * scrollable)); }
+                var h = document.documentElement.scrollHeight;
+                if (h > 0) {
+                    var targetY = \(ratio) * h - window.innerHeight / 2;
+                    window.scrollTo(0, Math.max(0, Math.round(targetY)));
+                }
             })();
             """
             webView.evaluateJavaScript(js)
@@ -162,15 +165,17 @@ struct PreviewView: NSViewRepresentable {
                     if (e.key === 'u') { e.preventDefault(); /* underline — no-op in md */ }
                 });
 
-                // Report scroll position (throttled) so Swift can sync back to editor
+                // Report scroll position (throttled) so Swift can sync back to editor.
+                // Reports center-of-viewport ratio: (scrollY + innerHeight/2) / scrollHeight
                 var scrollThrottle;
                 window.addEventListener('scroll', function() {
                     if (scrollThrottle) return;
                     scrollThrottle = setTimeout(function() {
                         scrollThrottle = null;
-                        var total = document.documentElement.scrollHeight - window.innerHeight;
+                        var total = document.documentElement.scrollHeight;
                         if (total > 0) {
-                            window.webkit.messageHandlers.scrollChanged.postMessage(window.scrollY / total);
+                            var ratio = (window.scrollY + window.innerHeight / 2) / total;
+                            window.webkit.messageHandlers.scrollChanged.postMessage(ratio);
                         }
                     }, 100);
                 }, { passive: true });
@@ -178,13 +183,15 @@ struct PreviewView: NSViewRepresentable {
             """
             webView.evaluateJavaScript(js)
 
-            // Apply deferred scroll ratio now that the page is ready
+            // Apply deferred scroll ratio now that the page is ready.
+            // ratio = center-of-viewport / scrollHeight, so restore: scrollTo(ratio*h - innerHeight/2)
             if let ratio = pendingScrollRatio {
                 pendingScrollRatio = nil
                 let scrollJS = """
                 (function() {
-                    var scrollable = document.documentElement.scrollHeight - window.innerHeight;
-                    if (scrollable > 0) { window.scrollTo(0, Math.round(\(ratio) * scrollable)); }
+                    var h = document.documentElement.scrollHeight;
+                    var targetY = \(ratio) * h - window.innerHeight / 2;
+                    window.scrollTo(0, Math.max(0, Math.round(targetY)));
                 })();
                 """
                 webView.evaluateJavaScript(scrollJS)
