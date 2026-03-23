@@ -121,26 +121,20 @@ struct TabPillRowView: View {
             pillWidth: pillWidth
         )
         .id(document.id)
-        .opacity(isAnyDragging && !isDragging ? 0.45 : 1.0)
-        .scaleEffect(
-            inDetachZone ? 1.12 : (isDragging ? 1.06 : (isAnyDragging ? 0.96 : 1.0)),
-            anchor: .bottom
-        )
-        .shadow(
-            color: isDragging ? .black.opacity(0.28) : .clear,
-            radius: inDetachZone ? 14 : (isDragging ? 10 : 0),
-            y: inDetachZone ? 8 : (isDragging ? 5 : 0)
-        )
-        .offset(
-            x: isDragging ? translation.width : 0,
-            y: isDragging ? translation.height : 0
-        )
-        .zIndex(isDragging ? 100 : 0)
+        // Dragging pill becomes a ghost in-place; the system drag image follows the cursor.
+        // No offset, no shadow, no zIndex boost — prevents the "two things moving" clutter.
+        .opacity(isDragging ? 0.3 : (isAnyDragging ? 0.45 : 1.0))
+        .scaleEffect(isDragging ? 0.92 : (isAnyDragging ? 0.96 : 1.0), anchor: .center)
         // Animate pill width changes as tabs open/close.
         .animation(.spring(duration: 0.28), value: pillWidth)
         .animation(.spring(duration: 0.22), value: isDragging)
         .animation(.spring(duration: 0.18), value: inDetachZone)
         .animation(.easeOut(duration: 0.15), value: isAnyDragging)
+        // Track detach zone entry directly here so wasInDetachZone is set even when
+        // DocumentTabView doesn't re-render (the @Observable dependency is in pillCell).
+        .onChange(of: inDetachZone) { _, inZone in
+            if inZone { TabDragState.shared.wasInDetachZone = true }
+        }
         .onDrag { makeDragProvider(for: document) }
         .onDrop(of: [.data],
                 delegate: DocumentDropDelegate(
@@ -187,10 +181,9 @@ struct TabPillRowView: View {
             // drags that ended in empty space (= detach).
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 guard TabDragState.shared.draggingDocumentID == document.id else { return }
-                let t = TabDragState.shared.dragTranslation
-                let didDrag = (t.width * t.width + t.height * t.height) > 400  // ~20 pt
+                let shouldDetach = TabDragState.shared.wasInDetachZone
                 TabDragState.shared.reset()
-                if didDrag { store.detachToNewWindow(document) }
+                if shouldDetach { store.detachToNewWindow(document) }
             }
         }
 

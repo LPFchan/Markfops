@@ -184,10 +184,9 @@ struct SidebarView: View {
             upMonitor = nil; moveMonitor = nil
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 guard TabDragState.shared.draggingDocumentID == document.id else { return }
-                let t = TabDragState.shared.dragTranslation
-                let didDrag = (t.width * t.width + t.height * t.height) > 400
+                let shouldDetach = TabDragState.shared.wasInDetachZone
                 TabDragState.shared.reset()
-                if didDrag { store.detachToNewWindow(document) }
+                if shouldDetach { store.detachToNewWindow(document) }
             }
         }
 

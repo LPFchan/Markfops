@@ -242,6 +242,10 @@ struct SidebarTabRowView: View {
         .contextMenu { DocumentContextMenu(document: document, onClose: onClose) }
         .background(Color(NSColor.windowBackgroundColor))
         .background(TabBackground())
+        // Record that the drag crossed into the detach zone so mouseUp can trigger detach.
+        .onChange(of: isInDetachZone) { _, inZone in
+            if inZone { TabDragState.shared.wasInDetachZone = true }
+        }
     }
 
     // MARK: - Rename
@@ -344,7 +348,9 @@ struct DocumentTabView: View {
                 hasH1: document.headings.contains(where: { $0.level == 1 })
             )
 
-            // Title / rename field / detach indicator — fills remaining space
+            // Title / rename field / detach indicator — fills remaining space.
+            // Close button overlays the trailing edge so the title can extend to the pill's right edge;
+            // the trailing gradient mask fades the text behind the button when hovering.
             Group {
                 if isRenaming {
                     TextField("", text: $renameText)
@@ -371,10 +377,8 @@ struct DocumentTabView: View {
             }
             .animation(.easeOut(duration: 0.18), value: isInDetachZone)
             .animation(.easeOut(duration: 0.18), value: isRenaming)
-
-            // Close button — right-pinned, fixed 16×16pt
-            if !isRenaming {
-                closeSlot
+            .overlay(alignment: .trailing) {
+                if !isRenaming && !isInDetachZone { closeSlot }
             }
         }
         .padding(.horizontal, 10)

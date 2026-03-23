@@ -31,23 +31,21 @@ struct ContentView: View {
                 )
                 .toolbar {
                     if columnVisibility == .detailOnly {
-                        // Compact mode: pill row + toggle share the principal slot.
-                        // Principal never overflows, so the toggle is always visible.
+                        // Compact mode: pills fill the center (principal), toggle is right-aligned
+                        // (primaryAction). Separating them gives pills maximum horizontal space.
                         ToolbarItem(placement: .principal) {
-                            HStack(spacing: 10) {
-                                TabPillRowView()
-                                // Thin divider visually separates pills from toggle
-                                Divider()
-                                    .frame(height: 18)
-                                Picker("Mode", selection: $doc.mode) {
-                                    Label("Edit",    systemImage: "pencil").tag(EditMode.edit)
-                                    Label("Preview", systemImage: "eye"   ).tag(EditMode.preview)
-                                }
-                                .pickerStyle(.segmented)
-                                .frame(width: 100)
-                                .fixedSize()
-                                .help("Toggle Edit / Preview  ⌘⇧P")
+                            TabPillRowView()
+                                .frame(maxWidth: .infinity)
+                        }
+                        ToolbarItem(placement: .primaryAction) {
+                            Picker("Mode", selection: $doc.mode) {
+                                Label("Edit",    systemImage: "pencil").tag(EditMode.edit)
+                                Label("Preview", systemImage: "eye"   ).tag(EditMode.preview)
                             }
+                            .pickerStyle(.segmented)
+                            .frame(width: 100)
+                            .fixedSize()
+                            .help("Toggle Edit / Preview  ⌘⇧P")
                         }
                     } else {
                         // Sidebar mode: toggle sits in the trailing toolbar area.
@@ -86,6 +84,16 @@ struct ContentView: View {
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleWindowDrop(providers: providers)
+        }
+        // Catch tab drags that land on the editor content area (i.e. the user dragged a
+        // pill out of the toolbar and dropped it on the main content) → detach to new window.
+        // The guard ensures this never fires for non-tab .data drags (e.g. text drops).
+        .onDrop(of: [UTType.data], isTargeted: nil) { _ in
+            guard let dragID = TabDragState.shared.draggingDocumentID,
+                  let doc = store.documents.first(where: { $0.id == dragID }) else { return false }
+            TabDragState.shared.clear()
+            store.detachToNewWindow(doc)
+            return true
         }
         .onChange(of: store.activeDocument?.isDirty) { _, isDirty in
             NSApp.mainWindow?.isDocumentEdited = isDirty ?? false
