@@ -38,6 +38,8 @@
 "Drop a .md file anywhere to open it" = "Drop a .md file anywhere to open it";
 
 /* Settings */
+"Updates" = "Updates";
+"Check for Updates…" = "Check for Updates…";
 "Editor" = "Editor";
 "Font Size" = "Font Size";
 "Font" = "Font";

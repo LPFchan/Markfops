@@ -70,5 +70,7 @@
 	<true/>
 	<key>SUFeedURL</key>
 	<string>https://lpfchan.github.io/Markfops/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>KZjcrANd2+I475/JYRziHeQpM+NT9zE6NvD5QWjcozs=</string>
 </dict>
 </plist>

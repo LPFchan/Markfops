@@ -38,6 +38,8 @@
 "Drop a .md file anywhere to open it" = ".md 파일을 어디든 드래그하여 열어보세요";
 
 /* Settings */
+"Updates" = "업데이트";
+"Check for Updates…" = "업데이트 확인…";
 "Editor" = "편집기";
 "Font Size" = "글꼴 크기";
 "Font" = "글꼴";
