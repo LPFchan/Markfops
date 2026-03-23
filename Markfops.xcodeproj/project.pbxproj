@@ -71,6 +71,8 @@
 		68C64074880ABB02F29BF99B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		6D734182DCCA9A09CFD0BEE8 /* TabItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabItemView.swift; sourceTree = "<group>"; };
 		7BD6E86BD6FC359085B9E5A7 /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ko; path = ko.lproj/Localizable.strings; sourceTree = "<group>"; };
+		E1A2B3C4D5E6F708192A3B4C5 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
+		F2B3C4D5E6F708192A3B4C5E /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		810B6B16387E492066895CB8 /* MarkfopsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MarkfopsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		82E44B05505F730184B28AED /* EditorContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorContainerView.swift; sourceTree = "<group>"; };
 		8BABF61C15310FD3F71CDE50 /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
@@ -304,6 +306,8 @@
 				Base,
 				en,
 				ko,
+				ja,
+				"zh-Hans",
 			);
 			mainGroup = 9A9D97002C3B7F1ED8D7B9B7;
 			minimizedProjectReferenceProxies = 1;
@@ -395,6 +399,8 @@
 			children = (
 				8BC9FCE11E56D60DF58C1367 /* en */,
 				7BD6E86BD6FC359085B9E5A7 /* ko */,
+				E1A2B3C4D5E6F708192A3B4C5 /* ja */,
+				F2B3C4D5E6F708192A3B4C5E /* zh-Hans */,
 			);
 			name = Localizable.strings;
 			sourceTree = "<group>";

@@ -1,0 +1,68 @@
+/* Sidebar */
+"Documents" = "文稿";
+"New Document" = "新建文稿";
+
+/* Horizontal tab bar */
+"New Tab  ⌘T" = "新建标签页  ⌘T";
+
+/* Toolbar */
+"Mode" = "模式";
+"Toggle Edit / Preview  ⌘⇧P" = "切换编辑 / 预览  ⌘⇧P";
+"Edit" = "编辑";
+"Preview" = "预览";
+
+/* File menu */
+"New" = "新建";
+"New Tab" = "新建标签页";
+"Open…" = "打开…";
+"Save" = "存储";
+"Save As…" = "存储为…";
+"Close Tab" = "关闭标签页";
+
+/* View menu */
+"View" = "显示";
+"Toggle Edit / Preview" = "切换编辑 / 预览";
+"Next Tab" = "下一个标签页";
+"Previous Tab" = "上一个标签页";
+
+/* Format menu */
+"Format" = "格式";
+"Bold" = "粗体";
+"Italic" = "斜体";
+"Inline Code" = "行内代码";
+
+/* Welcome screen */
+"Markfops" = "Markfops";
+"Lightweight Markdown editor for macOS" = "适用于 macOS 的轻量 Markdown 编辑器";
+"Open…" = "打开…";
+"Drop a .md file anywhere to open it" = "将 .md 文件拖放到任意位置即可打开";
+
+/* Settings */
+"Updates" = "更新";
+"Check for Updates…" = "检查更新…";
+"Editor" = "编辑器";
+"Font Size" = "字体大小";
+"Font" = "字体";
+
+/* Panels — rename / move */
+"Rename" = "重新命名";
+"Rename document" = "重新命名文稿";
+"Move" = "移动";
+"Move document to a new location" = "将文稿移到其他位置";
+
+/* Alerts — revert */
+"Revert \"%@\" to saved version?" = "将「%@」恢复为已存储的版本？";
+"Your unsaved changes will be lost." = "未存储的更改将会丢失。";
+"Revert" = "恢复";
+
+/* Alerts — close tab with unsaved changes */
+"Save changes to \"%@\"?" = "要存储对「%@」的更改吗？";
+"Your changes will be lost if you don't save them." = "如果不存储，您的更改将丢失。";
+"Don't Save" = "不存储";
+"Cancel" = "取消";
+
+/* Alerts — quit with unsaved changes */
+"You have unsaved changes" = "您有未存储的更改";
+"Unsaved documents: %@" = "未存储的文稿：%@";
+"Review Unsaved\u{2026}" = "检查未存储的更改…";
+"Quit Anyway" = "仍要退出";

@@ -87,17 +87,29 @@ jobs:
           mkdir -p "$ARCHIVE_DIR"
           cp "$DMG_PATH" "$ARCHIVE_DIR/Markfops-${VERSION}.dmg"
           cp docs/appcast.xml "$ARCHIVE_DIR/appcast.xml"
+          # Localized Sparkle release notes (Markdown): basename.<lang>.md — see Sparkle publishing docs
+          PKG="Packaging/Sparkle"
+          cp "$PKG/ReleaseNotes.md" "$ARCHIVE_DIR/Markfops-${VERSION}.md"
+          cp "$PKG/ReleaseNotes.md" "$ARCHIVE_DIR/Markfops-${VERSION}.en.md"
+          cp "$PKG/ReleaseNotes.ko.md" "$ARCHIVE_DIR/Markfops-${VERSION}.ko.md"
+          cp "$PKG/ReleaseNotes.ja.md" "$ARCHIVE_DIR/Markfops-${VERSION}.ja.md"
+          cp "$PKG/ReleaseNotes.zh.md" "$ARCHIVE_DIR/Markfops-${VERSION}.zh.md"
           DOWNLOAD_PREFIX="https://github.com/${{ github.repository }}/releases/download/${VERSION}/"
+          NOTES_PREFIX="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/sparkle/"
           echo "$SPARKLE_PRIVATE_KEY" | "$RUNNER_TEMP/bin/generate_appcast" --ed-key-file - \
             --download-url-prefix "$DOWNLOAD_PREFIX" \
+            --release-notes-url-prefix "$NOTES_PREFIX" \
             --maximum-versions 0 \
             "$ARCHIVE_DIR"
           rm -rf dmgtool
           git fetch origin main
           git checkout -B main origin/main
+          mkdir -p docs/sparkle
           cp "$ARCHIVE_DIR/appcast.xml" docs/appcast.xml
+          cp "$ARCHIVE_DIR"/Markfops-${VERSION}*.md docs/sparkle/
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/appcast.xml
-          git diff --staged --quiet || git commit -m "Update Sparkle appcast for ${VERSION}"
+          git add docs/appcast.xml "docs/sparkle/Markfops-${VERSION}.md" "docs/sparkle/Markfops-${VERSION}.en.md" \
+            "docs/sparkle/Markfops-${VERSION}.ko.md" "docs/sparkle/Markfops-${VERSION}.ja.md" "docs/sparkle/Markfops-${VERSION}.zh.md"
+          git diff --staged --quiet || git commit -m "Update Sparkle appcast and release notes for ${VERSION}"
           git push origin main

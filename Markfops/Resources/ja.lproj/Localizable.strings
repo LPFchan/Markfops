@@ -1,0 +1,68 @@
+/* Sidebar */
+"Documents" = "ドキュメント";
+"New Document" = "新規ドキュメント";
+
+/* Horizontal tab bar */
+"New Tab  ⌘T" = "新しいタブ  ⌘T";
+
+/* Toolbar */
+"Mode" = "モード";
+"Toggle Edit / Preview  ⌘⇧P" = "編集/プレビュー切り替え  ⌘⇧P";
+"Edit" = "編集";
+"Preview" = "プレビュー";
+
+/* File menu */
+"New" = "新規";
+"New Tab" = "新しいタブ";
+"Open…" = "開く…";
+"Save" = "保存";
+"Save As…" = "別名で保存…";
+"Close Tab" = "タブを閉じる";
+
+/* View menu */
+"View" = "表示";
+"Toggle Edit / Preview" = "編集/プレビュー切り替え";
+"Next Tab" = "次のタブ";
+"Previous Tab" = "前のタブ";
+
+/* Format menu */
+"Format" = "フォーマット";
+"Bold" = "太字";
+"Italic" = "斜体";
+"Inline Code" = "インラインコード";
+
+/* Welcome screen */
+"Markfops" = "Markfops";
+"Lightweight Markdown editor for macOS" = "macOS向けの軽量 Markdown エディタ";
+"Open…" = "開く…";
+"Drop a .md file anywhere to open it" = ".md ファイルをどこにでもドロップして開く";
+
+/* Settings */
+"Updates" = "アップデート";
+"Check for Updates…" = "アップデートを確認…";
+"Editor" = "エディタ";
+"Font Size" = "フォントサイズ";
+"Font" = "フォント";
+
+/* Panels — rename / move */
+"Rename" = "名前を変更";
+"Rename document" = "ドキュメントの名前を変更";
+"Move" = "移動";
+"Move document to a new location" = "別の場所へ移動";
+
+/* Alerts — revert */
+"Revert \"%@\" to saved version?" = "「%@」を保存済みの内容に戻しますか？";
+"Your unsaved changes will be lost." = "保存していない変更は失われます。";
+"Revert" = "戻す";
+
+/* Alerts — close tab with unsaved changes */
+"Save changes to \"%@\"?" = "「%@」への変更を保存しますか？";
+"Your changes will be lost if you don't save them." = "保存しないと変更内容が失われます。";
+"Don't Save" = "保存しない";
+"Cancel" = "キャンセル";
+
+/* Alerts — quit with unsaved changes */
+"You have unsaved changes" = "保存されていない変更があります";
+"Unsaved documents: %@" = "未保存のドキュメント: %@";
+"Review Unsaved\u{2026}" = "未保存を確認…";
+"Quit Anyway" = "そのまま終了";

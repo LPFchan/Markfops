@@ -44,6 +44,17 @@
 "Font Size" = "Font Size";
 "Font" = "Font";
 
+/* Panels — rename / move */
+"Rename" = "Rename";
+"Rename document" = "Rename document";
+"Move" = "Move";
+"Move document to a new location" = "Move document to a new location";
+
+/* Alerts — revert */
+"Revert \"%@\" to saved version?" = "Revert \"%@\" to saved version?";
+"Your unsaved changes will be lost." = "Your unsaved changes will be lost.";
+"Revert" = "Revert";
+
 /* Alerts — close tab with unsaved changes */
 "Save changes to \"%@\"?" = "Save changes to \"%@\"?";
 "Your changes will be lost if you don't save them." = "Your changes will be lost if you don't save them.";
