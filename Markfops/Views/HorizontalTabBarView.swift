@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Scrollable tab pill row — used both as a standalone bar (when sidebar is visible
-/// but a secondary bar is needed) and as the toolbar's principal item in compact mode.
+/// Scrollable tab pill row — used as the toolbar's principal item in compact mode.
 struct TabPillRowView: View {
     @Environment(DocumentStore.self) private var store
 
@@ -13,11 +12,32 @@ struct TabPillRowView: View {
                         DocumentTabView(
                             document: document,
                             isActive: store.activeID == document.id,
-                            style: .compact,
                             onSelect: { store.activeID = document.id },
                             onClose: { store.close(id: document.id) }
                         )
                         .id(document.id)
+                        // ── Drag to reorder / drag to new window ──────────────────────
+                        .onDrag {
+                            store.draggingDocumentID = document.id
+
+                            var monitor: Any?
+                            monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { event in
+                                if let m = monitor { NSEvent.removeMonitor(m) }
+                                monitor = nil
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    if store.draggingDocumentID == document.id {
+                                        store.draggingDocumentID = nil
+                                        store.detachToNewWindow(document)
+                                    }
+                                }
+                                return event
+                            }
+
+                            return NSItemProvider(object: document.id.uuidString as NSString)
+                        }
+                        .onDrop(of: [.text],
+                                delegate: DocumentDropDelegate(targetDocument: document,
+                                                               store: store))
                     }
 
                     // New tab button

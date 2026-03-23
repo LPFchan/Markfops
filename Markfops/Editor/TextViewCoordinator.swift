@@ -62,9 +62,40 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
             charOffset += lines[i].count + 1
         }
         let lineRange = NSRange(location: charOffset, length: lines[lineNumber].count)
-        tv.scrollRangeToVisible(lineRange)
+
+        // Scroll so the heading sits at the top of the visible area
+        if let layoutManager = tv.layoutManager,
+           let textContainer = tv.textContainer,
+           let scrollView = tv.enclosingScrollView {
+            let glyphRange = layoutManager.glyphRange(
+                forCharacterRange: lineRange, actualCharacterRange: nil)
+            var rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+            rect.origin.x += tv.textContainerInset.width
+            rect.origin.y += tv.textContainerInset.height
+            let targetY = max(0, min(rect.minY, tv.bounds.height - scrollView.contentView.bounds.height))
+            scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
+
         tv.setSelectedRange(NSRange(location: charOffset, length: 0))
-        // Flash the native find indicator (pulsing yellow highlight) on the heading line
-        tv.showFindIndicator(for: lineRange)
+        // Animated highlight: hold yellow for 0.6 s then fade out over 1.4 s
+        guard let lm = tv.layoutManager else { return }
+        let hlColor = NSColor.systemYellow
+        lm.addTemporaryAttributes([.backgroundColor: hlColor.withAlphaComponent(0.45)],
+                                  forCharacterRange: lineRange)
+        let steps = 12
+        for i in 1...steps {
+            let delay = 0.6 + 1.4 * Double(i) / Double(steps)
+            let alpha  = 0.45 * (1.0 - Double(i) / Double(steps))
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                if alpha <= 0 {
+                    lm.removeTemporaryAttribute(.backgroundColor, forCharacterRange: lineRange)
+                } else {
+                    lm.addTemporaryAttributes(
+                        [.backgroundColor: hlColor.withAlphaComponent(CGFloat(alpha))],
+                        forCharacterRange: lineRange)
+                }
+            }
+        }
     }
 }

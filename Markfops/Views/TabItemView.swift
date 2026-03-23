@@ -1,111 +1,110 @@
 import SwiftUI
 import AppKit
 
-/// Unified tab component used in both the sidebar (.sidebar) and the compact toolbar bar (.compact).
-struct DocumentTabView: View {
-    @Bindable var document: Document
-    let isActive: Bool
-    var style: Style = .sidebar
-    let onSelect: () -> Void
+// MARK: - Shared context menu (identical between sidebar and compact)
+
+struct DocumentContextMenu: View {
+    @Environment(DocumentStore.self) private var store
+    let document: Document
     let onClose: () -> Void
-    var onTOCTap: ((HeadingNode) -> Void)? = nil
-
-    enum Style { case sidebar, compact }
-
-    // MARK: - Size tokens
-    private var faviconSize:      CGFloat { style == .compact ? 18 : 22 }
-    private var faviconFontSize:  CGFloat { style == .compact ? 10 : 12 }
-    private var titleFontSize:    CGFloat { style == .compact ? 12 : 13 }
-    private var hSpacing:         CGFloat { style == .compact ?  5 :  8 }
-    private var dotSize:          CGFloat { style == .compact ?  5 :  6 }
-    private var xmarkSize:        CGFloat { style == .compact ?  8 :  9 }
-    private var closeFrame:       CGFloat { style == .compact ? 14 : 16 }
-    private var cornerRadius:     CGFloat { style == .compact ?  7 :  6 }
-
-    // MARK: - State
-    @State private var isHovered       = false
-    @State private var isFaviconHovered = false   // sidebar only
-    @State private var highlightedID: String? = nil
-    @State private var isTOCVisible    = false    // sidebar only
-
-    // MARK: - Body
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: hSpacing) {
-                faviconSlot
-
-                Text(document.sidebarDisplayTitle)
-                    .font(.system(size: titleFontSize))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .foregroundColor(isActive ? .primary : .secondary)
-                    .frame(maxWidth: style == .compact ? 120 : .infinity, alignment: .leading)
-                    .mask(trailingFadeMask)
-                    .animation(.easeOut(duration: 0.18), value: isHovered)
-                    .animation(.easeOut(duration: 0.18), value: document.isDirty)
-                    .overlay(alignment: .trailing) { closeSlot }
+        Group {
+            if document.isDirty {
+                Button("Save") { try? store.save(document) }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(pill)
-            .contentShape(Rectangle())
-            .onTapGesture { onSelect() }
-            .onHover { isHovered = $0 }
+            Button("Save As\u{2026}") { try? store.saveAs(document) }
 
-            // TOC — sidebar only
-            if style == .sidebar, isTOCVisible, !document.headings.isEmpty {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(visibleHeadings) { heading in
-                        TOCItemView(
-                            heading: heading,
-                            isHighlighted: highlightedID == heading.id,
-                            isCollapsible: headingHasChildren(heading),
-                            isCollapsed: document.collapsedHeadingIDs.contains(heading.id),
-                            onTap: {
-                                highlightedID = heading.id
-                                onTOCTap?(heading)
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                                    highlightedID = nil
-                                }
-                            },
-                            onToggleCollapse: { toggleCollapse(heading) }
-                        )
-                    }
+            Divider()
+
+            Button("Rename\u{2026}") { store.rename(document) }
+            if document.fileURL != nil {
+                Button("Move To\u{2026}") { store.moveTo(document) }
+            }
+            Button("Duplicate") { store.duplicate(document) }
+            if let url = document.fileURL {
+                Button("Reveal in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
                 }
-                .padding(.leading, 20)
-                .transition(.opacity.combined(with: .move(edge: .top)))
             }
-        }
-        .onAppear {
-            isTOCVisible = isActive && document.isTOCExpanded
-        }
-        .onChange(of: isActive) { _, active in
-            withAnimation(.spring(duration: 0.22)) {
-                isTOCVisible = active && document.isTOCExpanded
+
+            Divider()
+
+            Button("Export as PDF\u{2026}") { store.exportAsPDF(document) }
+            if document.isDirty, document.fileURL != nil {
+                Divider()
+                Button("Revert to Saved") { store.revertToSaved(document) }
             }
+
+            Divider()
+
+            Button("Move to New Window") { store.detachToNewWindow(document) }
+
+            Divider()
+
+            Button("Close Tab") { onClose() }
+        }
+    }
+}
+
+// MARK: - Drop delegate for tab reordering
+
+struct DocumentDropDelegate: DropDelegate {
+    let targetDocument: Document
+    let store: DocumentStore
+
+    func validateDrop(info: DropInfo) -> Bool {
+        guard let id = store.draggingDocumentID else { return false }
+        return id != targetDocument.id
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging = store.draggingDocumentID,
+              dragging != targetDocument.id,
+              let fromIdx = store.documents.firstIndex(where: { $0.id == dragging }),
+              let toIdx   = store.documents.firstIndex(where: { $0.id == targetDocument.id })
+        else { return }
+        withAnimation(.spring(duration: 0.2)) {
+            store.moveTab(fromOffsets: IndexSet(integer: fromIdx),
+                          toOffset: toIdx > fromIdx ? toIdx + 1 : toIdx)
         }
     }
 
-    // MARK: - Sub-views
+    func performDrop(info: DropInfo) -> Bool {
+        // A tab accepted the drop — cancel the pending detach
+        store.draggingDocumentID = nil
+        return true
+    }
 
-    /// Favicon badge; in sidebar it also doubles as the TOC toggle on hover.
-    @ViewBuilder private var faviconSlot: some View {
-        if style == .sidebar {
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+}
+
+// MARK: - Sidebar row (pinned section header in SidebarView)
+
+struct SidebarTabRowView: View {
+    @Environment(DocumentStore.self) private var store
+    @Bindable var document: Document
+    let isActive: Bool
+    @Binding var isTOCVisible: Bool
+    let onSelect: () -> Void
+    let onClose: () -> Void
+
+    @State private var isHovered        = false
+    @State private var isFaviconHovered = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            // Favicon slot: shows TOC chevron on hover
             ZStack {
                 FaviconBadge(
                     letter: document.faviconLetter,
-                    size: faviconSize,
-                    fontSize: faviconFontSize,
+                    size: 22, fontSize: 12,
                     fileURL: document.fileURL,
                     hasH1: document.headings.contains(where: { $0.level == 1 })
                 )
                 .opacity(isFaviconHovered ? 0 : 1)
-                .onDrag {
-                    guard let url = document.fileURL else { return NSItemProvider() }
-                    return NSItemProvider(object: url as NSURL)
-                }
-                .contextMenu { faviconContextMenu }
 
                 Button(action: {
                     withAnimation(.spring(duration: 0.22)) {
@@ -116,42 +115,47 @@ struct DocumentTabView: View {
                     Image(systemName: isTOCVisible ? "chevron.down" : "chevron.right")
                         .font(.system(size: 9, weight: .medium))
                         .foregroundColor(.secondary)
-                        .frame(width: faviconSize, height: faviconSize)
+                        .frame(width: 22, height: 22)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .opacity(document.headings.isEmpty ? 0.2 : (isFaviconHovered ? 1 : 0))
                 .disabled(document.headings.isEmpty)
             }
-            .frame(width: faviconSize, height: faviconSize)
+            .frame(width: 22, height: 22)
             .onHover { isFaviconHovered = $0 }
             .animation(.easeInOut(duration: 0.15), value: isFaviconHovered)
-        } else {
-            FaviconBadge(
-                letter: document.faviconLetter,
-                size: faviconSize,
-                fontSize: faviconFontSize,
-                fileURL: document.fileURL,
-                hasH1: document.headings.contains(where: { $0.level == 1 })
-            )
+
+            Text(document.sidebarDisplayTitle)
+                .font(.system(size: 13))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .foregroundColor(isActive ? .primary : .secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .mask(trailingFadeMask)
+                .animation(.easeOut(duration: 0.18), value: isHovered)
+                .animation(.easeOut(duration: 0.18), value: document.isDirty)
+                .overlay(alignment: .trailing) { closeSlot }
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isActive ? Color(NSColor.controlAccentColor).opacity(0.15) : Color.clear)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            // Single tap: rename when already active (Finder-style), select otherwise
+            if isActive { store.rename(document) } else { onSelect() }
+        }
+        .onHover { isHovered = $0 }
+        .contextMenu { DocumentContextMenu(document: document, onClose: onClose) }
+        // Solid background so scrolling TOC content doesn't bleed through the pinned header
+        .background(Color(NSColor.windowBackgroundColor))
     }
 
-    @ViewBuilder private var faviconContextMenu: some View {
-        if let url = document.fileURL {
-            Button("Reveal in Finder") {
-                NSWorkspace.shared.activateFileViewerSelecting([url])
-            }
-            Divider()
-            ForEach(pathAncestors(of: url), id: \.path) { ancestor in
-                Button(ancestor.path == "/" ? "/" : ancestor.lastPathComponent) {
-                    NSWorkspace.shared.open(ancestor)
-                }
-            }
-        }
-    }
+    // MARK: - Styling
 
-    /// Trailing gradient that fades the text edge as the close button appears.
     private var trailingFadeMask: LinearGradient {
         let fade = isHovered || document.isDirty
         return LinearGradient(
@@ -160,94 +164,110 @@ struct DocumentTabView: View {
                 .init(color: .black, location: fade ? 0.60 : 1.0),
                 .init(color: .clear,  location: fade ? 0.90 : 1.0),
             ],
-            startPoint: .leading,
-            endPoint: .trailing
+            startPoint: .leading, endPoint: .trailing
         )
     }
 
-    /// Dirty dot + close button, overlaid on the trailing edge of the text.
     private var closeSlot: some View {
         ZStack {
             Circle()
                 .fill(Color.accentColor)
-                .frame(width: dotSize, height: dotSize)
+                .frame(width: 6, height: 6)
                 .opacity(document.isDirty && !isHovered ? 1 : 0)
 
             Button(action: onClose) {
                 Image(systemName: "xmark")
-                    .font(.system(size: xmarkSize, weight: .medium))
+                    .font(.system(size: 9, weight: .medium))
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
-            .frame(width: closeFrame, height: closeFrame)
+            .frame(width: 22, height: 22)   // expanded hit target (icon stays 9pt)
+            .contentShape(Rectangle())
             .opacity(isHovered ? 1 : 0)
         }
         .animation(.easeOut(duration: 0.18), value: isHovered)
     }
+}
 
-    /// Background + optional pill border (compact only shows hover fill and active stroke).
-    private var pill: some View {
-        RoundedRectangle(cornerRadius: cornerRadius)
-            .fill(
-                isActive
+// MARK: - Compact tab pill (toolbar tab bar)
+
+struct DocumentTabView: View {
+    @Environment(DocumentStore.self) private var store
+    @Bindable var document: Document
+    let isActive: Bool
+    let onSelect: () -> Void
+    let onClose: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            FaviconBadge(
+                letter: document.faviconLetter,
+                size: 18, fontSize: 10,
+                fileURL: document.fileURL,
+                hasH1: document.headings.contains(where: { $0.level == 1 })
+            )
+
+            Text(document.sidebarDisplayTitle)
+                .font(.system(size: 12))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: 120)
+                .mask(trailingFadeMask)
+                .animation(.easeOut(duration: 0.18), value: isHovered)
+                .animation(.easeOut(duration: 0.18), value: document.isDirty)
+                .overlay(alignment: .trailing) { closeSlot }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(isActive
                     ? Color(NSColor.controlAccentColor).opacity(0.15)
-                    : (style == .compact && isHovered
-                        ? Color(NSColor.quaternaryLabelColor)
-                        : Color.clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .stroke(
-                        style == .compact && isActive
-                            ? Color.accentColor.opacity(0.3)
-                            : Color.clear,
-                        lineWidth: 1
-                    )
-            )
+                    : (isHovered ? Color(NSColor.quaternaryLabelColor) : Color.clear))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(isActive ? Color.accentColor.opacity(0.3) : Color.clear, lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isActive { store.rename(document) } else { onSelect() }
+        }
+        .onHover { isHovered = $0 }
+        .contextMenu { DocumentContextMenu(document: document, onClose: onClose) }
     }
 
-    // MARK: - TOC helpers
+    private var trailingFadeMask: LinearGradient {
+        let fade = isHovered || document.isDirty
+        return LinearGradient(
+            stops: [
+                .init(color: .black, location: 0),
+                .init(color: .black, location: fade ? 0.60 : 1.0),
+                .init(color: .clear,  location: fade ? 0.90 : 1.0),
+            ],
+            startPoint: .leading, endPoint: .trailing
+        )
+    }
 
-    private var visibleHeadings: [HeadingNode] {
-        var result: [HeadingNode] = []
-        var collapsedAtLevel: Int? = nil
-        for heading in document.headings {
-            guard heading.level > 1 else { continue }
-            if let colLevel = collapsedAtLevel {
-                if heading.level <= colLevel { collapsedAtLevel = nil } else { continue }
+    private var closeSlot: some View {
+        ZStack {
+            Circle()
+                .fill(Color.accentColor)
+                .frame(width: 5, height: 5)
+                .opacity(document.isDirty && !isHovered ? 1 : 0)
+
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundColor(.secondary)
             }
-            result.append(heading)
-            if document.collapsedHeadingIDs.contains(heading.id) {
-                collapsedAtLevel = heading.level
-            }
+            .buttonStyle(.plain)
+            .frame(width: 20, height: 20)   // expanded hit target (was 14)
+            .contentShape(Rectangle())
+            .opacity(isHovered ? 1 : 0)
         }
-        return result
-    }
-
-    private func headingHasChildren(_ heading: HeadingNode) -> Bool {
-        let nonH1 = document.headings.filter { $0.level > 1 }
-        guard let idx = nonH1.firstIndex(where: { $0.id == heading.id }),
-              idx + 1 < nonH1.count else { return false }
-        return nonH1[idx + 1].level > heading.level
-    }
-
-    private func toggleCollapse(_ heading: HeadingNode) {
-        if document.collapsedHeadingIDs.contains(heading.id) {
-            document.collapsedHeadingIDs.remove(heading.id)
-        } else {
-            document.collapsedHeadingIDs.insert(heading.id)
-        }
-    }
-
-    private func pathAncestors(of url: URL) -> [URL] {
-        var ancestors: [URL] = []
-        var current = url.standardizedFileURL
-        for _ in 0..<40 {
-            ancestors.insert(current, at: 0)
-            let parent = current.deletingLastPathComponent().standardizedFileURL
-            guard parent.path != current.path else { break }
-            current = parent
-        }
-        return ancestors
+        .animation(.easeOut(duration: 0.18), value: isHovered)
     }
 }

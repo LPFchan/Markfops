@@ -6,7 +6,19 @@ import WebKit
 /// Shared reference that lets EditorContainerView call into the WKWebView coordinator
 /// (e.g. to extract text before switching to edit mode).
 final class PreviewBridge {
-    weak var coordinator: PreviewView.Coordinator?
+    /// Weak reference to the coordinator. Uses didSet to forward any ratio that
+    /// was queued before makeNSView had a chance to create the coordinator.
+    weak var coordinator: PreviewView.Coordinator? {
+        didSet {
+            if let ratio = _bufferedScrollRatio, let coord = coordinator {
+                coord.pendingScrollRatio = ratio
+                _bufferedScrollRatio = nil
+            }
+        }
+    }
+    /// Holds a scroll ratio when setPendingScrollRatio is called before the
+    /// coordinator exists (i.e. before makeNSView runs for this mode switch).
+    private var _bufferedScrollRatio: Double?
 
     func extractText(completion: @escaping (String) -> Void) {
         guard let coord = coordinator else { completion(""); return }
@@ -22,7 +34,20 @@ final class PreviewBridge {
     }
 
     func setPendingScrollRatio(_ ratio: Double) {
+        _bufferedScrollRatio = ratio
         coordinator?.pendingScrollRatio = ratio
+
+        // If the page is already loaded (coordinator + webView exist), apply immediately
+        // via JS rather than waiting for didFinish — which never fires when HTML is cached.
+        if let webView = coordinator?.webView {
+            let js = """
+            (function() {
+                var scrollable = document.documentElement.scrollHeight - window.innerHeight;
+                if (scrollable > 0) { window.scrollTo(0, Math.round(\(ratio) * scrollable)); }
+            })();
+            """
+            webView.evaluateJavaScript(js)
+        }
     }
 }
 
@@ -53,12 +78,8 @@ struct PreviewView: NSViewRepresentable {
         context.coordinator.webView = webView
         context.coordinator.onTextChange = onTextChange
         context.coordinator.onScrollChange = onScrollChange
+        // Setting coordinator triggers didSet, which forwards any buffered scroll ratio.
         bridge.coordinator = context.coordinator
-
-        if !htmlContent.isEmpty {
-            context.coordinator.lastLoadedHTML = htmlContent
-            webView.loadHTMLString(htmlContent, baseURL: nil)
-        }
 
         return webView
     }
@@ -183,7 +204,7 @@ struct PreviewView: NSViewRepresentable {
                     if (h.textContent.trim() === '\(escaped)') { target = h; break; }
                 }
                 if (!target) return;
-                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                window.scrollTo({ top: target.offsetTop, behavior: 'smooth' });
                 target.style.transition = 'background-color 0.1s ease-in';
                 target.style.borderRadius = '4px';
                 target.style.backgroundColor = 'rgba(255,200,0,0.35)';

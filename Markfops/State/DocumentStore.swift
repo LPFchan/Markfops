@@ -5,6 +5,9 @@ import Observation
 final class DocumentStore {
     private(set) var documents: [Document] = []
     var activeID: UUID?
+    /// Non-nil while a tab drag is in flight. Set by onDrag, cleared by onDrop.performDrop
+    /// or by the mouse-up monitor when no drop target accepted the drag (→ detach).
+    var draggingDocumentID: UUID? = nil
 
     var activeDocument: Document? {
         guard let id = activeID else { return nil }
@@ -184,6 +187,41 @@ final class DocumentStore {
         if activeID == id {
             activeID = documents.isEmpty ? nil : documents[min(idx, documents.count - 1)].id
         }
+    }
+
+    // MARK: - Detach to new window
+
+    /// Removes `document` from this store and opens it in a brand-new, independent window.
+    func detachToNewWindow(_ document: Document) {
+        guard let idx = documents.firstIndex(where: { $0.id == document.id }) else { return }
+        documents.remove(at: idx)
+        if activeID == document.id {
+            activeID = documents.isEmpty ? nil : documents[min(idx, documents.count - 1)].id
+        }
+
+        let newStore = DocumentStore()
+        newStore.documents = [document]
+        newStore.activeID  = document.id
+
+        let rootView = ContentView()
+            .environment(newStore)
+            .focusedSceneValue(\.documentStore, newStore)
+            .frame(minWidth: 700, minHeight: 500)
+
+        let controller = NSHostingController(rootView: rootView)
+        let window = NSWindow(contentViewController: controller)
+        window.title = document.displayTitle
+        window.setContentSize(NSSize(width: 900, height: 650))
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+
+        // Cascade 20 pt below/right of the source window
+        if let src = NSApp.windows.first(where: { $0.isMainWindow }) {
+            window.setFrameOrigin(NSPoint(x: src.frame.minX + 20,
+                                          y: src.frame.maxY - window.frame.height - 20))
+        } else {
+            window.center()
+        }
+        window.makeKeyAndOrderFront(nil)
     }
 
     // MARK: - Tab order
