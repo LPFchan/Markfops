@@ -52,7 +52,7 @@ struct TabPillRowView: View {
                         // Invisible drop zone after the last pill (rightmost gap).
                         Color.clear
                             .frame(width: 8, height: 32)
-                            .onDrop(of: [.data],
+                            .onDrop(of: [TabDragState.documentDragType],
                                     delegate: TrailingDropDelegate(
                                         store: store,
                                         onInsertionIndexChange: { idx in
@@ -157,7 +157,7 @@ struct TabPillRowView: View {
             if inZone { TabDragState.shared.wasInDetachZone = true }
         }
         .onDrag { makeDragProvider(for: document) }
-        .onDrop(of: [.data],
+        .onDrop(of: [TabDragState.documentDragType],
                 delegate: DocumentDropDelegate(
                     targetDocument: document,
                     store: store,
@@ -210,7 +210,7 @@ struct TabPillRowView: View {
 
         let provider = NSItemProvider()
         provider.registerDataRepresentation(
-            forTypeIdentifier: UTType.data.identifier,
+            forTypeIdentifier: TabDragState.documentDragType.identifier,
             visibility: .all
         ) { completion in
             let data = document.id.uuidString.data(using: .utf8) ?? Data()

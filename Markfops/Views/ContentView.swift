@@ -77,9 +77,10 @@ struct ContentView: View {
         // Catch tab drags that land on the editor content area (i.e. the user dragged a
         // pill out of the toolbar and dropped it on the main content) → detach to new window.
         // The guard ensures this never fires for non-tab .data drags (e.g. text drops).
-        .onDrop(of: [UTType.data], isTargeted: nil) { _ in
+          .onDrop(of: [TabDragState.documentDragType], isTargeted: nil) { _ in
             guard let dragID = TabDragState.shared.draggingDocumentID,
-                  let doc = store.documents.first(where: { $0.id == dragID }) else { return false }
+                TabDragState.shared.wasInDetachZone,
+                let doc = store.documents.first(where: { $0.id == dragID }) else { return false }
             TabDragState.shared.clear()
             store.detachToNewWindow(doc)
             return true

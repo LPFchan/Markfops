@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UniformTypeIdentifiers
 
 // MARK: - Global drag state
 
@@ -9,6 +10,7 @@ import Observation
 @Observable
 final class TabDragState {
     static let shared = TabDragState()
+    static let documentDragType = UTType(exportedAs: "com.yeowool.markfops.document-tab")
     private init() {}
 
     var draggingDocumentID: UUID?

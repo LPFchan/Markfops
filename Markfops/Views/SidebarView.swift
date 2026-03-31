@@ -151,7 +151,7 @@ struct SidebarView: View {
             .animation(.spring(duration: 0.18), value: inDetachZone)
             .animation(.easeOut(duration: 0.15), value: isAnyDragging)
             .onDrag { makeDragProvider(for: document) }
-            .onDrop(of: [.data],
+            .onDrop(of: [TabDragState.documentDragType],
                     delegate: DocumentDropDelegate(
                         targetDocument: document,
                         store: store,
@@ -192,7 +192,7 @@ struct SidebarView: View {
 
         let provider = NSItemProvider()
         provider.registerDataRepresentation(
-            forTypeIdentifier: UTType.data.identifier,
+            forTypeIdentifier: TabDragState.documentDragType.identifier,
             visibility: .all
         ) { completion in
             let data = document.id.uuidString.data(using: .utf8) ?? Data()

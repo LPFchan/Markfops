@@ -28,19 +28,18 @@ struct TOCItemView: View {
             .opacity(isCollapsible ? 1 : 0)
             .disabled(!isCollapsible)
 
-            // Heading title — tapping scrolls to it
-            Button(action: onTap) {
-                Text(heading.title)
-                    .font(.system(size: 12))
-                    .foregroundColor(isHighlighted ? .accentColor : .primary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer()
-            }
-            .buttonStyle(.plain)
+            Text(heading.title)
+                .font(.system(size: 12))
+                .foregroundColor(isHighlighted ? .accentColor : .primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer(minLength: 0)
         }
         .padding(.vertical, 3)
         .padding(.horizontal, 8)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
         .background(
             RoundedRectangle(cornerRadius: 4)
                 .fill(isHighlighted ? Color.accentColor.opacity(0.15) : Color.clear)
