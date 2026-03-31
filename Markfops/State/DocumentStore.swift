@@ -4,7 +4,12 @@ import Observation
 @Observable
 final class DocumentStore {
     private(set) var documents: [Document] = []
-    var activeID: UUID?
+    var activeID: UUID? {
+        didSet {
+            guard activeID != oldValue else { return }
+            activeDocument?.reloadFromDiskIfClean(restartWatching: true)
+        }
+    }
 
     var activeDocument: Document? {
         guard let id = activeID else { return nil }
@@ -237,7 +242,7 @@ final class DocumentStore {
         let rootView = ContentView()
             .environment(newStore)
             .focusedSceneValue(\.documentStore, newStore)
-            .frame(minWidth: 700, minHeight: 500)
+            .frame(minHeight: 500)
 
         let controller = NSHostingController(rootView: rootView)
         let window = NSWindow(contentViewController: controller)

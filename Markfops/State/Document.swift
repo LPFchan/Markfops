@@ -51,17 +51,27 @@ final class Document: Identifiable {
                 self.stopWatching()
                 return
             }
-            guard !self.isDirty,
-                  let url = self.fileURL,
-                  let text = try? String(contentsOf: url, encoding: .utf8),
-                  text != self.rawText else { return }
-            self.rawText = text
-            self.savedText = text
-            self.headings = HeadingParser.parseHeadings(in: text)
+            self.reloadFromDiskIfClean()
         }
         source.setCancelHandler { Darwin.close(fd) }
         source.resume()
         fileWatchSource = source
+    }
+
+    /// Re-reads the backing file when the document has no unsaved edits.
+    /// Optionally reattaches the file watcher to recover from atomic-save replacements.
+    func reloadFromDiskIfClean(restartWatching: Bool = false) {
+        guard !isDirty, let url = fileURL else { return }
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else {
+            if restartWatching { startWatching() }
+            return
+        }
+        if text != rawText {
+            rawText = text
+            savedText = text
+            headings = HeadingParser.parseHeadings(in: text)
+        }
+        if restartWatching { startWatching() }
     }
 
     func stopWatching() {
