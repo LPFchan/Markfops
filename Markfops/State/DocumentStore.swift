@@ -8,6 +8,7 @@ final class DocumentStore {
         didSet {
             guard activeID != oldValue else { return }
             activeDocument?.reloadFromDiskIfClean(restartWatching: true)
+            activeDocument?.reconcileActiveHeadingWithCurrentContent()
         }
     }
 
@@ -168,8 +169,10 @@ final class DocumentStore {
             guard response == .alertFirstButtonReturn else { return }
             guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
             document.rawText = text
+            document.updateTextMetrics()
             document.isDirty = false
             document.headings = HeadingParser.parseHeadings(in: text)
+            document.reconcileActiveHeadingWithCurrentContent()
         }
     }
 

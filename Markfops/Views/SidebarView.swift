@@ -1,7 +1,80 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import AppKit
+import QuartzCore
+
+private let sidebarTOCContentSpace = "SidebarTOCContentSpace"
+
+private struct TOCHeadingMidYKey: PreferenceKey {
+    static var defaultValue: [String: CGFloat] = [:]
+
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
+private final class SidebarScrollContext {
+    weak var scrollView: NSScrollView?
+    var lastTargetY: CGFloat?
+    var desiredTargetY: CGFloat?
+    var displayTimer: Timer?
+    var lastStepTime: CFTimeInterval?
+    var velocity: CGFloat = 0
+    var isProgrammaticScroll = false
+    var boundsObserver: NSObjectProtocol?
+    var isRespectingManualScrollPosition = false
+}
+
+private struct SidebarScrollViewAccessor: NSViewRepresentable {
+    let context: SidebarScrollContext
+    let onResolve: () -> Void
+
+    func makeNSView(context _: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async {
+            self.resolveScrollView(from: view)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context _: Context) {
+        DispatchQueue.main.async {
+            self.resolveScrollView(from: nsView)
+        }
+    }
+
+    private func resolveScrollView(from view: NSView) {
+        var current: NSView? = view
+        while let candidate = current {
+            if let scrollView = candidate.enclosingScrollView {
+                if context.scrollView !== scrollView {
+                    context.scrollView = scrollView
+                    onResolve()
+                }
+                return
+            }
+            current = candidate.superview
+        }
+    }
+}
 
 struct SidebarView: View {
+    private static let tocFollowScrollLeadDelay: CFTimeInterval = 0.008
+    private static let tocFollowScrollStiffness: CGFloat = 30
+    private static let tocFollowScrollDamping: CGFloat = 12
+    private static let tocFollowScrollSettlingDistance: CGFloat = 0.12
+    private static let tocFollowScrollSettlingVelocity: CGFloat = 1.2
+    private static let tocFollowScrollNearTargetDistance: CGFloat = 14
+    private static let tocFollowScrollNearTargetVelocityDamping: CGFloat = 0.46
+    private static let tocFollowScrollFinalApproachDistance: CGFloat = 5
+    private static let tocFollowScrollFinalApproachVelocityDamping: CGFloat = 0.24
+    private static let tocRowHeight: CGFloat = 24
+    // The pinned document pill/header occupies the top of the scroll view, so TOC rows
+    // hidden behind it are not actually visible even if their geometry is within bounds.
+    private static let tocPinnedHeaderVisibilityInset: CGFloat = 42
+    private static let tocBottomVisibilityPadding: CGFloat = 10
+    private static let tocCenterReactivationBand: CGFloat = 30
+
     @Environment(DocumentStore.self) private var store
     var onTOCTap: (HeadingNode) -> Void
     /// Passed from ContentView so the toolbar + button hides when the sidebar itself is hidden (compact mode).
@@ -11,6 +84,10 @@ struct SidebarView: View {
     @State private var tocVisible: [UUID: Bool] = [:]
     /// Index before which the accent insertion line is shown during a cross-window drag.
     @State private var dropInsertionIndex: Int? = nil
+    @State private var pendingTOCFollowScroll: DispatchWorkItem? = nil
+    @State private var headingMidYByID: [String: CGFloat] = [:]
+    @State private var scrollContext = SidebarScrollContext()
+    @State private var pendingImmediateTOCScrollTarget: String? = nil
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -25,10 +102,11 @@ struct SidebarView: View {
                                 ForEach(visibleHeadings(for: document), id: \.id) { heading in
                                     TOCItemView(
                                         heading: heading,
-                                        isHighlighted: false,
+                                        isHighlighted: document.activeHeadingID == heading.id,
                                         isCollapsible: headingHasChildren(heading, in: document),
                                         isCollapsed: document.collapsedHeadingIDs.contains(heading.id),
                                         onTap: {
+                                            pendingImmediateTOCScrollTarget = heading.id
                                             if store.activeID != document.id {
                                                 store.activeID = document.id
                                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
@@ -44,8 +122,16 @@ struct SidebarView: View {
                                             }
                                         }
                                     )
+                                    .id(heading.id)
                                     .padding(.horizontal, 6)
-                                    .padding(.bottom, 1)
+                                    .background {
+                                        GeometryReader { geo in
+                                            Color.clear.preference(
+                                                key: TOCHeadingMidYKey.self,
+                                                value: [heading.id: geo.frame(in: .named(sidebarTOCContentSpace)).midY]
+                                            )
+                                        }
+                                    }
                                 }
                                 .padding(.bottom, 4)
                             }
@@ -55,12 +141,31 @@ struct SidebarView: View {
                     }  // ForEach
                 }  // LazyVStack
                 .padding(.vertical, 4)
+                .coordinateSpace(name: sidebarTOCContentSpace)
+                .background {
+                    SidebarScrollViewAccessor(
+                        context: scrollContext,
+                        onResolve: {
+                            if let scrollView = scrollContext.scrollView {
+                                installScrollObserverIfNeeded(for: scrollView)
+                            }
+                            scheduleScrollToActiveHeading(force: true)
+                        }
+                    )
+                    .frame(width: 0, height: 0)
+                }
+            }
+            .onPreferenceChange(TOCHeadingMidYKey.self) { values in
+                headingMidYByID = values
+                scheduleScrollToActiveHeading()
             }
             .onChange(of: store.activeID) { oldID, newID in
                 // Collapse outgoing document (persist its expanded intent first)
                 if let old = oldID,
                    let doc = store.documents.first(where: { $0.id == old }) {
                     doc.isTOCExpanded = tocVisible[old] ?? false
+                    scrollContext.lastTargetY = nil
+                    scrollContext.isRespectingManualScrollPosition = false
                     withAnimation(.spring(duration: 0.22)) {
                         tocVisible[old] = false
                     }
@@ -68,6 +173,8 @@ struct SidebarView: View {
                 // Restore incoming document's TOC
                 if let new = newID,
                    let doc = store.documents.first(where: { $0.id == new }) {
+                    scrollContext.lastTargetY = nil
+                    scrollContext.isRespectingManualScrollPosition = false
                     withAnimation(.spring(duration: 0.22)) {
                         tocVisible[new] = doc.isTOCExpanded
                     }
@@ -77,7 +184,17 @@ struct SidebarView: View {
                             proxy.scrollTo(new, anchor: .top)
                         }
                     }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        scheduleScrollToActiveHeading(force: true)
+                    }
                 }
+            }
+            .onChange(of: store.activeDocument?.activeHeadingID) { _, newID in
+                let shouldForce = newID != nil && newID == pendingImmediateTOCScrollTarget
+                if shouldForce {
+                    pendingImmediateTOCScrollTarget = nil
+                }
+                scheduleScrollToActiveHeading(force: shouldForce)
             }
         }
         .frame(minWidth: 180, idealWidth: 220, maxWidth: 320)
@@ -98,6 +215,10 @@ struct SidebarView: View {
             for doc in store.documents {
                 tocVisible[doc.id] = doc.isTOCExpanded && doc.id == store.activeID
             }
+        }
+        .onDisappear {
+            removeScrollObserver()
+            stopTOCFollowAnimation()
         }
     }
 
@@ -235,5 +356,186 @@ struct SidebarView: View {
         } else {
             document.collapsedHeadingIDs.insert(heading.id)
         }
+    }
+
+    private func scheduleScrollToActiveHeading(force: Bool = false) {
+        pendingTOCFollowScroll?.cancel()
+        let workItem = DispatchWorkItem {
+            scrollToActiveHeading(force: force)
+        }
+        pendingTOCFollowScroll = workItem
+        let delay = force ? 0 : Self.tocFollowScrollLeadDelay
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    private func scrollToActiveHeading(force: Bool = false) {
+        guard let document = store.activeDocument,
+              (tocVisible[document.id] ?? false),
+              let activeHeadingID = document.activeHeadingID,
+              let scrollView = scrollContext.scrollView else { return }
+
+        guard let targetMidY = headingMidYByID[activeHeadingID] else { return }
+
+        if !force,
+           scrollContext.isRespectingManualScrollPosition {
+            if isHeadingNearCenter(at: targetMidY, in: scrollView) {
+                scrollContext.isRespectingManualScrollPosition = false
+            } else if isHeadingVisible(at: targetMidY, in: scrollView) {
+                scrollContext.lastTargetY = nil
+                scrollContext.desiredTargetY = nil
+                stopTOCFollowAnimation()
+                return
+            }
+        }
+
+        let viewportHeight = scrollView.contentView.bounds.height
+        let contentHeight = scrollView.documentView?.bounds.height ?? 0
+        let maxOffset = max(0, contentHeight - viewportHeight)
+        let targetY: CGFloat
+        if !force, scrollContext.isRespectingManualScrollPosition {
+            targetY = minimalRevealOffset(for: targetMidY, in: scrollView, maxOffset: maxOffset)
+        } else {
+            targetY = max(0, min(maxOffset, targetMidY - viewportHeight / 2))
+        }
+
+        if !force,
+           let lastTargetY = scrollContext.lastTargetY,
+           abs(lastTargetY - targetY) < Self.tocFollowScrollSettlingDistance {
+            return
+        }
+
+        scrollContext.lastTargetY = targetY
+        scrollContext.desiredTargetY = targetY
+
+        if force,
+           scrollContext.displayTimer == nil,
+           let clipView = scrollView.contentView as NSClipView? {
+            clipView.setBoundsOrigin(NSPoint(x: 0, y: targetY))
+            scrollView.reflectScrolledClipView(clipView)
+            scrollContext.velocity = 0
+        }
+
+        startTOCFollowAnimationIfNeeded()
+    }
+
+    private func startTOCFollowAnimationIfNeeded() {
+        guard scrollContext.displayTimer == nil else { return }
+
+        let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { _ in
+            stepTOCFollowAnimation()
+        }
+        timer.tolerance = 1.0 / 240.0
+        RunLoop.main.add(timer, forMode: .common)
+        scrollContext.displayTimer = timer
+        scrollContext.lastStepTime = CACurrentMediaTime()
+    }
+
+    private func stopTOCFollowAnimation() {
+        scrollContext.displayTimer?.invalidate()
+        scrollContext.displayTimer = nil
+        scrollContext.lastStepTime = nil
+        scrollContext.velocity = 0
+        scrollContext.isProgrammaticScroll = false
+    }
+
+    private func stepTOCFollowAnimation() {
+        guard let scrollView = scrollContext.scrollView,
+              let targetY = scrollContext.desiredTargetY else {
+            stopTOCFollowAnimation()
+            return
+        }
+
+        let now = CACurrentMediaTime()
+        let dt = min(1.0 / 30.0, max(1.0 / 240.0, now - (scrollContext.lastStepTime ?? now)))
+        scrollContext.lastStepTime = now
+
+        let clipView = scrollView.contentView
+        let currentY = clipView.bounds.origin.y
+        let displacement = targetY - currentY
+
+        let acceleration = Self.tocFollowScrollStiffness * displacement - Self.tocFollowScrollDamping * scrollContext.velocity
+        scrollContext.velocity += acceleration * dt
+        if abs(displacement) < Self.tocFollowScrollNearTargetDistance {
+            scrollContext.velocity *= Self.tocFollowScrollNearTargetVelocityDamping
+        }
+        if abs(displacement) < Self.tocFollowScrollFinalApproachDistance {
+            scrollContext.velocity *= Self.tocFollowScrollFinalApproachVelocityDamping
+        }
+        var nextY = currentY + scrollContext.velocity * dt
+
+        let viewportHeight = clipView.bounds.height
+        let contentHeight = scrollView.documentView?.bounds.height ?? 0
+        let maxOffset = max(0, contentHeight - viewportHeight)
+        nextY = max(0, min(maxOffset, nextY))
+
+        scrollContext.isProgrammaticScroll = true
+        clipView.setBoundsOrigin(NSPoint(x: 0, y: nextY))
+        scrollView.reflectScrolledClipView(clipView)
+        scrollContext.isProgrammaticScroll = false
+
+        if abs(targetY - nextY) < Self.tocFollowScrollSettlingDistance,
+           abs(scrollContext.velocity) < Self.tocFollowScrollSettlingVelocity {
+            scrollContext.lastTargetY = targetY
+            scrollContext.desiredTargetY = nil
+            scrollContext.velocity = 0
+            stopTOCFollowAnimation()
+        }
+    }
+
+    private func installScrollObserverIfNeeded(for scrollView: NSScrollView) {
+        guard scrollContext.boundsObserver == nil else { return }
+
+        let clipView = scrollView.contentView
+        clipView.postsBoundsChangedNotifications = true
+        scrollContext.boundsObserver = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: clipView,
+            queue: .main
+        ) { _ in
+            guard !scrollContext.isProgrammaticScroll else { return }
+            scrollContext.isRespectingManualScrollPosition = true
+            scrollContext.desiredTargetY = nil
+            scrollContext.lastTargetY = nil
+            stopTOCFollowAnimation()
+        }
+    }
+
+    private func removeScrollObserver() {
+        if let observer = scrollContext.boundsObserver {
+            NotificationCenter.default.removeObserver(observer)
+            scrollContext.boundsObserver = nil
+        }
+    }
+
+    private func isHeadingVisible(at midY: CGFloat, in scrollView: NSScrollView) -> Bool {
+        let rowHalfHeight = Self.tocRowHeight / 2
+        let visibleRect = scrollView.contentView.bounds
+        let minY = visibleRect.minY + Self.tocPinnedHeaderVisibilityInset + rowHalfHeight
+        let maxY = visibleRect.maxY - Self.tocBottomVisibilityPadding - rowHalfHeight
+        return midY >= minY && midY <= maxY
+    }
+
+    private func isHeadingNearCenter(at midY: CGFloat, in scrollView: NSScrollView) -> Bool {
+        let visibleRect = scrollView.contentView.bounds
+        let top = visibleRect.minY + Self.tocPinnedHeaderVisibilityInset
+        let bottom = visibleRect.maxY - Self.tocBottomVisibilityPadding
+        guard bottom > top else { return false }
+        let centerY = (top + bottom) / 2
+        return abs(midY - centerY) <= Self.tocCenterReactivationBand
+    }
+
+    private func minimalRevealOffset(for midY: CGFloat, in scrollView: NSScrollView, maxOffset: CGFloat) -> CGFloat {
+        let rowHalfHeight = Self.tocRowHeight / 2
+        let visibleRect = scrollView.contentView.bounds
+        let minY = visibleRect.minY + Self.tocPinnedHeaderVisibilityInset + rowHalfHeight
+        let maxY = visibleRect.maxY - Self.tocBottomVisibilityPadding - rowHalfHeight
+
+        if midY < minY {
+            return max(0, midY - Self.tocPinnedHeaderVisibilityInset - rowHalfHeight)
+        }
+        if midY > maxY {
+            return min(maxOffset, midY - visibleRect.height + Self.tocBottomVisibilityPadding + rowHalfHeight)
+        }
+        return visibleRect.minY
     }
 }

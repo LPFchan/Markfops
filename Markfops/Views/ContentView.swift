@@ -122,6 +122,7 @@ struct ContentView: View {
     }
 
     private func handleTOCTap(_ heading: HeadingNode) {
+        store.activeDocument?.setActiveHeading(heading)
         scrollToHeading = heading
         // Reset after a tick so future taps to the same heading still trigger
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {

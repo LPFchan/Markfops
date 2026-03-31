@@ -30,11 +30,14 @@ struct EditorContainerView: View {
                     onTextChange: { editedText in
                         // WYSIWYG edits from the viewer arrive here (debounced 400ms)
                         document.rawText = editedText
+                        document.updateTextMetrics()
                         document.isDirty = true
                         document.headings = HeadingParser.parseHeadings(in: editedText)
+                        document.reconcileActiveHeadingWithCurrentContent()
                     },
                     onScrollChange: { ratio in
                         document.scrollRatio = ratio
+                        document.syncActiveHeadingToScrollPosition()
                     }
                 )
             }
@@ -63,7 +66,9 @@ struct EditorContainerView: View {
                     bridge.extractText { text in
                         if !text.isEmpty {
                             document.rawText = text
+                            document.updateTextMetrics()
                             document.headings = HeadingParser.parseHeadings(in: text)
+                            document.reconcileActiveHeadingWithCurrentContent()
                         }
                         bridge.resetEditingFlag()
                     }
@@ -107,9 +112,11 @@ struct EditorContainerView: View {
             DispatchQueue.main.async {
                 let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
                 document.rawText = text
+                document.updateTextMetrics()
                 document.fileURL = url
                 document.isDirty = false
                 document.headings = HeadingParser.parseHeadings(in: text)
+                document.reconcileActiveHeadingWithCurrentContent()
             }
         }
         return true

@@ -16,6 +16,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         let newText = textView.string
 
         document.rawText = newText
+        document.updateTextMetrics()
         document.isDirty = newText != document.savedText
 
         // Debounced heading refresh (500ms)
@@ -25,6 +26,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
             let headings = HeadingParser.parseHeadings(in: newText)
             DispatchQueue.main.async {
                 self.document.headings = headings
+                self.document.reconcileActiveHeadingWithCurrentContent()
             }
         }
         headingDebounceItem = headingItem
@@ -41,6 +43,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         // same content stays centered when switching between edit and preview modes.
         let centerY = visibleRect.minY + visibleRect.height / 2
         document.scrollRatio = max(0, min(1, Double(centerY / totalHeight)))
+        document.syncActiveHeadingToScrollPosition()
     }
 
     func scrollToRatio(_ ratio: Double) {
@@ -55,6 +58,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         let targetY = max(0, min(scrollableHeight, centerY - visibleHeight / 2))
         scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
+        document.syncActiveHeadingToScrollPosition()
     }
 
     func scrollToLine(_ lineNumber: Int) {

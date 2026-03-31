@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct TOCItemView: View {
+    private static let rowHeight: CGFloat = 24
+
     let heading: HeadingNode
     let isHighlighted: Bool
     let isCollapsible: Bool
@@ -21,7 +23,7 @@ struct TOCItemView: View {
                 Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
                     .font(.system(size: 8, weight: .medium))
                     .foregroundColor(.secondary)
-                    .frame(width: 14, height: 14)
+                    .frame(width: 14, height: Self.rowHeight)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -36,13 +38,13 @@ struct TOCItemView: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 3)
+        .frame(maxWidth: .infinity, minHeight: Self.rowHeight, alignment: .leading)
         .padding(.horizontal, 8)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
         .background(
-            RoundedRectangle(cornerRadius: 4)
-                .fill(isHighlighted ? Color.accentColor.opacity(0.15) : Color.clear)
+            Rectangle()
+                .fill(isHighlighted ? Color.accentColor.opacity(0.12) : Color.clear)
         )
         .animation(.easeOut(duration: 0.25), value: isHighlighted)
     }

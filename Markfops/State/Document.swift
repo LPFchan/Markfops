@@ -6,6 +6,7 @@ final class Document: Identifiable {
     let id: UUID
     var fileURL: URL?
     var rawText: String
+    @ObservationIgnored private(set) var lineCount: Int
     var isDirty: Bool
     /// Text as of the last save or open — used to detect whether undo restored the clean state.
     var savedText: String
@@ -14,6 +15,7 @@ final class Document: Identifiable {
     /// to avoid re-rendering the entire view hierarchy on every scroll event.
     @ObservationIgnored var scrollRatio: Double
     var headings: [HeadingNode]
+    var activeHeadingID: String?
     var isTOCExpanded: Bool
     /// IDs of TOC headings the user has collapsed (hides their descendant headings).
     var collapsedHeadingIDs: Set<String> = []
@@ -24,12 +26,59 @@ final class Document: Identifiable {
         self.id = UUID()
         self.fileURL = fileURL
         self.rawText = rawText
+        self.lineCount = Self.lineCount(for: rawText)
         self.savedText = rawText
         self.isDirty = false
         self.mode = .edit
         self.scrollRatio = 0
         self.headings = []
+        self.activeHeadingID = nil
         self.isTOCExpanded = false
+    }
+
+    static func lineCount(for text: String) -> Int {
+        max(1, text.reduce(into: 1) { count, ch in
+            if ch == "\n" { count += 1 }
+        })
+    }
+
+    var tocHeadings: [HeadingNode] {
+        headings.filter { $0.level > 1 }
+    }
+
+    func updateTextMetrics() {
+        lineCount = Self.lineCount(for: rawText)
+    }
+
+    func setActiveHeading(_ heading: HeadingNode?) {
+        setActiveHeadingID(heading?.id)
+    }
+
+    func reconcileActiveHeadingWithCurrentContent() {
+        guard !tocHeadings.isEmpty else {
+            setActiveHeadingID(nil)
+            return
+        }
+        guard let activeHeadingID,
+              tocHeadings.contains(where: { $0.id == activeHeadingID }) else {
+            syncActiveHeadingToScrollPosition()
+            return
+        }
+    }
+
+    func syncActiveHeadingToScrollPosition() {
+        guard !tocHeadings.isEmpty else {
+            setActiveHeadingID(nil)
+            return
+        }
+        let probeLine = Int((Double(max(lineCount - 1, 0)) * scrollRatio).rounded())
+        let newID = tocHeadings.last(where: { $0.lineNumber <= probeLine })?.id
+        setActiveHeadingID(newID)
+    }
+
+    private func setActiveHeadingID(_ newID: String?) {
+        guard activeHeadingID != newID else { return }
+        activeHeadingID = newID
     }
 
     // MARK: - File watching
@@ -68,8 +117,10 @@ final class Document: Identifiable {
         }
         if text != rawText {
             rawText = text
+            updateTextMetrics()
             savedText = text
             headings = HeadingParser.parseHeadings(in: text)
+            reconcileActiveHeadingWithCurrentContent()
         }
         if restartWatching { startWatching() }
     }
