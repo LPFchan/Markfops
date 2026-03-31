@@ -1,5 +1,11 @@
 import SwiftUI
 
+/// Shared measurements for compact-mode toolbar controls (pill strip + mode toggle).
+enum ToolbarMetrics {
+    /// Single row height so the edit/preview control aligns with the tab pill strip.
+    static let compactPillRowHeight: CGFloat = 40
+}
+
 struct ModeToggleToolbarItem: ToolbarContent {
     @Binding var mode: EditMode
 
@@ -12,7 +18,11 @@ struct ModeToggleToolbarItem: ToolbarContent {
                     .tag(EditMode.preview)
             }
             .pickerStyle(.segmented)
-            .frame(width: 110)
+            .labelStyle(.iconOnly)
+            .controlSize(.regular)
+            .frame(width: 72)
+            .frame(height: ToolbarMetrics.compactPillRowHeight)
+            .layoutPriority(1)
             .help("Toggle Edit / Preview  ⌘⇧P")
         }
     }

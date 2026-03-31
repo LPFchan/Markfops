@@ -29,7 +29,7 @@ struct MarkfopsCommands: Commands {
                 let rootView = ContentView()
                     .environment(newStore)
                     .focusedSceneValue(\.documentStore, newStore)
-                    .frame(minWidth: 700, minHeight: 500)
+                    .frame(minHeight: 500)
                 let controller = NSHostingController(rootView: rootView)
                 let window = NSWindow(contentViewController: controller)
                 window.setContentSize(NSSize(width: 900, height: 650))

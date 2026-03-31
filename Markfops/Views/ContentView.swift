@@ -22,35 +22,39 @@ struct ContentView: View {
             SidebarView(onTOCTap: handleTOCTap, columnVisibility: $columnVisibility)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
-            if let document = store.activeDocument {
-                @Bindable var doc = document
-                EditorContainerView(
-                    document: document,
-                    configuration: editorConfig,
-                    scrollToHeading: scrollToHeading
-                )
-                .toolbar {
-                    if columnVisibility == .detailOnly {
-                        // Pills fill the centered principal area; toggle sits at the trailing edge.
-                        // minWidth: 700 (MarkfopsApp.swift) ensures .primaryAction never overflows to >>.
-                        ToolbarItem(placement: .principal) {
-                            TabPillRowView()
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                    ModeToggleToolbarItem(mode: $doc.mode)
-                }
-            } else {
-                WelcomeView()
+            Group {
+                if let document = store.activeDocument {
+                    @Bindable var doc = document
+                    EditorContainerView(
+                        document: document,
+                        configuration: editorConfig,
+                        scrollToHeading: scrollToHeading
+                    )
                     .toolbar {
                         if columnVisibility == .detailOnly {
+                            // GeometryReader supplies the real principal width so the tab strip does not
+                            // inherit the ScrollView's full content width (which forces >> overflow).
                             ToolbarItem(placement: .principal) {
-                                TabPillRowView()
-                                    .frame(maxWidth: .infinity)
+                                CompactToolbarPrincipalItem()
                             }
                         }
+                        ModeToggleToolbarItem(mode: $doc.mode)
                     }
+                } else {
+                    WelcomeView()
+                        .toolbar {
+                            if columnVisibility == .detailOnly {
+                                ToolbarItem(placement: .principal) {
+                                    CompactToolbarPrincipalItem()
+                                }
+                            }
+                        }
+                }
             }
+            // With an empty navigationTitle, SwiftUI still reserves NSToolbarTitleView width; that
+            // space does not track narrow windows well and breaks .principal centering. Removing
+            // the default title item in compact mode keeps the pill bar centered in the toolbar.
+            .modifier(DetailToolbarDefaultTitleRemoval(isCompact: columnVisibility == .detailOnly))
         }
         .focusedValue(\.sidebarVisibility, $columnVisibility)
         // In compact mode hide the window title — tabs serve as the label
@@ -138,6 +142,47 @@ struct ContentView: View {
             }
         }
         return true
+    }
+}
+
+/// `TabPillRowView` must not be the toolbar root: its `ScrollView` reports a huge ideal width and
+/// triggers `>>` overflow. A root `GeometryReader` does not (its size is the flex slot).
+///
+/// `Color.clear` + overlay regressed to a ~0pt-wide strip: `Color.clear` has no intrinsic width, so
+/// `NSToolbar` can assign almost no space; the overlay then measures that sliver. We set a positive
+/// `minWidth` / `idealWidth` on the `GeometryReader` frame so the principal item always claims a
+/// real slice of the toolbar while still flexing with the window.
+private struct CompactToolbarPrincipalItem: View {
+    var body: some View {
+        GeometryReader { geo in
+            let w = max(1, geo.size.width)
+            TabPillRowView(toolbarSlotWidth: w)
+                .frame(width: w, alignment: .center)
+                .clipped()
+        }
+        .frame(minWidth: 120, idealWidth: 420, maxWidth: .infinity)
+        .frame(height: ToolbarMetrics.compactPillRowHeight)
+        .layoutPriority(-1)
+    }
+}
+
+/// Removes the system title toolbar item so `NSToolbarTitleView` does not reserve width when
+/// `navigationTitle` is empty (compact mode). Without this, the reserved strip skews `.principal`
+/// placement and leaves a rigid left margin as the window narrows.
+/// `ToolbarDefaultItemKind.title` is macOS 15+; older systems keep prior toolbar behavior.
+private struct DetailToolbarDefaultTitleRemoval: ViewModifier {
+    var isCompact: Bool
+
+    func body(content: Content) -> some View {
+        if isCompact {
+            if #available(macOS 15.0, *) {
+                content.toolbar(removing: .title)
+            } else {
+                content
+            }
+        } else {
+            content
+        }
     }
 }
 

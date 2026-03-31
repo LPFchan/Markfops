@@ -10,22 +10,34 @@ private struct PillBarWidthKey: PreferenceKey {
 
 /// Scrollable tab pill row — used as the toolbar's principal item in compact mode.
 struct TabPillRowView: View {
+    /// When set from the toolbar `GeometryReader`, pill widths follow the **alotted** principal
+    /// width. Otherwise `ScrollView` content reports a huge intrinsic width and `NSToolbar` moves
+    /// the whole principal item (or other controls) into the overflow `>>` menu instead of shrinking.
+    var toolbarSlotWidth: CGFloat? = nil
+
     @Environment(DocumentStore.self) private var store
     @State private var dropInsertionIndex: Int? = nil
-    /// Total width of this view, measured via GeometryReader so it doesn't affect layout.
+    /// Measured width when not using `toolbarSlotWidth` (e.g. standalone `HorizontalTabBarView`).
     @State private var availableWidth: CGFloat = 600
+
+    private var widthForLayout: CGFloat {
+        if let slot = toolbarSlotWidth, slot > 0 { return slot }
+        return max(availableWidth, 1)
+    }
 
     // MARK: - Dynamic pill width
     //
-    // Divides available space equally across all pills so they fill the bar like browser tabs.
-    // Falls back to a readable minimum (90 pt) when there are many tabs.
+    // Divides available space equally across all pills. Floor is kept low so when the window is
+    // narrow, pills shrink (and scroll) instead of the system toolbar overflowing the sidebar or
+    // mode controls into the >> menu.
     private var pillWidth: CGFloat {
         let buttonW: CGFloat = 36 + 8   // + button + its trailing padding
         let leadPad: CGFloat = 8        // .padding(.leading, 8) on the scroll content
         let spacing: CGFloat = 4
         let count = max(1, CGFloat(store.documents.count))
-        let forAllPills = availableWidth - buttonW - leadPad - spacing * (count - 1)
-        return max(90, min(200, forAllPills / count))
+        let forAllPills = widthForLayout - buttonW - leadPad - spacing * (count - 1)
+        // Down to ~26pt: favicon-only tabs (see `DocumentTabView.isIconOnly`).
+        return max(26, min(200, forAllPills / count))
     }
 
     var body: some View {
@@ -57,6 +69,8 @@ struct TabPillRowView: View {
                     .padding(.leading, 8)
                     .padding(.vertical, 5)
                 }
+                // Fill the HStack width so the strip does not inherit the scroll content's ideal width.
+                .frame(maxWidth: .infinity)
                 // Gradient fade on both edges to show there's more to scroll.
                 .mask(alignment: .center) {
                     LinearGradient(
@@ -89,14 +103,21 @@ struct TabPillRowView: View {
             .padding(.trailing, 8)
             .help("New Tab  ⌘T")
         }
-        // Measure width without affecting layout (GeometryReader in background = no layout influence).
+        .frame(minWidth: 0)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(height: toolbarSlotWidth != nil ? ToolbarMetrics.compactPillRowHeight : nil)
+        // Measure width when not driven by the toolbar slot (standalone bar).
         .background(
-            GeometryReader { geo in
-                Color.clear.preference(key: PillBarWidthKey.self, value: geo.size.width)
+            Group {
+                if toolbarSlotWidth == nil {
+                    GeometryReader { geo in
+                        Color.clear.preference(key: PillBarWidthKey.self, value: geo.size.width)
+                    }
+                }
             }
         )
         .onPreferenceChange(PillBarWidthKey.self) { w in
-            guard w > 10 else { return }
+            guard toolbarSlotWidth == nil, w > 10 else { return }
             availableWidth = w
         }
     }
@@ -237,6 +258,6 @@ struct HorizontalTabBarView: View {
         TabPillRowView()
             .background(Color(NSColor.windowBackgroundColor))
             .overlay(Divider(), alignment: .bottom)
-            .frame(height: 42)
+            .frame(height: ToolbarMetrics.compactPillRowHeight + 2)
     }
 }

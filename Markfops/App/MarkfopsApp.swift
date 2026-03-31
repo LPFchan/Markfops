@@ -12,8 +12,10 @@ struct MarkfopsApp: App {
                 .onOpenURL { url in
                     appDelegate.store.open(url: url)
                 }
-                .frame(minWidth: 700, minHeight: 500)
+                .frame(minHeight: 500)
         }
+        // Match sidebar-mode titlebar/toolbar height; `.unifiedCompact` (often the default) is shorter.
+        .windowToolbarStyle(.unified)
         .commands {
             MarkfopsCommands()
         }

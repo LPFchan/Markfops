@@ -332,6 +332,30 @@ struct DocumentTabView: View {
     /// Dynamic width passed from TabPillRowView; nil = hug content.
     var pillWidth: CGFloat? = nil
 
+    /// Below this width, show favicon only (no title) so tabs can shrink with the window.
+    private var isIconOnly: Bool {
+        guard let w = pillWidth else { return false }
+        return w < 56
+    }
+
+    private var faviconSize: CGFloat {
+        guard let w = pillWidth else { return 18 }
+        if w < 30 { return 14 }
+        if w < 42 { return 16 }
+        return 18
+    }
+
+    private var faviconFontSize: CGFloat {
+        max(8, min(11, faviconSize * 0.56))
+    }
+
+    private var horizontalPadding: CGFloat {
+        guard let w = pillWidth else { return 10 }
+        if w < 56 { return 4 }
+        if w < 72 { return 6 }
+        return 10
+    }
+
     @State private var isHovered      = false
     @State private var isCloseHovered = false
     @State private var isRenaming     = false
@@ -339,49 +363,75 @@ struct DocumentTabView: View {
     @FocusState private var renameFieldFocused: Bool
     @State private var renameTask: Task<Void, Never>? = nil
 
-    var body: some View {
-        HStack(spacing: 5) {
-            FaviconBadge(
-                letter: document.faviconLetter,
-                size: 18, fontSize: 10,
-                fileURL: document.fileURL,
-                hasH1: document.headings.contains(where: { $0.level == 1 })
-            )
+    private var faviconView: some View {
+        FaviconBadge(
+            letter: document.faviconLetter,
+            size: faviconSize,
+            fontSize: faviconFontSize,
+            fileURL: document.fileURL,
+            hasH1: document.headings.contains(where: { $0.level == 1 })
+        )
+    }
 
-            // Title / rename field / detach indicator — fills remaining space.
-            // Close button overlays the trailing edge so the title can extend to the pill's right edge;
-            // the trailing gradient mask fades the text behind the button when hovering.
-            Group {
-                if isRenaming {
-                    TextField("", text: $renameText)
-                        .font(.system(size: 12))
-                        .focused($renameFieldFocused)
-                        .frame(maxWidth: .infinity)
-                        .onSubmit { commitRename() }
-                        .onKeyPress(.escape) { isRenaming = false; return .handled }
-                        .onAppear { renameFieldFocused = true }
-                } else if isInDetachZone {
-                    Label("New Window", systemImage: "macwindow")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.accentColor)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .lineLimit(1)
-                } else {
-                    Text(document.sidebarDisplayTitle)
-                        .font(.system(size: 12))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .mask(trailingFadeMask)
+    var body: some View {
+        Group {
+            if isIconOnly && !isRenaming && !isInDetachZone {
+                ZStack(alignment: .trailing) {
+                    HStack(spacing: 0) {
+                        Spacer(minLength: 0)
+                        faviconView
+                        Spacer(minLength: 0)
+                    }
+                    closeSlot
+                }
+            } else {
+                HStack(spacing: 5) {
+                    if isInDetachZone && isIconOnly {
+                        Spacer(minLength: 0)
+                        Image(systemName: "macwindow")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.accentColor)
+                        Spacer(minLength: 0)
+                    } else {
+                        faviconView
+
+                        // Title / rename field / detach indicator — fills remaining space.
+                        // Close button overlays the trailing edge so the title can extend to the pill's right edge;
+                        // the trailing gradient mask fades the text behind the button when hovering.
+                        Group {
+                            if isRenaming {
+                                TextField("", text: $renameText)
+                                    .font(.system(size: 12))
+                                    .focused($renameFieldFocused)
+                                    .frame(maxWidth: .infinity)
+                                    .onSubmit { commitRename() }
+                                    .onKeyPress(.escape) { isRenaming = false; return .handled }
+                                    .onAppear { renameFieldFocused = true }
+                            } else if isInDetachZone {
+                                Label("New Window", systemImage: "macwindow")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(.accentColor)
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                    .lineLimit(1)
+                            } else {
+                                Text(document.sidebarDisplayTitle)
+                                    .font(.system(size: 12))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .mask(trailingFadeMask)
+                            }
+                        }
+                        .animation(.easeOut(duration: 0.18), value: isInDetachZone)
+                        .animation(.easeOut(duration: 0.18), value: isRenaming)
+                        .overlay(alignment: .trailing) {
+                            if !isRenaming && !isInDetachZone { closeSlot }
+                        }
+                    }
                 }
             }
-            .animation(.easeOut(duration: 0.18), value: isInDetachZone)
-            .animation(.easeOut(duration: 0.18), value: isRenaming)
-            .overlay(alignment: .trailing) {
-                if !isRenaming && !isInDetachZone { closeSlot }
-            }
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, horizontalPadding)
         .padding(.vertical, 6)
         .frame(width: pillWidth)
         // Shape morphs from rounded pill → squarish window as pill enters detach zone
@@ -405,7 +455,7 @@ struct DocumentTabView: View {
         // Rename: only schedule when already the active doc.
         .onTapGesture {
             if isActive {
-                scheduleRename()
+                if !isIconOnly { scheduleRename() }
             } else {
                 renameTask?.cancel()
                 onSelect()
@@ -413,7 +463,7 @@ struct DocumentTabView: View {
         }
         .onHover { hovered in
             isHovered = hovered
-            if !hovered { renameTask?.cancel() }
+            if !hovered || isIconOnly { renameTask?.cancel() }
         }
         // Cancel rename when this pill becomes inactive (user clicked another tab).
         .onChange(of: isActive) { _, active in
@@ -422,12 +472,14 @@ struct DocumentTabView: View {
                 isRenaming = false
             }
         }
+        .accessibilityLabel(document.sidebarDisplayTitle)
         .contextMenu { DocumentContextMenu(document: document, onClose: onClose) }
     }
 
     // MARK: - Rename
 
     private func scheduleRename() {
+        guard !isIconOnly else { return }
         renameTask?.cancel()
         renameTask = Task { @MainActor in
             do {
