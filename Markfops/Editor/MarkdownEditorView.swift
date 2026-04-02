@@ -10,6 +10,27 @@ final class EditorBridge {
     func scrollToRatio(_ ratio: Double) {
         coordinator?.scrollToRatio(ratio)
     }
+
+    @discardableResult
+    func focus() -> Bool {
+        coordinator?.focusTextView() ?? false
+    }
+
+    func selectedText() -> String? {
+        coordinator?.selectedText()
+    }
+
+    func find(_ query: String, forward: Bool) -> Bool {
+        coordinator?.find(query, forward: forward) ?? false
+    }
+
+    func replaceCurrentMatch(find query: String, replace replacement: String) -> Bool {
+        coordinator?.replaceCurrentMatch(find: query, replace: replacement) ?? false
+    }
+
+    func replaceAll(find query: String, replace replacement: String) -> Int {
+        coordinator?.replaceAll(find: query, replace: replacement) ?? 0
+    }
 }
 
 // MARK: - NSTextView subclass
@@ -18,6 +39,7 @@ final class MarkdownNSTextView: NSTextView {
     var configuration: EditorConfiguration = .default {
         didSet { applyConfiguration() }
     }
+    private var findHighlightOverlays: [NSView] = []
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -79,6 +101,78 @@ final class MarkdownNSTextView: NSTextView {
             didChangeText()
             setSelectedRange(NSRange(location: sel.location + prefix.count, length: selected.count))
         }
+    }
+
+    func flashFindHighlight(for range: NSRange) {
+        guard let layoutManager,
+              let textContainer else { return }
+
+        clearFindHighlightOverlays()
+
+        let glyphRange = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+        let origin = textContainerOrigin
+
+        layoutManager.enumerateEnclosingRects(
+            forGlyphRange: glyphRange,
+            withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0),
+            in: textContainer
+        ) { [weak self] rect, _ in
+            guard let self, rect.width > 0, rect.height > 0 else { return }
+
+            let overlay = NSView(frame: rect.offsetBy(dx: origin.x - 4, dy: origin.y - 2).insetBy(dx: -4, dy: -3))
+            overlay.wantsLayer = true
+            overlay.layer?.cornerRadius = 8
+            overlay.layer?.backgroundColor = NSColor.systemYellow.withAlphaComponent(0.40).cgColor
+            overlay.layer?.borderColor = NSColor.systemOrange.withAlphaComponent(0.95).cgColor
+            overlay.layer?.borderWidth = 1.2
+            overlay.layer?.shadowColor = NSColor.systemYellow.withAlphaComponent(0.55).cgColor
+            overlay.layer?.shadowOpacity = 1
+            overlay.layer?.shadowRadius = 12
+            overlay.layer?.shadowOffset = CGSize(width: 0, height: 6)
+            overlay.alphaValue = 0
+
+            addSubview(overlay)
+            findHighlightOverlays.append(overlay)
+
+            overlay.layer?.setAffineTransform(CGAffineTransform(scaleX: 0.94, y: 0.94))
+
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.14
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                overlay.animator().alphaValue = 1
+                overlay.layer?.animateScale(to: 1.0, duration: context.duration)
+            }
+
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.42
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                context.completionHandler = { [weak self, weak overlay] in
+                    overlay?.removeFromSuperview()
+                    self?.findHighlightOverlays.removeAll { $0 === overlay }
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.58) {
+                    overlay.animator().alphaValue = 0
+                    overlay.layer?.animateScale(to: 1.04, duration: context.duration)
+                }
+            }, completionHandler: {})
+        }
+    }
+
+    private func clearFindHighlightOverlays() {
+        findHighlightOverlays.forEach { $0.removeFromSuperview() }
+        findHighlightOverlays.removeAll()
+    }
+}
+
+private extension CALayer {
+    func animateScale(to value: CGFloat, duration: TimeInterval) {
+        let animation = CABasicAnimation(keyPath: "transform.scale")
+        animation.fromValue = presentation()?.value(forKeyPath: "transform.scale") ?? value
+        animation.toValue = value
+        animation.duration = duration
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        transform = CATransform3DMakeScale(value, value, 1)
+        add(animation, forKey: "markfops.scale")
     }
 }
 

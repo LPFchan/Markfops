@@ -10,38 +10,58 @@ struct EditorContainerView: View {
     @State private var isDragTargeted = false
     @State private var bridge = PreviewBridge()
     @State private var editorBridge = EditorBridge()
+    @State private var findController = FindController()
+
+    private var findOverlayReservedTopInset: CGFloat {
+        guard findController.isVisible else { return 0 }
+        if findController.showsReplace && document.mode == .edit {
+            return 122
+        }
+        return 74
+    }
 
     var body: some View {
-        Group {
-            switch document.mode {
-            case .edit:
-                EditorView(
-                    text: $document.rawText,
-                    document: document,
-                    configuration: configuration,
-                    scrollToLine: scrollToHeading?.lineNumber,
-                    editorBridge: editorBridge
-                )
+        ZStack(alignment: .top) {
+            Group {
+                switch document.mode {
+                case .edit:
+                    EditorView(
+                        text: $document.rawText,
+                        document: document,
+                        configuration: configuration,
+                        scrollToLine: scrollToHeading?.lineNumber,
+                        editorBridge: editorBridge
+                    )
+                    .padding(.top, findOverlayReservedTopInset)
+                    .focusedValue(\.editorBridge, editorBridge)
 
-            case .preview:
-                PreviewView(
-                    htmlContent: htmlContent,
-                    bridge: bridge,
-                    onTextChange: { editedText in
-                        // WYSIWYG edits from the viewer arrive here (debounced 400ms)
-                        document.rawText = editedText
-                        document.updateTextMetrics()
-                        document.isDirty = true
-                        document.headings = HeadingParser.parseHeadings(in: editedText)
-                        document.reconcileActiveHeadingWithCurrentContent()
-                    },
-                    onScrollChange: { ratio in
-                        document.scrollRatio = ratio
-                        document.syncActiveHeadingToScrollPosition()
-                    }
-                )
+                case .preview:
+                    PreviewView(
+                        htmlContent: htmlContent,
+                        bridge: bridge,
+                        onTextChange: { editedText in
+                            document.rawText = editedText
+                            document.updateTextMetrics()
+                            document.isDirty = true
+                            document.headings = HeadingParser.parseHeadings(in: editedText)
+                            document.reconcileActiveHeadingWithCurrentContent()
+                        },
+                        onScrollChange: { ratio in
+                            document.scrollRatio = ratio
+                            document.syncActiveHeadingToScrollPosition()
+                        }
+                    )
+                    .padding(.top, findOverlayReservedTopInset)
+                    .focusedValue(\.previewBridge, bridge)
+                }
+            }
+
+            if findController.isVisible {
+                FindReplaceBar(controller: findController)
+                    .zIndex(2)
             }
         }
+        .animation(.spring(response: 0.32, dampingFraction: 0.88), value: findController.isVisible)
         .overlay(
             isDragTargeted
                 ? RoundedRectangle(cornerRadius: 0)
@@ -49,6 +69,12 @@ struct EditorContainerView: View {
                     .allowsHitTesting(false)
                 : nil
         )
+        .focusedSceneValue(\.editorBridge, editorBridge)
+        .focusedSceneValue(\.previewBridge, bridge)
+        .focusedSceneValue(\.findController, findController)
+        .onAppear {
+            findController.attach(editorBridge: editorBridge, previewBridge: bridge, mode: document.mode)
+        }
         .onDrop(of: [.fileURL], isTargeted: $isDragTargeted) { providers in
             handleDrop(providers: providers)
         }
@@ -60,6 +86,10 @@ struct EditorContainerView: View {
             refreshPreview(from: newText)
         }
         .onChange(of: document.mode) { oldMode, newMode in
+            findController.activeMode = newMode
+            if newMode != .edit {
+                findController.showsReplace = false
+            }
             if oldMode == .preview && newMode == .edit {
                 let wasEditing = bridge.coordinator?.isEditingInView ?? false
                 if wasEditing {

@@ -3,6 +3,19 @@ import SwiftUI
 struct MarkfopsCommands: Commands {
     @FocusedValue(\.documentStore) private var store
     @FocusedValue(\.sidebarVisibility) private var sidebarVisibility
+    @FocusedValue(\.findController) private var findController
+
+    private var activeMode: EditMode? {
+        store?.activeDocument?.mode
+    }
+
+    private var canFind: Bool {
+        activeMode == .edit || activeMode == .preview
+    }
+
+    private var canReplace: Bool {
+        activeMode == .edit
+    }
 
     var body: some Commands {
         CommandGroup(after: .appInfo) {
@@ -136,25 +149,25 @@ struct MarkfopsCommands: Commands {
             Menu("Find") {
                 Button("Find…") { triggerFinder(.showFindInterface) }
                     .keyboardShortcut("f", modifiers: .command)
-                    .disabled(store?.activeDocument?.mode != .edit)
+                    .disabled(!canFind)
 
                 Button("Find and Replace…") { triggerFinder(.showReplaceInterface) }
                     .keyboardShortcut("f", modifiers: [.command, .option])
-                    .disabled(store?.activeDocument?.mode != .edit)
+                    .disabled(!canReplace)
 
                 Divider()
 
                 Button("Find Next") { triggerFinder(.nextMatch) }
                     .keyboardShortcut("g", modifiers: .command)
-                    .disabled(store?.activeDocument?.mode != .edit)
+                    .disabled(!canFind)
 
                 Button("Find Previous") { triggerFinder(.previousMatch) }
                     .keyboardShortcut("g", modifiers: [.command, .shift])
-                    .disabled(store?.activeDocument?.mode != .edit)
+                    .disabled(!canFind)
 
                 Button("Use Selection for Find") { triggerFinder(.setSearchString) }
                     .keyboardShortcut("e", modifiers: .command)
-                    .disabled(store?.activeDocument?.mode != .edit)
+                    .disabled(!canReplace)
             }
         }
 
@@ -167,7 +180,7 @@ struct MarkfopsCommands: Commands {
             .keyboardShortcut("p", modifiers: [.command, .shift])
 
             Button(sidebarVisibility?.wrappedValue == .detailOnly ? "Show Sidebar" : "Hide Sidebar") {
-                withAnimation {
+                withAnimation(.spring(duration: 0.22)) {
                     if sidebarVisibility?.wrappedValue == .detailOnly {
                         sidebarVisibility?.wrappedValue = .all
                     } else {
@@ -235,9 +248,20 @@ struct MarkfopsCommands: Commands {
 
     /// Forwards a text finder action to the first responder regardless of current focus.
     private func triggerFinder(_ action: NSTextFinder.Action) {
-        let item = NSMenuItem()
-        item.tag = action.rawValue
-        NSApp.sendAction(#selector(NSTextView.performTextFinderAction(_:)), to: nil, from: item)
+        switch action {
+        case .showFindInterface:
+            findController?.showFind()
+        case .showReplaceInterface:
+            findController?.showReplace()
+        case .nextMatch:
+            findController?.findNext()
+        case .previousMatch:
+            findController?.findPrevious()
+        case .setSearchString:
+            findController?.useSelectionForFind()
+        default:
+            break
+        }
     }
 
     private func openFile() {

@@ -361,6 +361,18 @@ struct SidebarVisibilityKey: FocusedValueKey {
     typealias Value = Binding<NavigationSplitViewVisibility>
 }
 
+struct EditorBridgeFocusKey: FocusedValueKey {
+    typealias Value = EditorBridge
+}
+
+struct PreviewBridgeFocusKey: FocusedValueKey {
+    typealias Value = PreviewBridge
+}
+
+struct FindControllerFocusKey: FocusedValueKey {
+    typealias Value = FindController
+}
+
 extension FocusedValues {
     var documentStore: DocumentStore? {
         get { self[DocumentStoreFocusKey.self] }
@@ -370,5 +382,20 @@ extension FocusedValues {
     var sidebarVisibility: Binding<NavigationSplitViewVisibility>? {
         get { self[SidebarVisibilityKey.self] }
         set { self[SidebarVisibilityKey.self] = newValue }
+    }
+
+    var editorBridge: EditorBridge? {
+        get { self[EditorBridgeFocusKey.self] }
+        set { self[EditorBridgeFocusKey.self] = newValue }
+    }
+
+    var previewBridge: PreviewBridge? {
+        get { self[PreviewBridgeFocusKey.self] }
+        set { self[PreviewBridgeFocusKey.self] = newValue }
+    }
+
+    var findController: FindController? {
+        get { self[FindControllerFocusKey.self] }
+        set { self[FindControllerFocusKey.self] = newValue }
     }
 }
