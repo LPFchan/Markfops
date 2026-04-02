@@ -19,3 +19,10 @@
 - Completed artifacts accepted before that objective was added should receive focused delta revalidation rather than full restart, unless their evidence turns out to be insufficient.
 - Delta revalidation confirmed that the viewport-center ratio remains the correct baseline for shared scroll intent in Markfops, but it must be paired with durable block identity and drift correction.
 - Delta revalidation confirmed that Milkdown's implicit single-view viewport ownership is not an acceptable model for Markfops' rigorous two-view synchronization goal.
+- Intend confirms that a pure parse-result pipeline feeding separate native and HTML renderers is viable in a native macOS architecture.
+- Intend also confirms that source-span coordinates alone are not sufficient for durable identity, semantic transitions, or rigorous two-view synchronization.
+- Inkdown is not a native-inline-markdown reference; it should be treated as a compact Electron and Slate block-editor specimen instead.
+- Inkdown confirms that useful local ideas such as block taxonomy, worker boundaries, and serializer structure can come from a mismatched architecture without changing Markfops' markdown-first and native-first target constraints.
+- Inkdown also confirms that path-based and content-derived block identity are insufficient for durable morphing or two-view synchronization.
+- SimpleBlockEditor confirms that durable UUID-based block identity, policy-driven block editing, and row-scoped controller reuse are viable in a native AppKit architecture.
+- SimpleBlockEditor also confirms that Markfops should not make semantic blocks the canonical document model, even though block identity and editing-policy seams are worth borrowing.

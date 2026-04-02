@@ -11,3 +11,9 @@
 - How should Markfops detect and correct scroll drift when editor and preview layouts diverge because of typography, code blocks, tables, images, or folded structure?
 - Should Markfops standardize on a dual-anchor model of shared continuous ratio plus durable semantic block identity for all two-view synchronization work?
 - Can parser/serializer separation and selection observability be reused while viewport-anchor ownership remains a native coordination subsystem outside the editor core?
+- Should Markfops adopt a `SourceSpan`-style parser coordinate model for source mapping while layering durable block ids above it?
+- How early should Markfops require preview-to-editor feedback channels, given that Intend's passive preview model leaves synchronization unsolved?
+- How much of Inkdown's block taxonomy should Markfops standardize early, even though Inkdown's surrounding editor architecture is a poor fit?
+- If Markfops uses derived heading slugs or similar local anchors, where should it draw the boundary between navigational anchors and durable semantic identity?
+- How should Markfops preserve durable block identity through markdown-first editing without replacing markdown source with a block-canonical model like SimpleBlockEditor?
+- What is the minimal viewport-management layer Markfops needs if it adopts one-controller-per-block or one-row-per-block concepts from SimpleBlockEditor without inheriting whole-document stack-view scaling limits?

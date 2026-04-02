@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-Phase 2: reference repo deep dives
+Phase 3: cross-reference synthesis
 
 ## Revalidation Status
 
@@ -18,15 +18,14 @@ Phase 2: reference repo deep dives
 ## Phase Scope
 
 - Active scope: no current subagent assignment.
-- Next narrow scope: `intend-deep-dive.md` only.
-- Out of scope for the next pass: `inkdown` and `SimpleBlockEditor` archaeology, plus any cross-repo synthesis artifacts.
+- Out of scope for the next pass: none at repo-deep-dive level.
 - Orchestrator responsibility: maintain coordination state, launch narrow read-only passes, and reject incomplete evidence.
 
 ## Active Assignment
 
 - assigned artifact: none
 - assigned agent role: none
-- status: awaiting next Phase 2 delegation
+- status: Phase 2 repo deep dives complete
 
 ## Evidence Standard
 
@@ -38,9 +37,9 @@ Phase 2: reference repo deep dives
 
 ## Next Assignment
 
-- `intend-deep-dive.md`
+- `comparison-matrix.md`, `transferability-matrix.md`, and synthesis-stage architecture artifacts
 
-Delta revalidations are complete. Cross-reference synthesis remains blocked until the remaining repo deep dives exist.
+SimpleBlockEditor is now complete. Phase 2 repo deep dives are complete. Cross-reference synthesis can begin.
 
 Completed targeted addendum passes:
 
@@ -53,9 +52,9 @@ Completed targeted addendum passes:
 
 ## Latest Completed Artifact
 
-- `milkdown-deep-dive.md`
+- `simple-block-editor-deep-dive.md`
 - completion status: accepted into canonical research state
-- key reference finding: Milkdown cleanly separates plugin bootstrapping, parser/serializer boundaries, and command registration, but its canonical state, rendering model, and weak content-derived identity are tightly bound to ProseMirror and browser DOM assumptions.
+- key reference finding: SimpleBlockEditor is the strongest native reference for durable block identity, policy-driven block editing, and row-scoped reuse, but it is block-canonical rather than markdown-canonical and provides no two-view architecture.
 
 ## Active Reference Context
 
