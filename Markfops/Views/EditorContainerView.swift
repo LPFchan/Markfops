@@ -39,13 +39,6 @@ struct EditorContainerView: View {
                     PreviewView(
                         htmlContent: htmlContent,
                         bridge: bridge,
-                        onTextChange: { editedText in
-                            document.rawText = editedText
-                            document.updateTextMetrics()
-                            document.isDirty = true
-                            document.headings = HeadingParser.parseHeadings(in: editedText)
-                            document.reconcileActiveHeadingWithCurrentContent()
-                        },
                         onScrollChange: { ratio in
                             document.scrollRatio = ratio
                             document.syncActiveHeadingToScrollPosition()
@@ -79,10 +72,7 @@ struct EditorContainerView: View {
             handleDrop(providers: providers)
         }
         .onChange(of: document.rawText, initial: true) { _, newText in
-            // Only push a fresh render when the change came from the editor (not from
-            // the WYSIWYG view syncing back its own edits) and preview is visible.
-            guard document.mode == .preview,
-                  bridge.coordinator?.isEditingInView != true else { return }
+            guard document.mode == .preview else { return }
             refreshPreview(from: newText)
         }
         .onChange(of: document.mode) { oldMode, newMode in
@@ -91,20 +81,6 @@ struct EditorContainerView: View {
                 findController.showsReplace = false
             }
             if oldMode == .preview && newMode == .edit {
-                let wasEditing = bridge.coordinator?.isEditingInView ?? false
-                if wasEditing {
-                    bridge.extractText { text in
-                        if !text.isEmpty {
-                            document.rawText = text
-                            document.updateTextMetrics()
-                            document.headings = HeadingParser.parseHeadings(in: text)
-                            document.reconcileActiveHeadingWithCurrentContent()
-                        }
-                        bridge.resetEditingFlag()
-                    }
-                } else {
-                    bridge.resetEditingFlag()
-                }
                 // Restore editor scroll position after view switches back
                 let ratio = document.scrollRatio
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -112,7 +88,6 @@ struct EditorContainerView: View {
                 }
             } else if newMode == .preview {
                 bridge.setPendingScrollRatio(document.scrollRatio)
-                bridge.resetEditingFlag()
                 refreshPreview(from: document.rawText)
             }
         }
@@ -122,7 +97,6 @@ struct EditorContainerView: View {
         }
         .onChange(of: colorScheme) { _, _ in
             if document.mode == .preview {
-                bridge.resetEditingFlag()
                 refreshPreview(from: document.rawText)
             }
         }

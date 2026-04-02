@@ -237,8 +237,7 @@ struct MarkfopsCommands: Commands {
             Divider()
 
             // Paste and Match Style — strips RTF/rich formatting, inserts plain text.
-            // In Edit mode: handled natively by NSTextView (pasteAsPlainText:).
-            // In Preview/WYSIWYG mode: enforced automatically via the JS paste interceptor.
+            // In Edit mode this is handled natively by NSTextView.
             Button("Paste and Match Style") {
                 NSApp.sendAction(#selector(NSTextView.pasteAsPlainText(_:)), to: nil, from: nil)
             }

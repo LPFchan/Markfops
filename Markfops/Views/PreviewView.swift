@@ -72,19 +72,14 @@ final class PreviewBridge {
 
 // MARK: - View
 
-/// WYSIWYG editing surface: renders markdown as HTML and makes it directly editable.
-/// The user sees formatted output (headings, bold, code blocks, tables) and can click
-/// anywhere and start typing — just like a word processor.
-/// Paste and Match Style is enforced: all pasted content is stripped to plain text.
+/// Read-only rendered preview surface for the current markdown document.
 struct PreviewView: NSViewRepresentable {
     let htmlContent: String
     let bridge: PreviewBridge
-    var onTextChange: ((String) -> Void)?
     var onScrollChange: ((Double) -> Void)?
 
     func makeNSView(context: Context) -> WKWebView {
         let userContent = WKUserContentController()
-        userContent.add(context.coordinator, name: "textChanged")
         userContent.add(context.coordinator, name: "scrollChanged")
 
         let config = WKWebViewConfiguration()
@@ -95,7 +90,6 @@ struct PreviewView: NSViewRepresentable {
         webView.allowsMagnification = true
 
         context.coordinator.webView = webView
-        context.coordinator.onTextChange = onTextChange
         context.coordinator.onScrollChange = onScrollChange
         // Setting coordinator triggers didSet, which forwards any buffered scroll ratio.
         bridge.coordinator = context.coordinator
@@ -104,14 +98,11 @@ struct PreviewView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        context.coordinator.onTextChange = onTextChange
         context.coordinator.onScrollChange = onScrollChange
 
-        // Don't reload while the user is actively editing inside the web view.
-        let isEditing = context.coordinator.isEditingInView
         let isEmpty = htmlContent.isEmpty
         let isSame = htmlContent == context.coordinator.lastLoadedHTML
-        guard !isEditing, !isEmpty, !isSame else { return }
+        guard !isEmpty, !isSame else { return }
 
         context.coordinator.lastLoadedHTML = htmlContent
         webView.loadHTMLString(htmlContent, baseURL: nil)
@@ -125,7 +116,6 @@ struct PreviewView: NSViewRepresentable {
         weak var webView: WKWebView?
         var lastLoadedHTML: String = ""
         var isEditingInView = false
-        var onTextChange: ((String) -> Void)?
         var onScrollChange: ((Double) -> Void)?
         /// Ratio [0,1] to scroll to once the next page load finishes.
         var pendingScrollRatio: Double?
@@ -168,15 +158,12 @@ struct PreviewView: NSViewRepresentable {
             _ userContentController: WKUserContentController,
             didReceive message: WKScriptMessage
         ) {
-            if message.name == "textChanged", let text = message.body as? String {
-                isEditingInView = true
-                onTextChange?(text)
-            } else if message.name == "scrollChanged", let ratio = message.body as? Double {
+            if message.name == "scrollChanged", let ratio = message.body as? Double {
                 onScrollChange?(ratio)
             }
         }
 
-        // After HTML loads, enable editing and wire up JS helpers.
+        // After HTML loads, wire up JS helpers for find and scroll syncing.
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             let js = """
             (function() {
@@ -252,36 +239,8 @@ struct PreviewView: NSViewRepresentable {
                     }
                 };
 
-                // Make content editable — click anywhere and type
-                article.setAttribute('contenteditable', 'true');
-                article.setAttribute('spellcheck', 'true');
+                article.setAttribute('tabindex', '-1');
                 article.style.outline = 'none';
-                article.style.cursor = 'text';
-                article.style.caretColor = 'auto';
-
-                // Paste and Match Style: always strip rich-text formatting on paste
-                article.addEventListener('paste', function(e) {
-                    e.preventDefault();
-                    var plain = (e.clipboardData || window.clipboardData).getData('text/plain');
-                    document.execCommand('insertText', false, plain);
-                });
-
-                // Notify Swift of text changes (debounced 400 ms)
-                var debounceTimer;
-                article.addEventListener('input', function() {
-                    clearTimeout(debounceTimer);
-                    debounceTimer = setTimeout(function() {
-                        window.webkit.messageHandlers.textChanged.postMessage(article.innerText);
-                    }, 400);
-                });
-
-                // Keyboard formatting shortcuts inside the viewer
-                article.addEventListener('keydown', function(e) {
-                    if (!e.metaKey) return;
-                    if (e.key === 'b') { e.preventDefault(); document.execCommand('bold'); }
-                    if (e.key === 'i') { e.preventDefault(); document.execCommand('italic'); }
-                    if (e.key === 'u') { e.preventDefault(); /* underline — no-op in md */ }
-                });
 
                 // Report scroll position (throttled) so Swift can sync back to editor.
                 // Reports center-of-viewport ratio: (scrollY + innerHeight/2) / scrollHeight
