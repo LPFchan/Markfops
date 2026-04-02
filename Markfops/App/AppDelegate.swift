@@ -54,15 +54,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func restoreLastSession() {
-        let strings = UserDefaults.standard.stringArray(forKey: "lastOpenDocuments") ?? []
-        let urls = strings
-            .compactMap { URL(string: $0) }
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
-        for url in urls { store.open(url: url) }
+        store.restorePersistedSession()
     }
 
     private func persistSession() {
-        let strings = store.documents.compactMap { $0.fileURL?.absoluteString }
-        UserDefaults.standard.set(strings, forKey: "lastOpenDocuments")
+        store.persistSession()
     }
 }

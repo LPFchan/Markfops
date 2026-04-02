@@ -5,12 +5,20 @@ import QuartzCore
 @Observable
 final class Document: Identifiable {
     let id: UUID
-    var fileURL: URL?
-    var rawText: String
+    var fileURL: URL? {
+        didSet { notifyStateChange() }
+    }
+    var rawText: String {
+        didSet { notifyStateChange() }
+    }
     @ObservationIgnored private(set) var lineCount: Int
-    var isDirty: Bool
+    var isDirty: Bool {
+        didSet { notifyStateChange() }
+    }
     /// Text as of the last save or open — used to detect whether undo restored the clean state.
-    var savedText: String
+    var savedText: String {
+        didSet { notifyStateChange() }
+    }
     var mode: EditMode
     /// Scroll position as a ratio [0,1] of the document height. @ObservationIgnored
     /// to avoid re-rendering the entire view hierarchy on every scroll event.
@@ -24,9 +32,10 @@ final class Document: Identifiable {
     @ObservationIgnored private var fileWatchSource: DispatchSourceFileSystemObject?
     @ObservationIgnored private var pendingFocusedHeading: HeadingNode?
     @ObservationIgnored private var pendingFocusedHeadingExpiry: CFTimeInterval = 0
+    @ObservationIgnored var onStateChange: ((Document) -> Void)?
 
-    init(fileURL: URL? = nil, rawText: String = "") {
-        self.id = UUID()
+    init(id: UUID = UUID(), fileURL: URL? = nil, rawText: String = "") {
+        self.id = id
         self.fileURL = fileURL
         self.rawText = rawText
         self.lineCount = Self.lineCount(for: rawText)
@@ -157,6 +166,10 @@ final class Document: Identifiable {
     }
 
     deinit { stopWatching() }
+
+    private func notifyStateChange() {
+        onStateChange?(self)
+    }
 
     var displayTitle: String {
         HeadingParser.firstH1Title(in: rawText)

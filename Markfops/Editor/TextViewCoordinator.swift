@@ -6,6 +6,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
     var textView: MarkdownNSTextView?
     let highlighter = MarkdownSyntaxHighlighter()
     private var headingDebounceItem: DispatchWorkItem?
+    private weak var observedScrollView: NSScrollView?
     private var scrollAnimationTimer: Timer?
     private var scrollAnimationStartY: CGFloat?
     private var scrollAnimationTargetY: CGFloat?
@@ -17,6 +18,32 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
 
     init(document: Document) {
         self.document = document
+    }
+
+    deinit {
+        teardown()
+    }
+
+    func attach(scrollView: NSScrollView) {
+        observedScrollView = scrollView
+    }
+
+    func prepareForDocumentSwitch(to document: Document, textView: MarkdownNSTextView) {
+        headingDebounceItem?.cancel()
+        stopScrollAnimation()
+        textView.clearUndoState()
+        self.document = document
+        self.textView = textView
+    }
+
+    func teardown() {
+        headingDebounceItem?.cancel()
+        headingDebounceItem = nil
+        stopScrollAnimation()
+        NotificationCenter.default.removeObserver(self)
+        textView?.clearUndoState()
+        textView = nil
+        observedScrollView = nil
     }
 
     @discardableResult

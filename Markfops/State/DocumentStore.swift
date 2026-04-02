@@ -1,14 +1,24 @@
 import AppKit
+import Darwin
 import Observation
 
 @Observable
 final class DocumentStore {
+    @ObservationIgnored private let recoveryStore = RecoveryStore()
+    @ObservationIgnored private var pendingRecoverySave: DispatchWorkItem?
+    @ObservationIgnored private var isRestoringRecovery = false
+
+    init() {
+        updateCrashRecoveryMetadata(using: RecoverySnapshot(documents: [], activeID: nil))
+    }
+
     private(set) var documents: [Document] = []
     var activeID: UUID? {
         didSet {
             guard activeID != oldValue else { return }
             activeDocument?.reloadFromDiskIfClean(restartWatching: true)
             activeDocument?.reconcileActiveHeadingWithCurrentContent()
+            scheduleRecoverySave()
         }
     }
 
@@ -22,6 +32,7 @@ final class DocumentStore {
     @discardableResult
     func newDocument() -> Document {
         let doc = Document()
+        observe(doc)
         documents.append(doc)
         activeID = doc.id
         return doc
@@ -35,6 +46,7 @@ final class DocumentStore {
         }
         let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         let doc = Document(fileURL: url, rawText: text)
+        observe(doc)
         doc.headings = HeadingParser.parseHeadings(in: text)
         documents.append(doc)
         activeID = doc.id
@@ -75,6 +87,7 @@ final class DocumentStore {
     @discardableResult
     func duplicate(_ document: Document) -> Document {
         let copy = Document(rawText: document.rawText)
+        observe(copy)
         copy.isDirty = true
         documents.insert(copy, at: (documents.firstIndex(of: document) ?? documents.count - 1) + 1)
         activeID = copy.id
@@ -214,11 +227,13 @@ final class DocumentStore {
     // internal (not private) so cross-window drop delegate and file-watch teardown can call it
     func removeDocument(id: UUID) {
         guard let idx = documents.firstIndex(where: { $0.id == id }) else { return }
+        documents[idx].onStateChange = nil
         documents[idx].stopWatching()
         documents.remove(at: idx)
         if activeID == id {
             activeID = documents.isEmpty ? nil : documents[min(idx, documents.count - 1)].id
         }
+        scheduleRecoverySave()
         // Close this window if it was a single-tab detached window and is now empty.
         if documents.isEmpty, let win = managedWindow {
             DispatchQueue.main.async { win.performClose(nil) }
@@ -233,14 +248,18 @@ final class DocumentStore {
     /// Removes `document` from this store and opens it in a brand-new, independent window.
     func detachToNewWindow(_ document: Document) {
         guard let idx = documents.firstIndex(where: { $0.id == document.id }) else { return }
+        document.onStateChange = nil
         documents.remove(at: idx)
         if activeID == document.id {
             activeID = documents.isEmpty ? nil : documents[min(idx, documents.count - 1)].id
         }
+        scheduleRecoverySave()
 
         let newStore = DocumentStore()
         newStore.documents = [document]
+        newStore.observe(document)
         newStore.activeID  = document.id
+        newStore.scheduleRecoverySave()
 
         let rootView = ContentView()
             .environment(newStore)
@@ -270,12 +289,14 @@ final class DocumentStore {
 
     func insertDocument(_ document: Document, at index: Int) {
         let clamped = max(0, min(index, documents.count))
+        observe(document)
         documents.insert(document, at: clamped)
         activeID = document.id
     }
 
     func moveTab(fromOffsets: IndexSet, toOffset: Int) {
         documents.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        scheduleRecoverySave()
     }
 
     func selectNext() {
@@ -293,6 +314,40 @@ final class DocumentStore {
     func selectTab(at index: Int) {
         guard index >= 0, index < documents.count else { return }
         activeID = documents[index].id
+    }
+
+    // MARK: - Recovery persistence
+
+    func restorePersistedSession() {
+        guard documents.isEmpty else { return }
+        guard let snapshot = recoveryStore.load() else { return }
+
+        isRestoringRecovery = true
+        defer {
+            isRestoringRecovery = false
+            scheduleRecoverySave()
+        }
+
+        var restoredDocuments: [Document] = []
+
+        for documentSnapshot in snapshot.documents {
+            let restored = restoreDocument(from: documentSnapshot)
+            guard let restored else { continue }
+            observe(restored)
+            restoredDocuments.append(restored)
+        }
+
+        documents = restoredDocuments
+        if let activeID = snapshot.activeID,
+           restoredDocuments.contains(where: { $0.id == activeID }) {
+            self.activeID = activeID
+        } else {
+            self.activeID = restoredDocuments.first?.id
+        }
+    }
+
+    func persistSession() {
+        saveRecoverySnapshotNow()
     }
 
     // MARK: - Proxy icon + dirty close button
@@ -345,6 +400,268 @@ final class DocumentStore {
             NSAlert(error: error).beginSheetModal(for: window)
         } else {
             NSAlert(error: error).runModal()
+        }
+    }
+
+    private func observe(_ document: Document) {
+        document.onStateChange = { [weak self] _ in
+            self?.scheduleRecoverySave()
+        }
+    }
+
+    private func scheduleRecoverySave() {
+        guard !isRestoringRecovery else { return }
+        pendingRecoverySave?.cancel()
+
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.saveRecoverySnapshotNow()
+        }
+        pendingRecoverySave = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: workItem)
+    }
+
+    private func saveRecoverySnapshotNow() {
+        guard !isRestoringRecovery else { return }
+        pendingRecoverySave?.cancel()
+        pendingRecoverySave = nil
+        let snapshot = makeRecoverySnapshot()
+        recoveryStore.save(snapshot)
+        updateCrashRecoveryMetadata(using: snapshot)
+    }
+
+    private func makeRecoverySnapshot() -> RecoverySnapshot {
+        let documentSnapshots = documents.compactMap { document -> RecoveryDocumentSnapshot? in
+            let fileURLString = document.fileURL?.absoluteString
+            let shouldEmbedDraft = document.isDirty || document.fileURL == nil
+            let rawText = shouldEmbedDraft ? document.rawText : nil
+            let savedText = shouldEmbedDraft ? document.savedText : nil
+
+            guard fileURLString != nil || !(rawText ?? "").isEmpty || document.isDirty else {
+                return nil
+            }
+
+            return RecoveryDocumentSnapshot(
+                id: document.id,
+                displayTitle: document.displayTitle,
+                fileURLString: fileURLString,
+                rawText: rawText,
+                savedText: savedText,
+                isDirty: document.isDirty
+            )
+        }
+
+        return RecoverySnapshot(documents: documentSnapshots, activeID: activeID)
+    }
+
+    private func restoreDocument(from snapshot: RecoveryDocumentSnapshot) -> Document? {
+        let fileURL = snapshot.fileURLString.flatMap(URL.init(string:))
+
+        if let fileURL,
+           FileManager.default.fileExists(atPath: fileURL.path) {
+            let diskText = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+            let rawText = snapshot.isDirty ? (snapshot.rawText ?? diskText) : diskText
+            let document = Document(id: snapshot.id, fileURL: fileURL, rawText: rawText)
+            document.savedText = snapshot.savedText ?? diskText
+            document.isDirty = snapshot.isDirty && rawText != document.savedText
+            document.headings = HeadingParser.parseHeadings(in: rawText)
+            document.startWatching()
+            return document
+        }
+
+        guard let rawText = snapshot.rawText,
+              !rawText.isEmpty || snapshot.isDirty else { return nil }
+
+        let document = Document(id: snapshot.id, rawText: rawText)
+        document.savedText = snapshot.savedText ?? ""
+        document.isDirty = true
+        document.headings = HeadingParser.parseHeadings(in: rawText)
+        return document
+    }
+
+    private func updateCrashRecoveryMetadata(using snapshot: RecoverySnapshot) {
+        let status = recoveryStore.status(for: snapshot, activeDocumentTitle: activeDocument?.displayTitle)
+        CrashRecoveryInfoReporter.shared.update(status.crashLogMessage)
+    }
+}
+
+private struct RecoverySnapshot: Codable {
+    var documents: [RecoveryDocumentSnapshot]
+    var activeID: UUID?
+}
+
+private struct RecoveryDocumentSnapshot: Codable {
+    var id: UUID
+    var displayTitle: String
+    var fileURLString: String?
+    var rawText: String?
+    var savedText: String?
+    var isDirty: Bool
+}
+
+private struct RecoveryStore {
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+
+    func load() -> RecoverySnapshot? {
+        guard let data = try? Data(contentsOf: snapshotURL) else { return nil }
+        return try? decoder.decode(RecoverySnapshot.self, from: data)
+    }
+
+    func save(_ snapshot: RecoverySnapshot) {
+        do {
+            try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: draftsDirectoryURL, withIntermediateDirectories: true)
+            let data = try encoder.encode(snapshot)
+            try data.write(to: snapshotURL, options: .atomic)
+            try syncDraftFiles(for: snapshot)
+            try writeRecoveryInstructions(for: snapshot)
+        } catch {
+            NSSound.beep()
+        }
+    }
+
+    func status(for snapshot: RecoverySnapshot, activeDocumentTitle: String?) -> RecoveryStatus {
+        let draftCount = snapshot.documents.filter { $0.rawText != nil }.count
+        let activeTitle = activeDocumentTitle ?? snapshot.documents.first(where: { $0.id == snapshot.activeID })?.displayTitle
+        let instructionsPath = displayPath(for: instructionsURL)
+        let snapshotPath = displayPath(for: snapshotURL)
+
+        var lines = [
+            "Markfops crash recovery",
+            "Recovery instructions: \(instructionsPath)",
+            "Recovery snapshot: \(snapshotPath)",
+            "Cached draft files: \(draftCount)"
+        ]
+
+        if let activeTitle, !activeTitle.isEmpty {
+            lines.append("Active document: \(activeTitle)")
+        }
+
+        if draftCount > 0 {
+            lines.append("Open RecoveryInstructions.txt to restore unsaved content after a crash.")
+        } else {
+            lines.append("No unsaved draft content is currently cached.")
+        }
+
+        return RecoveryStatus(
+            crashLogMessage: lines.joined(separator: "\n"),
+            instructionsDisplayPath: instructionsPath,
+            snapshotDisplayPath: snapshotPath,
+            draftCount: draftCount
+        )
+    }
+
+    private var directoryURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        return appSupport.appendingPathComponent("Markfops", isDirectory: true)
+    }
+
+    private var snapshotURL: URL {
+        directoryURL.appendingPathComponent("RecoverySession.json", isDirectory: false)
+    }
+
+    private var instructionsURL: URL {
+        directoryURL.appendingPathComponent("RecoveryInstructions.txt", isDirectory: false)
+    }
+
+    private var draftsDirectoryURL: URL {
+        directoryURL.appendingPathComponent("Drafts", isDirectory: true)
+    }
+
+    private func syncDraftFiles(for snapshot: RecoverySnapshot) throws {
+        let fileManager = FileManager.default
+        let existingDrafts = (try? fileManager.contentsOfDirectory(at: draftsDirectoryURL, includingPropertiesForKeys: nil)) ?? []
+        for url in existingDrafts {
+            try? fileManager.removeItem(at: url)
+        }
+
+        for document in snapshot.documents {
+            guard let rawText = document.rawText else { continue }
+            try rawText.write(to: draftURL(for: document), atomically: true, encoding: .utf8)
+        }
+    }
+
+    private func writeRecoveryInstructions(for snapshot: RecoverySnapshot) throws {
+        let status = status(for: snapshot, activeDocumentTitle: snapshot.documents.first(where: { $0.id == snapshot.activeID })?.displayTitle)
+        var lines = [
+            "Markfops Crash Recovery",
+            "",
+            "If the app crashes, the macOS crash report should include the same instructions path shown below under Application Specific Information.",
+            "",
+            "Recovery instructions: \(status.instructionsDisplayPath)",
+            "Recovery snapshot: \(status.snapshotDisplayPath)",
+            "Cached draft files: \(status.draftCount)",
+            ""
+        ]
+
+        if snapshot.documents.isEmpty {
+            lines.append("There are currently no recoverable documents cached.")
+        } else {
+            lines.append("Documents:")
+            for document in snapshot.documents {
+                let draftPath = document.rawText.map { _ in displayPath(for: draftURL(for: document)) } ?? "none"
+                let source = document.fileURLString ?? "unsaved document"
+                let state = document.isDirty ? "unsaved changes" : "saved state"
+                lines.append("- \(document.displayTitle) [\(state)]")
+                lines.append("  Source: \(source)")
+                lines.append("  Draft file: \(draftPath)")
+            }
+        }
+
+        try lines.joined(separator: "\n").write(to: instructionsURL, atomically: true, encoding: .utf8)
+    }
+
+    private func draftURL(for document: RecoveryDocumentSnapshot) -> URL {
+        let title = sanitizeFileName(document.displayTitle)
+        let prefix = document.id.uuidString.prefix(8)
+        return draftsDirectoryURL.appendingPathComponent("\(title)-\(prefix).md", isDirectory: false)
+    }
+
+    private func sanitizeFileName(_ title: String) -> String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = trimmed.isEmpty ? "Untitled" : trimmed
+        let cleaned = base.replacingOccurrences(of: "[^A-Za-z0-9 _-]", with: "-", options: .regularExpression)
+        let squashed = cleaned.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        return squashed.isEmpty ? "Untitled" : squashed
+    }
+
+    private func displayPath(for url: URL) -> String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let path = url.path
+        guard path.hasPrefix(home) else { return path }
+        return "~" + path.dropFirst(home.count)
+    }
+}
+
+private struct RecoveryStatus {
+    var crashLogMessage: String
+    var instructionsDisplayPath: String
+    var snapshotDisplayPath: String
+    var draftCount: Int
+}
+
+@_silgen_name("__crashreporter_info__")
+private var crashReporterInfo: UnsafeMutablePointer<CChar>?
+
+private final class CrashRecoveryInfoReporter {
+    static let shared = CrashRecoveryInfoReporter()
+
+    private var retainedCString: UnsafeMutablePointer<CChar>?
+
+    func update(_ message: String) {
+        let truncated = String(message.prefix(1024))
+        let newPointer = strdup(truncated)
+        crashReporterInfo = newPointer
+        if let oldPointer = retainedCString, oldPointer != newPointer {
+            free(oldPointer)
+        }
+        retainedCString = newPointer
+    }
+
+    deinit {
+        if let retainedCString {
+            free(retainedCString)
         }
     }
 }
