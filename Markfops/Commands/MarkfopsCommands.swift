@@ -4,6 +4,7 @@ struct MarkfopsCommands: Commands {
     @FocusedValue(\.documentStore) private var store
     @FocusedValue(\.sidebarVisibility) private var sidebarVisibility
     @FocusedValue(\.findController) private var findController
+    @FocusedValue(\.previewBridge) private var previewBridge
 
     private var activeMode: EditMode? {
         store?.activeDocument?.mode
@@ -219,6 +220,23 @@ struct MarkfopsCommands: Commands {
 
         // MARK: Format menu
         CommandMenu("Format") {
+            Button("Heading 1") {
+                applyHeading(level: 1)
+            }
+            .keyboardShortcut("1", modifiers: [.command, .option])
+
+            Button("Heading 2") {
+                applyHeading(level: 2)
+            }
+            .keyboardShortcut("2", modifiers: [.command, .option])
+
+            Button("Heading 3") {
+                applyHeading(level: 3)
+            }
+            .keyboardShortcut("3", modifiers: [.command, .option])
+
+            Divider()
+
             Button("Bold") {
                 NSApp.sendAction(#selector(NSTextView.wrapBold), to: nil, from: nil)
             }
@@ -259,6 +277,29 @@ struct MarkfopsCommands: Commands {
         case .setSearchString:
             findController?.useSelectionForFind()
         default:
+            break
+        }
+    }
+
+    private func applyHeading(level: Int) {
+        switch activeMode {
+        case .edit:
+            let selector: Selector
+            switch level {
+            case 1:
+                selector = #selector(NSTextView.applyHeading1)
+            case 2:
+                selector = #selector(NSTextView.applyHeading2)
+            default:
+                selector = #selector(NSTextView.applyHeading3)
+            }
+            NSApp.sendAction(selector, to: nil, from: nil)
+
+        case .preview:
+            guard let document = store?.activeDocument else { return }
+            previewBridge?.promoteSelectionToHeading(level, in: document)
+
+        case .none:
             break
         }
     }

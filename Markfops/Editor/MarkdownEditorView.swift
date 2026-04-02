@@ -1,6 +1,120 @@
 import AppKit
 import SwiftUI
 
+struct MarkdownHeadingMutation {
+    let text: String
+    let selection: NSRange
+}
+
+enum MarkdownHeadingFormatter {
+    static func applyHeading(level: Int, to text: String, selection: NSRange) -> MarkdownHeadingMutation? {
+        guard (1...6).contains(level) else { return nil }
+
+        let originalLines = text.components(separatedBy: "\n")
+        guard !originalLines.isEmpty else { return nil }
+
+        let lineInfos = buildLineInfos(from: originalLines)
+        guard !lineInfos.isEmpty else { return nil }
+
+        let textLength = (text as NSString).length
+        let safeLocation = min(max(selection.location, 0), textLength)
+        let endLocation: Int
+        if selection.length > 0 {
+            endLocation = min(max(textLength - 1, 0), selection.location + selection.length - 1)
+        } else {
+            endLocation = safeLocation
+        }
+
+        let startLineIndex = lineIndex(for: safeLocation, in: lineInfos)
+        let endLineIndex = lineIndex(for: endLocation, in: lineInfos)
+        return applyHeading(level: level, to: text, lineRange: startLineIndex...endLineIndex)
+    }
+
+    static func applyHeading(level: Int, to text: String, sourceLine: Int) -> String? {
+        guard let mutation = applyHeading(level: level, to: text, lineRange: sourceLine...sourceLine) else {
+            return nil
+        }
+        return mutation.text
+    }
+
+    private static func applyHeading(level: Int, to text: String, lineRange: ClosedRange<Int>) -> MarkdownHeadingMutation? {
+        guard (1...6).contains(level) else { return nil }
+
+        var lines = text.components(separatedBy: "\n")
+        guard !lines.isEmpty else { return nil }
+
+        let lowerBound = max(0, min(lineRange.lowerBound, lines.count - 1))
+        let upperBound = max(0, min(lineRange.upperBound, lines.count - 1))
+        guard lowerBound <= upperBound else { return nil }
+
+        var changedLineIndices: [Int] = []
+
+        for lineIndex in lowerBound...upperBound {
+            let originalLine = lines[lineIndex]
+            guard let updatedLine = normalizedHeadingLine(from: originalLine, level: level) else {
+                continue
+            }
+            if updatedLine != originalLine {
+                lines[lineIndex] = updatedLine
+            }
+            changedLineIndices.append(lineIndex)
+        }
+
+        guard let firstChangedLine = changedLineIndices.first,
+              let lastChangedLine = changedLineIndices.last else {
+            return nil
+        }
+
+        let updatedText = lines.joined(separator: "\n")
+        let updatedInfos = buildLineInfos(from: lines)
+        let selectionStart = updatedInfos[firstChangedLine].start
+        let selectionEnd = updatedInfos[lastChangedLine].start + updatedInfos[lastChangedLine].content.count
+        let selection = NSRange(location: selectionStart, length: max(0, selectionEnd - selectionStart))
+
+        return MarkdownHeadingMutation(text: updatedText, selection: selection)
+    }
+
+    private static func normalizedHeadingLine(from line: String, level: Int) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+
+        let content: String
+        if let prefixRange = trimmed.range(of: #"^#{1,6}\s+"#, options: .regularExpression) {
+            content = String(trimmed[prefixRange.upperBound...]).trimmingCharacters(in: .whitespaces)
+        } else {
+            content = trimmed
+        }
+
+        guard !content.isEmpty else { return nil }
+        return String(repeating: "#", count: level) + " " + content
+    }
+
+    private static func buildLineInfos(from lines: [String]) -> [(start: Int, content: String)] {
+        var infos: [(start: Int, content: String)] = []
+        infos.reserveCapacity(lines.count)
+
+        var offset = 0
+        for (index, line) in lines.enumerated() {
+            infos.append((start: offset, content: line))
+            offset += line.count
+            if index < lines.count - 1 {
+                offset += 1
+            }
+        }
+
+        return infos
+    }
+
+    private static func lineIndex(for location: Int, in infos: [(start: Int, content: String)]) -> Int {
+        for (index, info) in infos.enumerated().reversed() {
+            if location >= info.start {
+                return index
+            }
+        }
+        return 0
+    }
+}
+
 // MARK: - EditorBridge
 
 /// Lets EditorContainerView call into the TextViewCoordinator after the NSViewRepresentable is set up.
@@ -115,6 +229,22 @@ final class MarkdownNSTextView: NSTextView {
         }
     }
 
+    func applyHeading(level: Int) {
+        let sel = selectedRange()
+        guard sel.location != NSNotFound,
+              let mutation = MarkdownHeadingFormatter.applyHeading(level: level, to: string, selection: sel) else {
+            return
+        }
+
+        let fullRange = NSRange(location: 0, length: (string as NSString).length)
+        guard shouldChangeText(in: fullRange, replacementString: mutation.text) else { return }
+
+        replaceCharacters(in: fullRange, with: mutation.text)
+        didChangeText()
+        setSelectedRange(mutation.selection)
+        scrollRangeToVisible(mutation.selection)
+    }
+
     func setPlainTextWithoutUndo(_ newText: String) {
         undoManager?.disableUndoRegistration()
         string = newText
@@ -197,6 +327,20 @@ private extension CALayer {
         animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         transform = CATransform3DMakeScale(value, value, 1)
         add(animation, forKey: "markfops.scale")
+    }
+}
+
+extension NSTextView {
+    @objc func applyHeading1() {
+        (self as? MarkdownNSTextView)?.applyHeading(level: 1)
+    }
+
+    @objc func applyHeading2() {
+        (self as? MarkdownNSTextView)?.applyHeading(level: 2)
+    }
+
+    @objc func applyHeading3() {
+        (self as? MarkdownNSTextView)?.applyHeading(level: 3)
     }
 }
 

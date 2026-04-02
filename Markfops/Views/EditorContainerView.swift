@@ -7,6 +7,7 @@ struct EditorContainerView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var htmlContent: String = ""
+    @State private var bodyHTML: String = ""
     @State private var isDragTargeted = false
     @State private var bridge = PreviewBridge()
     @State private var editorBridge = EditorBridge()
@@ -37,7 +38,9 @@ struct EditorContainerView: View {
 
                 case .preview:
                     PreviewView(
-                        htmlContent: htmlContent,
+                        pageHTML: htmlContent,
+                        bodyHTML: bodyHTML,
+                        themeKey: colorScheme == .dark ? "dark" : "light",
                         bridge: bridge,
                         onScrollChange: { ratio in
                             document.scrollRatio = ratio
@@ -104,6 +107,7 @@ struct EditorContainerView: View {
 
     private func refreshPreview(from text: String) {
         let fragment = MarkdownRenderer.renderHTML(from: text)
+        bodyHTML = fragment
         let page = HTMLTemplate.currentPage(body: fragment, colorScheme: colorScheme)
         htmlContent = page
     }

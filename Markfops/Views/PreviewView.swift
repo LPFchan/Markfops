@@ -49,6 +49,10 @@ final class PreviewBridge {
         coordinator?.scrollToHeading(heading)
     }
 
+    func promoteSelectionToHeading(_ level: Int, in document: Document) {
+        coordinator?.promoteSelectionToHeading(level, in: document)
+    }
+
     func setPendingScrollRatio(_ ratio: Double) {
         _bufferedScrollRatio = ratio
         coordinator?.pendingScrollRatio = ratio
@@ -74,7 +78,9 @@ final class PreviewBridge {
 
 /// Read-only rendered preview surface for the current markdown document.
 struct PreviewView: NSViewRepresentable {
-    let htmlContent: String
+    let pageHTML: String
+    let bodyHTML: String
+    let themeKey: String
     let bridge: PreviewBridge
     var onScrollChange: ((Double) -> Void)?
 
@@ -100,12 +106,19 @@ struct PreviewView: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.onScrollChange = onScrollChange
 
-        let isEmpty = htmlContent.isEmpty
-        let isSame = htmlContent == context.coordinator.lastLoadedHTML
-        guard !isEmpty, !isSame else { return }
+        guard !pageHTML.isEmpty, !bodyHTML.isEmpty else { return }
 
-        context.coordinator.lastLoadedHTML = htmlContent
-        webView.loadHTMLString(htmlContent, baseURL: nil)
+        if !context.coordinator.isPageReady || context.coordinator.lastThemeKey != themeKey {
+            context.coordinator.isPageReady = false
+            context.coordinator.lastThemeKey = themeKey
+            context.coordinator.lastRenderedBodyHTML = bodyHTML
+            webView.loadHTMLString(pageHTML, baseURL: nil)
+            return
+        }
+
+        guard bodyHTML != context.coordinator.lastRenderedBodyHTML else { return }
+        context.coordinator.lastRenderedBodyHTML = bodyHTML
+        context.coordinator.updateBodyHTML(bodyHTML)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -114,12 +127,15 @@ struct PreviewView: NSViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         weak var webView: WKWebView?
-        var lastLoadedHTML: String = ""
+        var lastThemeKey: String = ""
+        var lastRenderedBodyHTML: String = ""
+        var isPageReady = false
         var isEditingInView = false
         var onScrollChange: ((Double) -> Void)?
         /// Ratio [0,1] to scroll to once the next page load finishes.
         var pendingScrollRatio: Double?
         var pendingHeading: HeadingNode?
+        var pendingMorphSourceLine: Int?
 
         @discardableResult
         func focusWebView() -> Bool {
@@ -151,6 +167,83 @@ struct PreviewView: NSViewRepresentable {
             guard let data = try? JSONSerialization.data(withJSONObject: [string]),
                   let json = String(data: data, encoding: .utf8) else { return nil }
             return String(json.dropFirst().dropLast())
+        }
+
+        func promoteSelectionToHeading(_ level: Int, in document: Document) {
+            guard let webView else { return }
+
+            let js = """
+            (function() {
+                var selection = window.getSelection();
+                if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+
+                function closestSourceElement(node) {
+                    while (node) {
+                        if (node.nodeType === Node.ELEMENT_NODE && node.hasAttribute('data-markfops-source-line')) {
+                            return node;
+                        }
+                        node = node.parentNode;
+                    }
+                    return null;
+                }
+
+                var range = selection.getRangeAt(0);
+                var node = range.commonAncestorContainer;
+                var block = closestSourceElement(node)
+                    || closestSourceElement(selection.anchorNode)
+                    || closestSourceElement(selection.focusNode);
+
+                if (!block) return null;
+
+                return {
+                    sourceLine: Number(block.getAttribute('data-markfops-source-line'))
+                };
+            })();
+            """
+
+            webView.evaluateJavaScript(js) { [weak self] result, _ in
+                guard let self,
+                      let payload = result as? [String: Any],
+                      let sourceLine = payload["sourceLine"] as? Double else {
+                    return
+                }
+
+                DispatchQueue.main.async {
+                    guard let updatedText = MarkdownHeadingFormatter.applyHeading(
+                        level: level,
+                        to: document.rawText,
+                        sourceLine: Int(sourceLine)
+                    ) else {
+                        return
+                    }
+
+                    self.pendingMorphSourceLine = Int(sourceLine)
+                    document.rawText = updatedText
+                    document.updateTextMetrics()
+                    document.isDirty = updatedText != document.savedText
+                    document.headings = HeadingParser.parseHeadings(in: updatedText)
+                    document.reconcileActiveHeadingWithCurrentContent()
+                }
+            }
+        }
+
+        func updateBodyHTML(_ html: String) {
+            guard let webView,
+                  let encodedHTML = Self.javaScriptStringLiteral(html) else { return }
+
+            let sourceLine = pendingMorphSourceLine.map(String.init) ?? "null"
+            let js = """
+            (function() {
+                if (!window.__markfopsPreview) return false;
+                return window.__markfopsPreview.applyHTML(\(encodedHTML), \(sourceLine));
+            })();
+            """
+
+            webView.evaluateJavaScript(js) { [weak self] _, error in
+                if error == nil {
+                    self?.pendingMorphSourceLine = nil
+                }
+            }
         }
 
         // JS posts messages here: debounced innerText ("textChanged") and scroll ratio ("scrollChanged").
@@ -242,6 +335,101 @@ struct PreviewView: NSViewRepresentable {
                 article.setAttribute('tabindex', '-1');
                 article.style.outline = 'none';
 
+                function snapshotBlockStyles() {
+                    var map = {};
+                    article.querySelectorAll('[data-markfops-source-line]').forEach(function(node) {
+                        var key = node.getAttribute('data-markfops-source-line');
+                        if (!key) return;
+                        var style = window.getComputedStyle(node);
+                        map[key] = {
+                            fontSize: style.fontSize,
+                            fontWeight: style.fontWeight,
+                            fontVariationSettings: style.fontVariationSettings,
+                            lineHeight: style.lineHeight,
+                            letterSpacing: style.letterSpacing,
+                            marginTop: style.marginTop,
+                            marginBottom: style.marginBottom,
+                            paddingBottom: style.paddingBottom,
+                            borderBottomWidth: style.borderBottomWidth,
+                            borderBottomColor: style.borderBottomColor,
+                            color: style.color
+                        };
+                    });
+                    return map;
+                }
+
+                function animateBlockMorph(node, fromStyle) {
+                    if (!node || !fromStyle) return;
+
+                    var finalStyle = window.getComputedStyle(node);
+                    node.classList.add('markfops-morphing-block');
+                    node.style.fontSize = fromStyle.fontSize;
+                    node.style.fontWeight = fromStyle.fontWeight;
+                    node.style.fontVariationSettings = fromStyle.fontVariationSettings;
+                    node.style.lineHeight = fromStyle.lineHeight;
+                    node.style.letterSpacing = fromStyle.letterSpacing;
+                    node.style.marginTop = fromStyle.marginTop;
+                    node.style.marginBottom = fromStyle.marginBottom;
+                    node.style.paddingBottom = fromStyle.paddingBottom;
+                    node.style.borderBottomWidth = fromStyle.borderBottomWidth;
+                    node.style.borderBottomColor = fromStyle.borderBottomColor;
+                    node.style.color = fromStyle.color;
+
+                    requestAnimationFrame(function() {
+                        node.style.fontSize = finalStyle.fontSize;
+                        node.style.fontWeight = finalStyle.fontWeight;
+                        node.style.fontVariationSettings = finalStyle.fontVariationSettings;
+                        node.style.lineHeight = finalStyle.lineHeight;
+                        node.style.letterSpacing = finalStyle.letterSpacing;
+                        node.style.marginTop = finalStyle.marginTop;
+                        node.style.marginBottom = finalStyle.marginBottom;
+                        node.style.paddingBottom = finalStyle.paddingBottom;
+                        node.style.borderBottomWidth = finalStyle.borderBottomWidth;
+                        node.style.borderBottomColor = finalStyle.borderBottomColor;
+                        node.style.color = finalStyle.color;
+                    });
+
+                    setTimeout(function() {
+                        node.classList.remove('markfops-morphing-block');
+                        node.style.removeProperty('font-size');
+                        node.style.removeProperty('font-weight');
+                        node.style.removeProperty('font-variation-settings');
+                        node.style.removeProperty('line-height');
+                        node.style.removeProperty('letter-spacing');
+                        node.style.removeProperty('margin-top');
+                        node.style.removeProperty('margin-bottom');
+                        node.style.removeProperty('padding-bottom');
+                        node.style.removeProperty('border-bottom-width');
+                        node.style.removeProperty('border-bottom-color');
+                        node.style.removeProperty('color');
+                    }, 320);
+                }
+
+                window.__markfopsPreview = {
+                    applyHTML: function(nextHTML, sourceLine) {
+                        var previousStyles = snapshotBlockStyles();
+                        var totalBefore = document.documentElement.scrollHeight;
+                        var ratio = totalBefore > 0
+                            ? (window.scrollY + window.innerHeight / 2) / totalBefore
+                            : 0;
+
+                        article.innerHTML = nextHTML;
+
+                        var totalAfter = document.documentElement.scrollHeight;
+                        if (totalAfter > 0) {
+                            var targetY = ratio * totalAfter - window.innerHeight / 2;
+                            window.scrollTo(0, Math.max(0, Math.round(targetY)));
+                        }
+
+                        if (typeof sourceLine === 'number' && !Number.isNaN(sourceLine)) {
+                            var target = article.querySelector('[data-markfops-source-line="' + sourceLine + '"]');
+                            animateBlockMorph(target, previousStyles[String(sourceLine)]);
+                        }
+
+                        return true;
+                    }
+                };
+
                 // Report scroll position (throttled) so Swift can sync back to editor.
                 // Reports center-of-viewport ratio: (scrollY + innerHeight/2) / scrollHeight
                 var scrollThrottle;
@@ -259,6 +447,7 @@ struct PreviewView: NSViewRepresentable {
             })();
             """
             webView.evaluateJavaScript(js)
+            isPageReady = true
 
             // Apply deferred scroll ratio now that the page is ready.
             // ratio = center-of-viewport / scrollHeight, so restore: scrollTo(ratio*h - innerHeight/2)

@@ -8,7 +8,7 @@ enum MarkdownRenderer {
         // Register GFM core extensions (tables, strikethrough, tasklists, autolinks)
         cmark_gfm_core_extensions_ensure_registered()
 
-        let options: Int32 = CMARK_OPT_UNSAFE | CMARK_OPT_SMART
+        let options: Int32 = CMARK_OPT_UNSAFE | CMARK_OPT_SMART | CMARK_OPT_SOURCEPOS
 
         guard let parser = cmark_parser_new(options) else {
             return "<p><em>Failed to initialise markdown parser.</em></p>"
@@ -40,14 +40,43 @@ enum MarkdownRenderer {
         }
         let html = String(cString: htmlPtr)
         free(htmlPtr)
-        return injectHeadingIDs(into: html, using: markdown)
+        let htmlWithSourceLines = injectSourceLineAttributes(into: html)
+        return injectHeadingIDs(into: htmlWithSourceLines, using: markdown)
+    }
+
+    private static func injectSourceLineAttributes(into html: String) -> String {
+        guard let regex = try? NSRegularExpression(
+            pattern: #"<([a-z][a-z0-9]*)([^>]*\sdata-sourcepos=\"(\d+):\d+-\d+:\d+\"[^>]*)>"#,
+            options: [.caseInsensitive]
+        ) else {
+            return html
+        }
+
+        let matches = regex.matches(in: html, range: NSRange(html.startIndex..., in: html))
+        guard !matches.isEmpty else { return html }
+
+        var updatedHTML = html
+        for match in matches.reversed() {
+            guard let fullRange = Range(match.range(at: 0), in: updatedHTML),
+                  let sourceLineRange = Range(match.range(at: 3), in: updatedHTML),
+                  let sourceLine = Int(updatedHTML[sourceLineRange]) else {
+                continue
+            }
+
+            let tag = String(updatedHTML[fullRange])
+            guard !tag.contains("data-markfops-source-line=") else { continue }
+            let replacement = String(tag.dropLast()) + " data-markfops-source-line=\"\(max(0, sourceLine - 1))\">"
+            updatedHTML.replaceSubrange(fullRange, with: replacement)
+        }
+
+        return updatedHTML
     }
 
     private static func injectHeadingIDs(into html: String, using markdown: String) -> String {
         let headings = HeadingParser.parseHeadings(in: markdown)
         guard !headings.isEmpty,
               let regex = try? NSRegularExpression(
-                  pattern: #"<h([1-6])>(.*?)</h\1>"#,
+                  pattern: #"<h([1-6])([^>]*)>(.*?)</h\1>"#,
                   options: [.dotMatchesLineSeparators]
               ) else {
             return html
@@ -57,26 +86,25 @@ enum MarkdownRenderer {
         guard !matches.isEmpty else { return html }
 
         var replacements: [(NSRange, String)] = []
-        var headingIndex = 0
 
         for match in matches {
-            guard match.numberOfRanges == 3,
+            guard match.numberOfRanges == 4,
                   let levelRange = Range(match.range(at: 1), in: html),
-                  let contentRange = Range(match.range(at: 2), in: html),
+                  let attributesRange = Range(match.range(at: 2), in: html),
+                  let contentRange = Range(match.range(at: 3), in: html),
                   let level = Int(html[levelRange]) else {
                 continue
             }
 
-            while headingIndex < headings.count, headings[headingIndex].level != level {
-                headingIndex += 1
+            let attributes = String(html[attributesRange])
+            guard let sourceLine = sourceLine(from: attributes),
+                  let heading = headings.first(where: { $0.lineNumber == sourceLine && $0.level == level }) else {
+                continue
             }
-            guard headingIndex < headings.count else { break }
 
-            let heading = headings[headingIndex]
             let innerHTML = html[contentRange]
-            let replacement = "<h\(level) id=\"\(heading.domID)\">\(innerHTML)</h\(level)>"
+            let replacement = "<h\(level)\(sanitizedHeadingAttributes(from: attributes)) id=\"\(heading.domID)\">\(innerHTML)</h\(level)>"
             replacements.append((match.range, replacement))
-            headingIndex += 1
         }
 
         var result = html
@@ -85,5 +113,29 @@ enum MarkdownRenderer {
             result.replaceSubrange(swiftRange, with: replacement)
         }
         return result
+    }
+
+    private static func sourceLine(from attributes: String) -> Int? {
+        guard let regex = try? NSRegularExpression(
+            pattern: #"data-markfops-source-line=\"(\d+)\""#
+        ),
+        let match = regex.firstMatch(in: attributes, range: NSRange(attributes.startIndex..., in: attributes)),
+        let range = Range(match.range(at: 1), in: attributes) else {
+            return nil
+        }
+        return Int(attributes[range])
+    }
+
+    private static func sanitizedHeadingAttributes(from attributes: String) -> String {
+        var sanitized = attributes.replacingOccurrences(
+            of: #"\sid=\"[^\"]*\""#,
+            with: "",
+            options: .regularExpression
+        )
+        if sanitized.isEmpty || sanitized.hasPrefix(" ") {
+            return sanitized
+        }
+        sanitized.insert(" ", at: sanitized.startIndex)
+        return sanitized
     }
 }

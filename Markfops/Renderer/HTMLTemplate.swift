@@ -50,15 +50,21 @@ enum HTMLTemplate {
       --th-bg:       #f6f8fa;
       --hr:          #d0d7de;
       --heading:     #1f2328;
+      --body-wght:   430;
+      --heading-wght: 650;
+      --strong-wght: 620;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       background: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", Helvetica, Arial, sans-serif;
       font-size: 16px;
       line-height: 1.65;
+      font-weight: 430;
+      font-variation-settings: "wght" var(--body-wght);
+      font-optical-sizing: auto;
       -webkit-font-smoothing: antialiased;
     }
     article.markdown-body {
@@ -66,9 +72,13 @@ enum HTMLTemplate {
       margin: 0 auto;
       padding: 40px 32px 80px;
     }
+    article.markdown-body :is(p, li, blockquote, td, th) {
+      font-variation-settings: "wght" var(--body-wght);
+    }
     h1, h2, h3, h4, h5, h6 {
       color: var(--heading);
-      font-weight: 600;
+      font-weight: 650;
+      font-variation-settings: "wght" var(--heading-wght);
       margin-top: 1.5em;
       margin-bottom: 0.5em;
       line-height: 1.3;
@@ -80,7 +90,10 @@ enum HTMLTemplate {
     h5 { font-size: 0.875em; }
     h6 { font-size: 0.85em;  color: var(--blockquote); }
     p { margin: 0.75em 0; }
-    strong { font-weight: 600; }
+    strong {
+      font-weight: 620;
+      font-variation-settings: "wght" var(--strong-wght);
+    }
     em { font-style: italic; }
     del { text-decoration: line-through; color: var(--blockquote); }
     a { color: var(--link); text-decoration: none; }
@@ -127,6 +140,21 @@ enum HTMLTemplate {
     tbody tr:nth-child(even) { background: var(--code-bg); }
     hr { border: none; border-top: 2px solid var(--hr); margin: 2em 0; }
     img { max-width: 100%; border-radius: 6px; display: block; margin: 1em auto; }
+    .markfops-morphing-block {
+      transition:
+        font-size 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        font-weight 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        font-variation-settings 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        line-height 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        letter-spacing 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        margin-top 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        margin-bottom 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        padding-bottom 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        border-bottom-width 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        border-bottom-color 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        color 240ms cubic-bezier(0.2, 0.82, 0.2, 1);
+      will-change: font-size, font-weight, font-variation-settings;
+    }
     """
 
     private static let darkCSS = """
@@ -141,15 +169,21 @@ enum HTMLTemplate {
       --th-bg:       #161b22;
       --hr:          #30363d;
       --heading:     #e6edf3;
+      --body-wght:   430;
+      --heading-wght: 650;
+      --strong-wght: 620;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       background: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", Helvetica, Arial, sans-serif;
       font-size: 16px;
       line-height: 1.65;
+      font-weight: 430;
+      font-variation-settings: "wght" var(--body-wght);
+      font-optical-sizing: auto;
       -webkit-font-smoothing: antialiased;
     }
     article.markdown-body {
@@ -157,9 +191,13 @@ enum HTMLTemplate {
       margin: 0 auto;
       padding: 40px 32px 80px;
     }
+    article.markdown-body :is(p, li, blockquote, td, th) {
+      font-variation-settings: "wght" var(--body-wght);
+    }
     h1, h2, h3, h4, h5, h6 {
       color: var(--heading);
-      font-weight: 600;
+      font-weight: 650;
+      font-variation-settings: "wght" var(--heading-wght);
       margin-top: 1.5em;
       margin-bottom: 0.5em;
       line-height: 1.3;
@@ -171,7 +209,10 @@ enum HTMLTemplate {
     h5 { font-size: 0.875em; }
     h6 { font-size: 0.85em; color: var(--blockquote); }
     p { margin: 0.75em 0; }
-    strong { font-weight: 600; }
+    strong {
+      font-weight: 620;
+      font-variation-settings: "wght" var(--strong-wght);
+    }
     em { font-style: italic; }
     del { text-decoration: line-through; color: var(--blockquote); }
     a { color: var(--link); text-decoration: none; }
@@ -217,5 +258,20 @@ enum HTMLTemplate {
     tbody tr:nth-child(even) { background: rgba(255,255,255,0.03); }
     hr { border: none; border-top: 2px solid var(--hr); margin: 2em 0; }
     img { max-width: 100%; border-radius: 6px; display: block; margin: 1em auto; }
+    .markfops-morphing-block {
+      transition:
+        font-size 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        font-weight 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        font-variation-settings 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        line-height 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        letter-spacing 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        margin-top 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        margin-bottom 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        padding-bottom 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        border-bottom-width 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        border-bottom-color 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        color 240ms cubic-bezier(0.2, 0.82, 0.2, 1);
+      will-change: font-size, font-weight, font-variation-settings;
+    }
     """
 }
