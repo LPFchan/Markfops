@@ -36,6 +36,9 @@ build/
 *.swp
 *~
 
+# Local reference clones
+ref/
+
 # Sparkle signing (never commit)
 sparkle_private*.key
 Sparkle_private*.key

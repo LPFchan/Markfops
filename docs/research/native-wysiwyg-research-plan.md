@@ -360,7 +360,7 @@ Each repo-specific research document should follow the same template.
 
 ### Phase 0: Prepare the Reference Set
 
-- clone `intend`, `inkdown`, and `SimpleBlockEditor` into `ref/`
+- clone `milkdown`, `intend`, `inkdown`, and `SimpleBlockEditor` into `ref/` as needed
 - record upstream URL, branch, and commit SHA for each
 - avoid modifying reference repos unless a temporary local patch is required for inspection
 
@@ -425,6 +425,7 @@ Responsibilities:
 - prevent duplicated effort and shallow summaries
 - reconcile contradictions between subagent findings
 - convert research into Markfops-specific architectural decisions
+- ensure repo-specific subagents own the clone-and-setup step for their target repositories under `ref/`
 
 The main agent should not spend most of its time on broad repo search. It should spend its time on orchestration, synthesis, quality control, and turning findings into engineering direction. It should not perform the primary repo-level research itself.
 
@@ -461,6 +462,7 @@ Prompt:
 - Stay orchestration-only. Do not perform the primary repo archaeology yourself.
 - Keep the canonical coordination state in docs/research/orchestration-status.md, docs/research/agent-handoffs.md, docs/research/open-questions.md, and docs/research/resolved-decisions.md.
 - Launch narrow read-only subagent passes instead of doing the research work directly.
+- Make the repo-specific subagents responsible for cloning and setting up their target repositories under ref if those repositories are missing.
 - Require every subagent artifact to cite concrete file paths, symbol names, state ownership, and control-flow evidence.
 - Reject outputs that stop at README summaries, folder listings, or vague architectural commentary.
 - Normalize terminology across repositories so equivalent concepts are compared consistently.
@@ -483,6 +485,7 @@ Prompt:
 ```text
 - Read docs/research/native-wysiwyg-research-plan.md, docs/research/orchestration-status.md, docs/research/agent-handoffs.md, docs/research/open-questions.md, docs/research/resolved-decisions.md, and docs/research/markfops-baseline.md before starting.
 - Treat this as a deep read-only archaeology pass.
+- No external repository cloning is required for this pass because the target is the current Markfops codebase.
 - Read code directly, not just README files.
 - Prefer tracing actual control flow over summarizing folder names.
 - Identify ownership of data, mutation points, update triggers, caches, and invariants.
@@ -512,6 +515,10 @@ Prompt:
 ```text
 - Read docs/research/native-wysiwyg-research-plan.md, docs/research/orchestration-status.md, docs/research/agent-handoffs.md, docs/research/open-questions.md, docs/research/resolved-decisions.md, and docs/research/milkdown-deep-dive.md before starting.
 - Treat this as a deep read-only archaeology pass.
+- Ensure the target repository exists at ref/milkdown.
+- If ref/milkdown is missing, clone the official Milkdown repository into ref/milkdown before analysis.
+- Record the upstream URL, checked-out branch, and commit SHA in docs/research/milkdown-deep-dive.md before or alongside the findings.
+- Do not modify the reference repository beyond cloning and any minimal setup needed to inspect it.
 - Read code directly, not just README files.
 - Prefer tracing actual control flow over summarizing folder names.
 - Identify ownership of data, mutation points, update triggers, caches, and invariants.
@@ -541,6 +548,10 @@ Prompt:
 ```text
 - Read docs/research/native-wysiwyg-research-plan.md, docs/research/orchestration-status.md, docs/research/agent-handoffs.md, docs/research/open-questions.md, docs/research/resolved-decisions.md, and docs/research/intend-deep-dive.md before starting.
 - Treat this as a deep read-only archaeology pass.
+- Ensure the target repository exists at ref/intend.
+- If ref/intend is missing, clone the official Intend repository into ref/intend before analysis.
+- Record the upstream URL, checked-out branch, and commit SHA in docs/research/intend-deep-dive.md before or alongside the findings.
+- Do not modify the reference repository beyond cloning and any minimal setup needed to inspect it.
 - Read code directly, not just README files.
 - Prefer tracing actual control flow over summarizing folder names.
 - Identify ownership of data, mutation points, update triggers, caches, and invariants.
@@ -568,6 +579,10 @@ Prompt:
 ```text
 - Read docs/research/native-wysiwyg-research-plan.md, docs/research/orchestration-status.md, docs/research/agent-handoffs.md, docs/research/open-questions.md, docs/research/resolved-decisions.md, and docs/research/inkdown-deep-dive.md before starting.
 - Treat this as a deep read-only archaeology pass.
+- Ensure the target repository exists at ref/inkdown.
+- If ref/inkdown is missing, clone the official Inkdown repository into ref/inkdown before analysis.
+- Record the upstream URL, checked-out branch, and commit SHA in docs/research/inkdown-deep-dive.md before or alongside the findings.
+- Do not modify the reference repository beyond cloning and any minimal setup needed to inspect it.
 - Read code directly, not just README files.
 - Prefer tracing actual control flow over summarizing folder names.
 - Identify ownership of data, mutation points, update triggers, caches, and invariants.
@@ -595,6 +610,10 @@ Prompt:
 ```text
 - Read docs/research/native-wysiwyg-research-plan.md, docs/research/orchestration-status.md, docs/research/agent-handoffs.md, docs/research/open-questions.md, docs/research/resolved-decisions.md, and docs/research/simple-block-editor-deep-dive.md before starting.
 - Treat this as a deep read-only archaeology pass.
+- Ensure the target repository exists at ref/SimpleBlockEditor.
+- If ref/SimpleBlockEditor is missing, clone the official SimpleBlockEditor repository into ref/SimpleBlockEditor before analysis.
+- Record the upstream URL, checked-out branch, and commit SHA in docs/research/simple-block-editor-deep-dive.md before or alongside the findings.
+- Do not modify the reference repository beyond cloning and any minimal setup needed to inspect it.
 - Read code directly, not just README files.
 - Prefer tracing actual control flow over summarizing folder names.
 - Identify ownership of data, mutation points, update triggers, caches, and invariants.
@@ -621,6 +640,9 @@ Prompt:
 ```text
 - Read docs/research/native-wysiwyg-research-plan.md, docs/research/orchestration-status.md, docs/research/agent-handoffs.md, docs/research/open-questions.md, docs/research/resolved-decisions.md, docs/research/markfops-baseline.md, docs/research/milkdown-deep-dive.md, docs/research/intend-deep-dive.md, docs/research/inkdown-deep-dive.md, docs/research/simple-block-editor-deep-dive.md, docs/research/comparison-matrix.md, docs/research/transferability-matrix.md, docs/research/target-architecture.md, docs/research/viewport-morphing-strategy.md, docs/research/semantic-transition-coverage.md, and docs/research/risk-register.md before starting.
 - Treat this as a synthesis pass driven by the research documents, not a loose summary.
+- Ensure the required reference repositories exist under ref/ before synthesis.
+- If any of ref/milkdown, ref/intend, ref/inkdown, or ref/SimpleBlockEditor are missing, clone the missing repositories before synthesizing so the artifact set and reference set stay aligned.
+- Record any clone-and-setup actions in docs/research/agent-handoffs.md.
 - Prefer tracing concrete evidence in the existing artifacts over restating high-level repository descriptions.
 - Distinguish between observed facts and architectural judgment.
 - Evaluate whether the combined evidence supports stable object identity, 60 or 120 fps viewport morphing, and clean semantic transitions for markdown constructs without breaking editing correctness.
@@ -661,6 +683,7 @@ Acceptable outputs should make it possible to answer questions like these immedi
 
 - Use the main agent for orchestration, synthesis, and documentation quality control only.
 - Use the `Explore` subagent for deep read-only archaeology passes.
+- Let each repo-specific subagent own cloning and setup of its target repository under ref when needed.
 - Use fast search tools only to narrow file scope before deeper reading; do not mistake search hits for understanding.
 - Keep reference repos isolated under `ref/` and avoid mixing them into Markfops build paths.
 - Record commit SHAs in every deep-dive document so future analysis remains reproducible.
