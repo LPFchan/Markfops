@@ -17,6 +17,7 @@ Build a native AppKit-based WYSIWYG markdown engine for Markfops that:
 - remains lightweight in memory and responsive for long documents
 - supports a path from inline rich markdown editing toward more Notion-like block behavior
 - morphs text objects within the viewport smoothly between editor and preview mode at 60 fps, with a stretch goal of 120 fps on supported hardware
+- maintains rigorously synchronized scroll position and viewport anchoring between editor and preview presentations, including during mode switches, live edits, layout changes, and animated transitions
 - dynamically morphs plain text into markdown semantics in preview mode, including headings, quotes, inline code, code blocks, lists, emphasis, and other supported markdown constructs
 - avoids the preview-to-source corruption class of bugs by design
 
@@ -27,6 +28,7 @@ Build a native AppKit-based WYSIWYG markdown engine for Markfops that:
 - Evaluate Intend, Inkdown, and SimpleBlockEditor as native reference materials once cloned into `ref/`.
 - Identify which ideas are safe to copy nearly verbatim, which ideas should only be generalized, and which ideas should be avoided.
 - Define how visible text and block objects keep stable identity across editor and preview presentations so they can animate cleanly.
+- Define how editor and preview retain synchronized viewport position against one another even when their layout metrics differ.
 - Define how a normal text object can transition into markdown semantic roles without discontinuity in preview mode.
 - Produce a target architecture for Markfops with clear module boundaries, invariants, and migration steps.
 - Build a prioritized backlog of implementation spikes and risk-reduction experiments.
@@ -38,6 +40,7 @@ Build a native AppKit-based WYSIWYG markdown engine for Markfops that:
 - Incremental work: prefer paragraph-, block-, and viewport-scoped updates over full-document relayout or reparsing.
 - Stable identity before animation: smooth transitions should come from shared object identity and layout data, not from screenshot cross-fades.
 - Viewport-first motion: only visible content must meet the morphing frame budget; offscreen content can update lazily.
+- Viewport synchronization is first-class: editor and preview must agree on what the user is looking at, using stable anchors rather than naive pixel matching whenever layouts diverge.
 - Semantic transitions are first-class: heading promotion, quote promotion, code styling, and other markdown presentation shifts should be modeled as transitions between semantic states, not as abrupt style replacement.
 - Separation of concerns: parsing, model, rendering, interaction, and persistence should be separable and testable.
 - Evidence over aesthetics: every design choice should be justified by code archaeology, measured behavior, or direct failure modes.
@@ -63,8 +66,9 @@ The research should answer these questions concretely:
 7. Which AppKit or TextKit limitations require architectural workarounds?
 8. What identity model is required so visible text and block objects can morph cleanly between editor and preview states?
 9. What layout, animation, and invalidation pipeline is required to sustain 60 fps and preferably 120 fps for viewport-scoped mode transitions?
-10. How should plain text transition into semantic markdown presentations such as H1, H2, H3, quotes, inline code, code blocks, and lists while the user is working in preview mode?
-11. What is the minimum viable native architecture that can ship before full block editing exists?
+10. What anchor model and synchronization pipeline are required so editor and preview stay rigorously aligned in scroll position even when typography, block heights, folding, or semantic styling differ?
+11. How should plain text transition into semantic markdown presentations such as H1, H2, H3, quotes, inline code, code blocks, and lists while the user is working in preview mode?
+12. What is the minimum viable native architecture that can ship before full block editing exists?
 
 ## Reference Corpus
 
@@ -252,6 +256,7 @@ This work should answer:
 Required outputs:
 
 - a proposed morphing pipeline for viewport content
+- a proposed scroll-synchronization pipeline for dual presentations, including anchor ownership, correction strategy, and drift detection
 - a list of animation blockers in AppKit or TextKit
 - a measurement plan for dropped frames, layout churn, and invalidation frequency
 - a recommendation on whether editor and preview should remain separate modes internally or become two presentations of one native scene
