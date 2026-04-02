@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import QuartzCore
 
 @Observable
 final class Document: Identifiable {
@@ -21,6 +22,8 @@ final class Document: Identifiable {
     var collapsedHeadingIDs: Set<String> = []
 
     @ObservationIgnored private var fileWatchSource: DispatchSourceFileSystemObject?
+    @ObservationIgnored private var pendingFocusedHeading: HeadingNode?
+    @ObservationIgnored private var pendingFocusedHeadingExpiry: CFTimeInterval = 0
 
     init(fileURL: URL? = nil, rawText: String = "") {
         self.id = UUID()
@@ -54,6 +57,12 @@ final class Document: Identifiable {
         setActiveHeadingID(heading?.id)
     }
 
+    func focusHeading(_ heading: HeadingNode, lockDuration: CFTimeInterval = 1.4) {
+        pendingFocusedHeading = heading
+        pendingFocusedHeadingExpiry = CACurrentMediaTime() + lockDuration
+        setActiveHeadingID(heading.id)
+    }
+
     func reconcileActiveHeadingWithCurrentContent() {
         guard !tocHeadings.isEmpty else {
             setActiveHeadingID(nil)
@@ -68,12 +77,29 @@ final class Document: Identifiable {
 
     func syncActiveHeadingToScrollPosition() {
         guard !tocHeadings.isEmpty else {
+            clearPendingFocusedHeading()
             setActiveHeadingID(nil)
             return
         }
         let probeLine = Int((Double(max(lineCount - 1, 0)) * scrollRatio).rounded())
+
+        if let pendingFocusedHeading {
+            let now = CACurrentMediaTime()
+            let isNearTarget = abs(probeLine - pendingFocusedHeading.lineNumber) <= 1
+            if now < pendingFocusedHeadingExpiry, !isNearTarget {
+                setActiveHeadingID(pendingFocusedHeading.id)
+                return
+            }
+            clearPendingFocusedHeading()
+        }
+
         let newID = tocHeadings.last(where: { $0.lineNumber <= probeLine })?.id
         setActiveHeadingID(newID)
+    }
+
+    private func clearPendingFocusedHeading() {
+        pendingFocusedHeading = nil
+        pendingFocusedHeadingExpiry = 0
     }
 
     private func setActiveHeadingID(_ newID: String?) {

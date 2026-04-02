@@ -7,4 +7,7 @@ struct HeadingNode: Identifiable, Equatable {
 
     /// Stable identity derived from content so ForEach doesn't thrash on every re-parse.
     var id: String { "\(lineNumber)-\(level)-\(title)" }
+
+    /// Stable DOM id used by the preview to jump to rendered headings reliably.
+    var domID: String { "markfops-heading-\(lineNumber)-\(level)" }
 }

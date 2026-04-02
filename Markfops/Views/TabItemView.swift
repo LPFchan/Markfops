@@ -168,7 +168,7 @@ struct SidebarTabRowView: View {
             }
             .frame(width: 22, height: 22)
             .onHover { isFaviconHovered = $0 }
-            .animation(.easeInOut(duration: 0.15), value: isFaviconHovered)
+            .animation(.spring(duration: 0.15), value: isFaviconHovered)
 
             // Title / rename field / detach indicator
             Group {
@@ -195,7 +195,7 @@ struct SidebarTabRowView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .animation(.easeOut(duration: 0.18), value: isInDetachZone)
+            .animation(.spring(duration: 0.18), value: isInDetachZone)
 
             // Close button — fixed width, always at trailing edge
             if !isRenaming {
@@ -314,8 +314,8 @@ struct SidebarTabRowView: View {
             .opacity(isHovered ? 1 : 0)
         }
         .frame(width: 20, height: 20)
-        .animation(.easeOut(duration: 0.18), value: isHovered)
-        .animation(.easeOut(duration: 0.12), value: isCloseHovered)
+        .animation(.spring(duration: 0.18), value: isHovered)
+        .animation(.spring(duration: 0.12), value: isCloseHovered)
     }
 }
 
@@ -422,8 +422,8 @@ struct DocumentTabView: View {
                                     .mask(trailingFadeMask)
                             }
                         }
-                        .animation(.easeOut(duration: 0.18), value: isInDetachZone)
-                        .animation(.easeOut(duration: 0.18), value: isRenaming)
+                        .animation(.spring(duration: 0.18), value: isInDetachZone)
+                        .animation(.spring(duration: 0.18), value: isRenaming)
                         .overlay(alignment: .trailing) {
                             if !isRenaming && !isInDetachZone { closeSlot }
                         }
@@ -547,7 +547,7 @@ struct DocumentTabView: View {
             .opacity(isHovered ? 1 : 0)
         }
         .frame(width: 16, height: 16)
-        .animation(.easeOut(duration: 0.18), value: isHovered)
-        .animation(.easeOut(duration: 0.12), value: isCloseHovered)
+        .animation(.spring(duration: 0.18), value: isHovered)
+        .animation(.spring(duration: 0.12), value: isCloseHovered)
     }
 }

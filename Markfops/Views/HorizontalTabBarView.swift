@@ -84,7 +84,7 @@ struct TabPillRowView: View {
                     )
                 }
                 .onChange(of: store.activeID) { _, newID in
-                    if let id = newID { withAnimation { proxy.scrollTo(id, anchor: .center) } }
+                    if let id = newID { withAnimation(.spring(duration: 0.22)) { proxy.scrollTo(id, anchor: .center) } }
                 }
             }
 
@@ -150,7 +150,7 @@ struct TabPillRowView: View {
         .animation(.spring(duration: 0.28), value: pillWidth)
         .animation(.spring(duration: 0.22), value: isDragging)
         .animation(.spring(duration: 0.18), value: inDetachZone)
-        .animation(.easeOut(duration: 0.15), value: isAnyDragging)
+        .animation(.spring(duration: 0.15), value: isAnyDragging)
         // Track detach zone entry directly here so wasInDetachZone is set even when
         // DocumentTabView doesn't re-render (the @Observable dependency is in pillCell).
         .onChange(of: inDetachZone) { _, inZone in

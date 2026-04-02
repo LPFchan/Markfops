@@ -46,6 +46,6 @@ struct TOCItemView: View {
             Rectangle()
                 .fill(isHighlighted ? Color.accentColor.opacity(0.12) : Color.clear)
         )
-        .animation(.easeOut(duration: 0.25), value: isHighlighted)
+        .animation(.spring(duration: 0.25), value: isHighlighted)
     }
 }
