@@ -1,4 +1,6 @@
-# Repo Operating Model
+# REPO
+
+This file is the canonical repo contract for Markfops.
 
 This document is the instruction layer for Markfops.
 
@@ -42,13 +44,13 @@ Some coding agents look for repo-root instruction files such as `AGENTS.md` or `
 When this repo includes them:
 
 - they act as entrypoints into the canonical rules, not competing policy documents
-- they stay short enough that they do not drift from `repo-operating-model.md`
+- they stay short enough that they do not drift from `REPO.md`
 - they point writers to the correct canonical surface and local `README.md` guide before drafting
 - `skills/<name>/SKILL.md` stays separate because it defines a bounded reusable procedure, not repo-wide policy
 
 Recommended split:
 
-- `repo-operating-model.md`
+- `REPO.md`
   - canonical rules
 - `AGENTS.md`
   - tool-facing summary plus read order

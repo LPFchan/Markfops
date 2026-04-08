@@ -66,7 +66,7 @@ Bring the repo's enforcement entrypoints and artifact guides into closer alignme
 ## Entry 2026-04-09 10-18-00 KST
 
 - Action: normalized the touched docs toward repo-template structure
-- Files touched: `repo-operating-model.md`, `AGENTS.md`, `CLAUDE.md`, local `README.md` guides
+- Files touched: `REPO.md`, `AGENTS.md`, `CLAUDE.md`, local `README.md` guides
 - Checks run: `git diff --check`
 - Output: merged repo-template writing discipline without losing Markfops-specific constraints
 - Blockers: none

@@ -56,6 +56,12 @@ Preserve the useful execution history and handoff state from the research worksp
 - Outputs: `CLAUDE.md` now acts as a compatibility shim instead of a second policy surface.
 - Why it matters: Claude-specific entrypoint guidance now stays thin and cannot drift away from the canonical agent instructions.
 
+### 2026-04-09 07-39-00 KST
+
+- Action: migrated the canonical repo contract from `repo-operating-model.md` to `REPO.md` and updated the remaining repo references.
+- Outputs: `REPO.md` became the canonical rules surface, `AGENTS.md` now points to it, and touched status, decision, worklog-guide, and skill docs now reference the new name.
+- Why it matters: the repo now matches current repo-template naming without losing Markfops-specific workflow rules or historical truth.
+
 ## Current State
 
 - Active handoff: none

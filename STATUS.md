@@ -48,7 +48,7 @@ Markfops already ships as a native macOS Markdown app with XcodeGen project gene
 - Why this matters now: the repo already depends on long-lived research and coordination artifacts, and those need one stable home
 - Current work: migrate the retired research workspace into root surfaces, add stable IDs, and introduce local hook plus CI commit provenance enforcement
 - Exit criteria: migration commit lands, the retired research workspace is superseded, local hooks can be installed, and remote provenance checks are active in CI
-- Dependencies: `repo-operating-model.md`, `.githooks/commit-msg`, `.gitmessage.markfops`, `scripts/check-commit-standards.sh`, `scripts/check-commit-range.sh`, `scripts/install-hooks.sh`, `.github/workflows/commit-standards.yml`
+- Dependencies: `REPO.md`, `.githooks/commit-msg`, `.gitmessage.markfops`, `scripts/check-commit-standards.sh`, `scripts/check-commit-range.sh`, `scripts/install-hooks.sh`, `.github/workflows/commit-standards.yml`
 - Risks: future commits may omit trailers until the migration commit is merged and the new workflow becomes routine
 - Related ids: `DEC-20260409-001`, `LOG-20260409-001`
 

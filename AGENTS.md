@@ -2,11 +2,11 @@
 
 This repo uses repo-template.
 
-Treat `AGENTS.md` as a compatibility entrypoint for tools that look for repo-root agent instructions. The canonical rules still live in `repo-operating-model.md`.
+Treat `AGENTS.md` as a compatibility entrypoint for tools that look for repo-root agent instructions. The canonical rules live in `REPO.md`.
 
 ## Read First
 
-- `repo-operating-model.md`
+- `REPO.md`
 - `SPEC.md`
 - `STATUS.md`
 - `PLANS.md`
@@ -28,10 +28,10 @@ When writing into an artifact directory, read that directory's `README.md` first
 ## Operating Rules
 
 - Keep durable truth in repo files, not only in chat.
-- Route work using the routing ladder in `repo-operating-model.md`.
+- Route work using the routing ladder in `REPO.md`.
 - Preserve the boundary between `SPEC.md`, `STATUS.md`, `PLANS.md`, `INBOX.md`, `research/`, `records/decisions/`, and `records/agent-worklogs/`.
 - Worker agents should prefer worklogs, evidence, and proposals. The orchestrator or operator owns truth-doc updates unless the operator explicitly allows a different flow.
-- When creating artifacts or commits, follow the stable-ID and provenance rules in `repo-operating-model.md`.
+- When creating artifacts or commits, follow the stable-ID and provenance rules in `REPO.md`.
 - Prefer the local `README.md` shape over ad hoc formatting when it defines one.
 - If hooks are installed with `scripts/install-hooks.sh`, your commit message must satisfy the local provenance check before the commit is allowed.
 - If CI commit checks are enabled, your pushed commits must satisfy the same provenance rules remotely.

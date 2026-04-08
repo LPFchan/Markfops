@@ -7,7 +7,7 @@ Migrated from legacy file: resolved-decisions.md
 
 - Status: accepted
 - Scope: repo workflow, research evidence standards, and provenance
-- Related artifacts: `repo-operating-model.md`, `STATUS.md`, `LOG-20260409-001`
+- Related artifacts: `REPO.md`, `STATUS.md`, `LOG-20260409-001`
 
 ## Decision
 
