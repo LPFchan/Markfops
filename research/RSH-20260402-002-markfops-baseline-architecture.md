@@ -1,4 +1,7 @@
-# Markfops Baseline Architecture
+# RSH-20260402-002: Markfops Baseline Architecture
+Opened: 2026-04-02 19-19-39 KST
+Recorded by agent: codex-markfops-repo-template-migration-20260409
+Migrated from legacy file: markfops-baseline.md
 
 Status: completed
 

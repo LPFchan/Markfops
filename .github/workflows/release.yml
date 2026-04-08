@@ -105,11 +105,58 @@ jobs:
           git fetch origin main
           git checkout -B main origin/main
           mkdir -p docs/sparkle
+          mkdir -p records/agent-worklogs
           cp "$ARCHIVE_DIR/appcast.xml" docs/appcast.xml
           cp "$ARCHIVE_DIR"/Markfops-${VERSION}*.md docs/sparkle/
+          LOG_DATE=$(TZ=Asia/Seoul date +%Y%m%d)
+          LOG_OPENED=$(TZ=Asia/Seoul date '+%Y-%m-%d %H-%M-%S KST')
+          LAST_LOG=$(find records/agent-worklogs -maxdepth 1 -type f -name "LOG-${LOG_DATE}-*.md" | sort | tail -n 1)
+          if [ -n "${LAST_LOG:-}" ]; then
+            LAST_NUM=$(basename "$LAST_LOG" | sed -E "s/^LOG-${LOG_DATE}-([0-9]{3}).*/\\1/")
+            LOG_NUM=$(printf '%03d' $((10#$LAST_NUM + 1)))
+          else
+            LOG_NUM=001
+          fi
+          LOG_ID="LOG-${LOG_DATE}-${LOG_NUM}"
+          LOG_FILE="records/agent-worklogs/${LOG_ID}-release-publish-${VERSION}.md"
+          cat > "$LOG_FILE" <<EOF
+          # ${LOG_ID}: Release Publish ${VERSION}
+          Opened: ${LOG_OPENED}
+          Recorded by agent: github-actions-release
+
+          ## Metadata
+
+          - Run type: worker
+          - Goal: publish Sparkle appcast and localized release notes for ${VERSION}
+          - Related ids: ${LOG_ID}
+
+          ## Task
+
+          Publish the generated Sparkle appcast and localized release notes for ${VERSION} to the default branch after the tagged release build completes.
+
+          ## Scope
+
+          - In scope: appcast publication, localized release notes, and release publication trace
+          - Out of scope: source changes outside release metadata and publishing outputs
+
+          ## Entry ${LOG_OPENED}
+
+          - Action: generated and published Sparkle appcast plus localized release notes for ${VERSION}
+          - Files touched: \`docs/appcast.xml\`, \`docs/sparkle/Markfops-${VERSION}*.md\`, \`${LOG_FILE}\`
+          - Checks run: release workflow archive, DMG build, Sparkle appcast generation
+          - Output: updated GitHub Pages Sparkle metadata for ${VERSION}
+          - Blockers: none
+          - Next: push the publishing commit to \`main\`
+          EOF
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/appcast.xml "docs/sparkle/Markfops-${VERSION}.md" "docs/sparkle/Markfops-${VERSION}.en.md" \
-            "docs/sparkle/Markfops-${VERSION}.ko.md" "docs/sparkle/Markfops-${VERSION}.ja.md" "docs/sparkle/Markfops-${VERSION}.zh.md"
-          git diff --staged --quiet || git commit -m "Update Sparkle appcast and release notes for ${VERSION}"
+            "docs/sparkle/Markfops-${VERSION}.ko.md" "docs/sparkle/Markfops-${VERSION}.ja.md" "docs/sparkle/Markfops-${VERSION}.zh.md" \
+            "$LOG_FILE"
+          git diff --staged --quiet || git commit -m "Update Sparkle appcast and release notes for ${VERSION}
+
+          project: markfops
+          agent: github-actions-release
+          role: worker
+          artifacts: ${LOG_ID}"
           git push origin main

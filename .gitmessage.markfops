@@ -1,0 +1,12 @@
+<summary>
+
+Why:
+- <why this change exists>
+
+Notes:
+- <important context or follow-up>
+
+project: markfops
+agent: <agent-id>
+role: <orchestrator|worker|subagent|operator>
+artifacts: <artifact-id>[, <artifact-id>...]
