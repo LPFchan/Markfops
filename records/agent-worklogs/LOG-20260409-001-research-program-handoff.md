@@ -81,6 +81,15 @@ Preserve the useful execution history and handoff state from the research worksp
 - Blockers: none.
 - Next: keep `REPO.md` as the canonical contract and avoid reintroducing the old filename in repo references.
 
+## Entry 2026-04-09 08-05-00 KST
+
+- Action: updated the repo's worklog and commit-provenance guidance to follow an append-first policy instead of implying a new `LOG-*` for every meaningful commit.
+- Files touched: `REPO.md`, `AGENTS.md`, `records/agent-worklogs/README.md`, and `skills/repo-orchestrator/SKILL.md`.
+- Checks run: `git diff --check` and targeted reference review against the current repo-template scaffold and skill guidance.
+- Output: the canonical rules, agent entrypoint, worklog guide, and orchestration procedure now preserve strict artifact linkage while preferring updates to the current relevant `LOG-*`.
+- Blockers: none.
+- Next: keep commit provenance strict while avoiding needless worklog sprawl during continuing workstreams.
+
 ## Current State
 
 - Active handoff: none

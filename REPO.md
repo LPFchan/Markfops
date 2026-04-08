@@ -152,6 +152,11 @@ One task may legitimately touch multiple layers. Examples:
 - `DEC-*` plus `PLANS.md`
 - `LOG-*` plus `STATUS.md`
 
+Worklogs should follow an append-first policy:
+
+- append to the latest relevant `LOG-*` when the same workstream, goal, or blocker is continuing
+- create a new `LOG-*` only when the work is materially distinct, owned by a separate agent or subagent, or would become harder to follow if it stayed in the old log
+
 ## Write Rules
 
 - Update `SPEC.md`, `STATUS.md`, and `PLANS.md` only when accepted truth changes.
@@ -159,6 +164,8 @@ One task may legitimately touch multiple layers. Examples:
 - Keep research memos focused on reusable findings, not chat residue.
 - Create a new `DEC-*` when a decision changes rather than rewriting the old one into historylessness.
 - Append to worklogs instead of editing away prior execution facts unless a migration note is required.
+- Prefer appending to the current relevant `LOG-*` instead of creating a new one for every meaningful commit.
+- Create a new `LOG-*` only when a distinct execution record improves future clarity.
 - If `upstream-intake/` is later introduced, preserve its paired internal-record and operator-brief workflow instead of inventing a parallel format.
 - Preserve `ref/` as research input, not canonical project truth.
 
@@ -200,7 +207,9 @@ After the repo-template migration commit lands, every normal commit must include
 Rules:
 
 - `artifacts:` may list more than one stable ID.
-- A normal commit should always reference at least one artifact.
+- A normal commit should always reference at least one relevant artifact, whether newly created or updated.
+- A normal commit does not require a brand-new `LOG-*`.
+- Prefer referencing and updating the current relevant `LOG-*` when the same workstream is continuing.
 - Bootstrap or migration exceptions are allowed only when the exception is explicit in the commit message.
 - The repo-local artifact graph and commit history should reinforce one another.
 

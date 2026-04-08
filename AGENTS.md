@@ -32,6 +32,7 @@ When writing into an artifact directory, read that directory's `README.md` first
 - Preserve the boundary between `SPEC.md`, `STATUS.md`, `PLANS.md`, `INBOX.md`, `research/`, `records/decisions/`, and `records/agent-worklogs/`.
 - Worker agents should prefer worklogs, evidence, and proposals. The orchestrator or operator owns truth-doc updates unless the operator explicitly allows a different flow.
 - When creating artifacts or commits, follow the stable-ID and provenance rules in `REPO.md`.
+- Prefer appending to the current relevant `LOG-*` instead of creating a new one unless the work is materially distinct or reuse would harm clarity.
 - Prefer the local `README.md` shape over ad hoc formatting when it defines one.
 - If hooks are installed with `scripts/install-hooks.sh`, your commit message must satisfy the local provenance check before the commit is allowed.
 - If CI commit checks are enabled, your pushed commits must satisfy the same provenance rules remotely.

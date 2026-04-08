@@ -47,10 +47,12 @@ Use this skill with:
    - `DEC-*`
    - `LOG-*`
    - Use the least available `NNN` for that date and artifact type.
+   - Prefer reusing the current relevant `LOG-*` before claiming a new one.
 
 4. Write the artifact with provenance.
    - Include `Opened: YYYY-MM-DD HH-mm-ss KST`
    - Include `Recorded by agent: <agent-id>`
+   - Before drafting, read the destination directory's `README.md` and match the local default shape unless the task has a clear reason to differ.
 
 5. Preserve the separation rules.
    - Do not write speculation straight into `PLANS.md`.
@@ -68,6 +70,7 @@ Use this skill with:
    - `agent: <agent-id>`
    - `role: orchestrator|worker|subagent|operator`
    - `artifacts: <artifact-id>[, <artifact-id>...]`
+   - Prefer referencing and updating an existing relevant `LOG-*` before creating a new one.
 
 ## Escalation Triggers
 
