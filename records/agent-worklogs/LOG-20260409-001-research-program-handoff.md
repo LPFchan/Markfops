@@ -50,6 +50,12 @@ Preserve the useful execution history and handoff state from the research worksp
 - Outputs: repo-root `AGENTS.md` and `CLAUDE.md`, stronger local `README.md` shape guides, `.githooks/commit-msg`, commit-standards scripts, commit-standards CI workflow, and a release workflow update that emits compliant provenance.
 - Why it matters: future local and remote commits now have one canonical provenance path instead of an ad hoc validator split.
 
+### 2026-04-09 07-15-26 KST
+
+- Action: reduced `CLAUDE.md` to a repo-template shim that points back to `AGENTS.md`.
+- Outputs: `CLAUDE.md` now acts as a compatibility shim instead of a second policy surface.
+- Why it matters: Claude-specific entrypoint guidance now stays thin and cannot drift away from the canonical agent instructions.
+
 ## Current State
 
 - Active handoff: none
