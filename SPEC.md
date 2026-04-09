@@ -16,6 +16,8 @@ Keep it durable. Do not use it as a changelog, inbox, or weekly narrative.
 
 Markfops is a lightweight, native macOS Markdown reader and editor. It should preserve Markdown as the trustworthy source of truth while delivering navigation, editing, preview, export, and document management through a first-class macOS experience instead of an Electron shell.
 
+Markfops is also the host for an incremental native WYSIWYG Markdown engine program. That future engine should evolve out of the current source-first app, not replace it with a browser editor, tree-canonical store, or preview-owned document model.
+
 ## Primary User And Context
 
 - Primary operator: a macOS user working directly with local Markdown files
@@ -55,13 +57,31 @@ A Markdown document backed by canonical raw text in `Document.rawText`, presente
 - Markdown source is the only persisted source of truth.
 - The product is native macOS-first, not web-first.
 - Preview and rendering must never silently rewrite or replace source content.
+- The future engine must preserve stable semantic identity before promising smooth text-object or block-object motion.
+- Editor and preview synchronization must be owned explicitly; ratio-only scrolling is a baseline, not the long-term correctness model.
 - The repo keeps canonical truth in `SPEC.md`, `STATUS.md`, and `PLANS.md`, not only in chat history.
+
+## Native WYSIWYG Direction
+
+The accepted engine trajectory is a Markdown-canonical native editing system with a derived semantic block graph, durable block and inline-region identity, shared source-span mapping, a synchronization coordinator, and a transition coordinator.
+
+The goal is not "make the preview editable." The goal is a native macOS writing surface that can move progressively from source editing toward richer semantic presentation while preserving Markdown round-trip fidelity.
+
+The transition program is expected to support:
+
+- viewport-aware motion between editor and preview presentations
+- rigorous scroll anchoring across live edits, layout changes, mode switches, code blocks, tables, images, and semantic role changes
+- modeled semantic transitions for headings, quotes, inline code, code blocks, lists, emphasis, links, and other supported Markdown constructs
+- incremental parsing, identity matching, preview patching, and visible-region layout work before whole-document replacement
+
+Accepted direction lives in `PLANS.md`; durable rationale lives in `DEC-20260409-002`, `DEC-20260409-003`, and `RSH-20260402-009`.
 
 ## Non-Goals
 
 - Replacing Markdown storage with a block-canonical or tree-canonical persisted model
 - Rebuilding the product as an Electron or browser-core application
 - Treating preview rendering as an editable truth surface
+- Shipping full Notion-like block editing before semantic identity, source spans, synchronization, and transition ownership are proven
 
 ## Main Surfaces
 
@@ -80,3 +100,4 @@ A Markdown document backed by canonical raw text in `Document.rawText`, presente
 - Markfops remains a fast, trustworthy native Markdown app for macOS.
 - Markdown round-trip fidelity and read-only preview safety remain intact.
 - The future native WYSIWYG engine can be developed incrementally without abandoning the current product architecture.
+- Editor/preview synchronization and mode-switch motion can be evaluated against stable semantic anchors rather than ad hoc pixels, headings, or scroll ratios alone.

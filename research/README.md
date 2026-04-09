@@ -1,6 +1,6 @@
 # Research
 
-This directory stores curated research memos for Markfops.
+This directory stores curated research memos, not raw execution logs.
 
 ## Naming
 
@@ -25,72 +25,44 @@ Each memo should begin with:
 - `Opened: YYYY-MM-DD HH-mm-ss KST`
 - `Recorded by agent: <agent-id>`
 
+## Markfops Provenance Note
+
 Migrated memos may also include the original path for continuity.
 
-## Default Shape
+## Minimum Content
 
-- Metadata
-- Research question
-- Why this belongs to this repo
-- Findings
-- Promising directions
-- Dead ends or rejected paths
-- Recommended routing
+A research memo should usually make these things recoverable:
 
-Use that section order by default unless the research genuinely needs a different structure.
+- what question or area was explored
+- the findings worth preserving
+- any important rejected paths, open questions, or follow-up routes
 
-## Canonical Example
+The exact section names and order can vary by project.
 
-```md
-# RSH-20260409-001: Routing Research Findings Into Markfops Artifacts
+## Suggested Shapes
 
-Opened: 2026-04-09 09-30-00 KST
-Recorded by agent: agent-example-001
+Any of these are acceptable when they fit the repo better:
 
-## Metadata
+- question -> findings -> next steps
+- topic -> evidence -> conclusion
+- exploration notes -> recommendations
+- short memo with lightweight headings
 
-- Status: completed
-- Question: Where should Markfops store reusable architecture findings versus execution trace?
-- Trigger: IBX-20260409-001
-- Related ids: IBX-20260409-001, DEC-20260409-001
+Keep the memo normalized and readable, but do not force one house style across every repo.
 
-## Research Question
+## Markfops-Useful Shapes
 
-What is the safest default routing pattern for architecture findings discovered during implementation work?
+These additional shapes are already used by the migrated native WYSIWYG research corpus:
 
-## Why This Belongs To This Repo
-
-Markfops has an active architecture program around a future native WYSIWYG engine. Reusable findings need a durable home that stays separate from truth docs and worklogs.
-
-## Findings
-
-- Reusable architecture findings belong in `research/` as `RSH-*` memos.
-- Accepted current state belongs in `STATUS.md`, not in research.
-- Accepted future direction belongs in `PLANS.md`.
-- Run history and file-touch trace belong in `records/agent-worklogs/`.
-
-## Promising Directions
-
-- Keep research memos focused on reusable conclusions and routing guidance.
-- Link research memos to `DEC-*` records when findings become accepted direction.
-
-## Dead Ends Or Rejected Paths
-
-- Dumping command logs into research was rejected because it turns reusable findings into noisy transcripts.
-- Treating research as a substitute for `PLANS.md` was rejected because accepted direction needs its own canonical surface.
-
-## Recommended Routing
-
-- Store reusable findings here.
-- Reflect accepted current-state changes into `STATUS.md`.
-- Reflect accepted future direction into `PLANS.md`.
-- Record execution history in `records/agent-worklogs/`.
-```
+- specimen archaeology -> observed facts -> architectural interpretation -> Markfops judgment
+- research charter -> objective -> principles -> methods -> quality bar
+- pending brief -> current state -> questions to answer -> inputs -> done when
 
 ## Current Corpus
 
 - `RSH-20260402-001` preserves the research-program charter and methodology that survived the migration out of the retired research workspace.
-- `RSH-20260402-002` through `RSH-20260402-013` preserve the accepted baseline, reference deep dives, synthesis docs, and framing stubs for the native WYSIWYG engine program.
+- `RSH-20260402-002` through `RSH-20260402-009` preserve the accepted baseline, reference deep dives, synthesis docs, and target architecture for the native WYSIWYG engine program.
+- `RSH-20260402-010` through `RSH-20260402-013` are pending framing briefs. They preserve the open implementation-framing topics without pretending that roadmap, motion, transition, or risk decisions are complete.
 
 ## Local Notes
 

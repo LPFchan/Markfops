@@ -90,6 +90,15 @@ Preserve the useful execution history and handoff state from the research worksp
 - Blockers: none.
 - Next: keep commit provenance strict while avoiding needless worklog sprawl during continuing workstreams.
 
+## Entry 2026-04-09 17-37-09 KST
+
+- Action: reconciled the durable spec and research memo surfaces against pre-normalization history and the current lightweight repo-template guidance.
+- Files touched: `SPEC.md`, `research/README.md`, `research/RSH-20260402-001-native-wysiwyg-research-program.md`, `research/RSH-20260402-010-implementation-roadmap.md`, `research/RSH-20260402-011-viewport-morphing-strategy.md`, `research/RSH-20260402-012-semantic-transition-coverage.md`, and `research/RSH-20260402-013-risk-register.md`.
+- Checks run: inspected `10e6e15` as the repo-template normalization commit, `2dac124` as the immediately-before research-workspace version, `031785b` as the initial research-plan scaffold, current repo-template `SPEC.md`, research `README.md`, and `REPO.md`; ran `rg -n 'To be filled|Default Shape|Canonical Example|Status: not started' SPEC.md research/*.md`; ran `git diff --check`.
+- Output: restored durable WYSIWYG engine direction into the spec, expanded the migrated research-program charter with objective, reference-corpus, methodology, and quality-bar truth, replaced rigid research-guide shape requirements with lightweight guidance, and converted the empty framing stubs into pending briefs with current state, questions, inputs, hypotheses, and risks.
+- Blockers: none.
+- Next: leave completed archaeology memos in their evidence-heavy repo-native shape; finish `RSH-20260402-010` through `RSH-20260402-013` as dedicated implementation-framing work before selecting the first engine spike.
+
 ## Current State
 
 - Active handoff: none
