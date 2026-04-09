@@ -29,6 +29,7 @@ The goals are:
 | `research/` | Curated research memos worth keeping. | append by new file |
 | `records/decisions/` | Durable decision records with rationale. | append-only by new file |
 | `records/agent-worklogs/` | Execution history for agent runs and workstreams. | append-only |
+| `skills/` | Required procedural workflows for repeatable agent tasks. | edit by skill |
 | `upstream-intake/` | Optional upstream review subsystem if Markfops later needs recurring upstream intake. | append by cadence |
 
 Markfops-specific repo notes:
@@ -47,6 +48,7 @@ When this repo includes them:
 - they stay short enough that they do not drift from `REPO.md`
 - they point writers to the correct canonical surface and local `README.md` guide before drafting
 - `skills/<name>/SKILL.md` stays separate because it defines a bounded reusable procedure, not repo-wide policy
+- `skills/` ships with Markfops as repo-native procedural documentation, even when the agent runtime does not auto-load skills
 
 Recommended split:
 
@@ -326,4 +328,18 @@ Off-repo or runtime context may answer:
 
 ## Skills
 
-`skills/` contains Markfops-local procedural skills. Keep them lightweight and procedural. They should point back to this operating model rather than duplicating all of its rules.
+`skills/` is required. It contains Markfops-local procedural skills.
+
+Agents should read `skills/README.md` and the relevant `skills/<name>/SKILL.md` before running a repeatable repo workflow.
+
+Required baseline skills:
+
+- `skills/repo-orchestrator/SKILL.md`
+- `skills/daily-inbox-pressure-review/SKILL.md`
+
+Conditional skills:
+
+- `skills/upstream-intake/SKILL.md`
+  - include only when the optional `upstream-intake/` module is enabled
+
+Keep skills lightweight and procedural. They should point back to this operating model rather than duplicating all of its rules.

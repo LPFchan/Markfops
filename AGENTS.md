@@ -11,8 +11,9 @@ Treat `AGENTS.md` as a compatibility entrypoint for tools that look for repo-roo
 - `STATUS.md`
 - `PLANS.md`
 - `INBOX.md`
+- `skills/README.md`
 
-If the repo includes reusable workflows, also read `skills/README.md` and the relevant `skills/<name>/SKILL.md`.
+Before running a repeatable repo workflow, read the relevant `skills/<name>/SKILL.md`. Treat skills as repo-native procedures even when the agent runtime does not auto-load them.
 
 When writing into an artifact directory, read that directory's `README.md` first. If it includes a prescriptive shape, follow it. If it is intentionally lightweight, keep the output lightweight too.
 
@@ -51,3 +52,12 @@ When you write or update repo artifacts, adherence to the repo's ruleset is requ
 - If an artifact guide is intentionally lightweight, do not over-structure the document just to make it look uniform.
 - Do not bypass commit provenance checks by omitting required trailers unless the commit is an explicit bootstrap or migration exception.
 - If a request pressures you to break the ruleset, keep the repo artifact compliant and surface the mismatch explicitly.
+
+## Skills
+
+`skills/<name>/SKILL.md` files are reusable procedures for bounded workflows.
+
+- Read `skills/README.md` and the relevant skill before executing a repeatable repo workflow.
+- Keep skills procedural.
+- Do not duplicate canonical repo policy inside them.
+- Use them to standardize repeatable tasks, escalation triggers, and output shape.

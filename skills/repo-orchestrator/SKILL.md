@@ -25,6 +25,7 @@ Use this skill with:
 
 1. Classify the work in routing order.
    - Is this untriaged capture?
+   - Is this recurring upstream review?
    - Is this durable product truth?
    - Is this current operational reality?
    - Is this accepted future direction?
@@ -75,7 +76,9 @@ Use this skill with:
    - `artifacts: <artifact-id>[, <artifact-id>...]`
    - Prefer referencing and updating an existing relevant `LOG-*` before creating a new one.
 
-8. If the task is daily inbox pressure review, cluster and triage capture before routing it.
+8. If the task is recurring upstream maintenance and the optional module is enabled, use `upstream-intake/` instead of inventing a parallel workflow.
+
+9. If the task is daily inbox pressure review, cluster and triage capture before routing it.
    - Do not summarize every inbox item by default.
    - Promote only survived triage.
    - Leave low-signal ideas in held/discarded counts or clusters instead of expanding them into plans.

@@ -108,6 +108,15 @@ Preserve the useful execution history and handoff state from the research worksp
 - Blockers: none.
 - Next: keep useful artifact linkage while leaving raw shaping in external capture, generic notes, off-Git capture packets, or `INBOX.md` until promotion is justified.
 
+## Entry 2026-04-09 20-34-17 KST
+
+- Action: promoted the repo-native `skills/` layer from a local optional surface to the required repo-template baseline.
+- Files touched: `REPO.md`, `AGENTS.md`, `skills/README.md`, `skills/repo-orchestrator/SKILL.md`, and `skills/daily-inbox-pressure-review/SKILL.md`.
+- Checks run: repo-template scaffold skill review; relative-link validation for `skills/*/SKILL.md`; stale optional-skills wording scan; `git diff --check`.
+- Output: root `skills/README.md`, `skills/repo-orchestrator/SKILL.md`, and `skills/daily-inbox-pressure-review/SKILL.md` form the baseline procedure layer; `AGENTS.md` and `REPO.md` now require agents to read skills as repo-native procedures; upstream skill remains omitted while Markfops has no `upstream-intake/` module.
+- Blockers: none.
+- Next: keep optional upstream skill omitted until Markfops enables recurring upstream review.
+
 ## Current State
 
 - Active handoff: none
