@@ -1,24 +1,34 @@
 # Markfops Inbox
 
-This file is the ephemeral scratch disk for intake waiting to be triaged.
+This file is an ephemeral scratch disk for capture waiting to be triaged.
 
 Rules:
 
-- Keep it easy to append to from messenger, operator notes, or agent capture.
+- Keep it easy to append to from external capture, operator notes, or agent capture.
+- Use it as a pressure valve for untriaged capture, not as a backlog or brainstorm graveyard.
+- Group related raw source events into one meaningful inbox entry when possible.
+- Triage meaningful capture packets or clusters, not every raw source event and not an entire external history.
+- During daily review, route, research, plan, discard, or leave capture; do not produce a giant project digest.
+- It is okay to report counts or clusters of held, noisy, stale, or discarded items without summarizing every item.
+- Do not update truth docs directly from inbox. Route through the orchestrator or an operator-approved decision.
 - Remove entries once they are reflected into durable repo artifacts.
 - Keep the stable `IBX-*` id even after the inbox entry itself is later deleted.
 - Do not treat this file as durable truth.
 
-## Active Intake
+## Active Capture
 
 ### IBX-20260409-001
 
 - Opened: `2026-04-09 05-22-59 KST`
 - Recorded by agent: `codex-markfops-repo-template-migration-20260409`
 - Source: migrated from the retired research workspace file `open-questions.md`
+- Source / capture ids: legacy `open-questions.md`
+- Capture packet: implementation-framing questions about semantic parse and invalidation
 - Received: unresolved engine-design questions from the research program
 - Summary: decide what semantic parse and invalidation layer should replace today's split heading parsing and whole-document preview rendering
+- Confidence: `high`
 - Triage status: `in review`
+- Triage decision: `research`
 - Suggested destination: `PLANS.md` plus future `DEC-*`
 - Related ids: `RSH-20260402-002`, `RSH-20260402-008`, `RSH-20260402-009`, `RSH-20260402-010`
 - Notes:
@@ -31,9 +41,13 @@ Rules:
 - Opened: `2026-04-09 05-22-59 KST`
 - Recorded by agent: `codex-markfops-repo-template-migration-20260409`
 - Source: migrated from the retired research workspace file `open-questions.md`
+- Source / capture ids: legacy `open-questions.md`
+- Capture packet: implementation-framing questions about durable semantic identity and source mapping
 - Received: unresolved identity and source-mapping questions from the research program
 - Summary: decide the first durable semantic identity model and how it should layer over source spans without replacing Markdown-first truth
+- Confidence: `high`
 - Triage status: `in review`
+- Triage decision: `research`
 - Suggested destination: `PLANS.md` plus future `DEC-*`
 - Related ids: `RSH-20260402-002`, `RSH-20260402-004`, `RSH-20260402-006`, `RSH-20260402-008`, `RSH-20260402-009`
 - Notes:
@@ -47,9 +61,13 @@ Rules:
 - Opened: `2026-04-09 05-22-59 KST`
 - Recorded by agent: `codex-markfops-repo-template-migration-20260409`
 - Source: migrated from the retired research workspace file `open-questions.md`
+- Source / capture ids: legacy `open-questions.md`
+- Capture packet: implementation-framing questions about dual-view viewport anchors and drift correction
 - Received: unresolved synchronization questions from the research program
 - Summary: decide the first hybrid viewport-anchor model and the drift-correction behavior for editor and preview
+- Confidence: `high`
 - Triage status: `in review`
+- Triage decision: `research`
 - Suggested destination: `PLANS.md` plus future `DEC-*`
 - Related ids: `RSH-20260402-007`, `RSH-20260402-008`, `RSH-20260402-009`, `RSH-20260402-011`, `RSH-20260402-013`
 - Notes:
@@ -63,9 +81,13 @@ Rules:
 - Opened: `2026-04-09 05-22-59 KST`
 - Recorded by agent: `codex-markfops-repo-template-migration-20260409`
 - Source: migrated from the retired research workspace file `open-questions.md`
+- Source / capture ids: legacy `open-questions.md`
+- Capture packet: implementation-framing questions about editor projection, block-aware editing, and semantic transitions
 - Received: unresolved editor projection and transition questions from the research program
 - Summary: decide how far the current `NSTextView` editor can stretch before Markfops needs a more explicit semantic scene or block-aware editing layer
+- Confidence: `high`
 - Triage status: `in review`
+- Triage decision: `research`
 - Suggested destination: `PLANS.md` plus future `DEC-*`
 - Related ids: `RSH-20260402-005`, `RSH-20260402-006`, `RSH-20260402-008`, `RSH-20260402-009`, `RSH-20260402-012`
 - Notes:
@@ -74,6 +96,21 @@ Rules:
   - How much of Inkdown's block taxonomy should Markfops standardize early?
   - What is the minimum viewport-management layer needed if Markfops borrows row- or block-oriented ideas from SimpleBlockEditor?
 
+## Daily Pressure Review Scratch
+
+Use this section during a daily IBX review, then clear it after entries are routed, held, discarded, or escalated.
+
+- Review date:
+- Reviewer:
+- Inbox pressure summary:
+- Clusters reviewed:
+- Promotion candidates:
+- Research candidates:
+- Plan candidates:
+- Discard or purge candidates:
+- Held without full summary:
+- Operator route questions:
+
 ## Purge Rule
 
-Once an item has been reflected into `SPEC.md`, `STATUS.md`, `PLANS.md`, `research/`, `records/decisions/`, or `records/agent-worklogs/`, remove the inbox entry.
+Once an item has been reflected into `SPEC.md`, `STATUS.md`, `PLANS.md`, `research/`, `records/decisions/`, `records/agent-worklogs/`, `upstream-intake/`, or a deliberate discard/hold note, remove the inbox entry.

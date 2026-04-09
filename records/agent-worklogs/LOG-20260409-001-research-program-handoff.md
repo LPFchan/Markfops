@@ -99,6 +99,15 @@ Preserve the useful execution history and handoff state from the research worksp
 - Blockers: none.
 - Next: leave completed archaeology memos in their evidence-heavy repo-native shape; finish `RSH-20260402-010` through `RSH-20260402-013` as dedicated implementation-framing work before selecting the first engine spike.
 
+## Entry 2026-04-09 20-21-49 KST
+
+- Action: adopted repo-template's sparse-promotion discipline and capture-packet vocabulary in Markfops' live operating-policy surfaces.
+- Files touched: `REPO.md`, `AGENTS.md`, `INBOX.md`, and `skills/repo-orchestrator/SKILL.md`.
+- Checks run: `git diff --check`; retired-term scan over live policy for `messenger`, `chat`, `raw message`, `intake span`, `inbox intake`, and `untriaged intake`; capture-vocabulary scan for current `capture`, `capture packet`, `raw external source event`, and inbox field labels.
+- Output: `REPO.md` now carries the template's capture-packet, inbox-pressure-review, and promotion-discipline policy; `AGENTS.md` enforces sparse promotion; `INBOX.md` uses `Active Capture`, `Source / capture ids`, and `Capture packet`; the local repo-orchestrator skill now routes capture and discourages artifact mirroring.
+- Blockers: none.
+- Next: keep useful artifact linkage while leaving raw shaping in external capture, generic notes, off-Git capture packets, or `INBOX.md` until promotion is justified.
+
 ## Current State
 
 - Active handoff: none
