@@ -9,8 +9,8 @@ Keep it durable. Do not use it as a changelog, inbox, or weekly narrative.
 - Canonical repo: this repository
 - Project id: `markfops`
 - Operator: yeowool
-- Last updated: 2026-04-09
-- Related decisions: `DEC-20260409-002`, `DEC-20260409-003`
+- Last updated: 2026-04-10
+- Related decisions: `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260410-001`
 
 ## Product Thesis
 
@@ -92,8 +92,8 @@ Accepted direction lives in `PLANS.md`; durable rationale lives in `DEC-20260409
   - Purpose: produce appcast, release notes, and signed distribution metadata
   - Notes: packaging lives under `Packaging/`, Sparkle pages assets under `docs/`
 - Surface: repo operating layer
-  - Purpose: keep truth, plans, research, decisions, and worklogs legible over time
-  - Notes: authoritative files live at repo root, under `research/`, and under `records/`
+  - Purpose: keep truth, plans, research, decisions, and commit-backed execution history legible over time
+  - Notes: authoritative files live at repo root, under `research/`, `records/decisions/`, and in git commit history via `commit: LOG-*`
 
 ## Success Criteria
 

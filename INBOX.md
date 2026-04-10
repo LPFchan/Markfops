@@ -96,6 +96,27 @@ Rules:
   - How much of Inkdown's block taxonomy should Markfops standardize early?
   - What is the minimum viewport-management layer needed if Markfops borrows row- or block-oriented ideas from SimpleBlockEditor?
 
+### IBX-20260410-001
+
+- Opened: `2026-04-10 21-14-21 KST`
+- Recorded by agent: `codex-markfops-link-capture-20260410`
+- Source: operator-provided external links for later triage
+- Source / capture ids: `https://tolaria.md/`, `https://cogito.md/`, `https://github.com/MarkEdit-app/MarkEdit`, `https://typora.io/`, `https://api.fxtwitter.com/byrsaga/status/2040886775384617352`
+- Capture packet: external product references for native Markdown and plain-text app research
+- Received: a grouped set of product and UX reference links to hold in inbox before any research routing
+- Summary: review Tolaria, Cogito, MarkEdit, Typora, and the Raft tweet as possible reference points for Markfops product, UX, and editor-direction research
+- Confidence: `medium`
+- Triage status: `untriaged`
+- Triage decision: `pending`
+- Suggested destination: future `research/` memo if these references yield durable findings
+- Related ids: none yet
+- Notes:
+  - `Tolaria — A second brain for the AI era` — `https://tolaria.md/`
+  - `Cogito: Beautiful, Native Markdown Editor for Mac` — `https://cogito.md/`
+  - `GitHub - MarkEdit-app/MarkEdit: Just like TextEdit on Mac but dedicated to Markdown.` — `https://github.com/MarkEdit-app/MarkEdit`
+  - `Typora — simple yet powerful Markdown reader.` — `https://typora.io/`
+  - `byrsaga / Raft` capture: native macOS notes app using plain `.md` files; emphasized as native, keyboard-first, local-first, private, and block-based — `https://api.fxtwitter.com/byrsaga/status/2040886775384617352`
+
 ## Daily Pressure Review Scratch
 
 Use this section during a daily IBX review, then clear it after entries are routed, held, discarded, or escalated.
@@ -113,4 +134,4 @@ Use this section during a daily IBX review, then clear it after entries are rout
 
 ## Purge Rule
 
-Once an item has been reflected into `SPEC.md`, `STATUS.md`, `PLANS.md`, `research/`, `records/decisions/`, `records/agent-worklogs/`, `upstream-intake/`, or a deliberate discard/hold note, remove the inbox entry.
+Once an item has been reflected into `SPEC.md`, `STATUS.md`, `PLANS.md`, `research/`, `records/decisions/`, a committed `LOG-*` execution record, `upstream-intake/`, or a deliberate discard/hold note, remove the inbox entry.

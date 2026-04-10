@@ -5,7 +5,7 @@ Migrated from legacy file: native-wysiwyg-research-plan.md
 
 Status: migrated bootstrap memo
 
-Related artifacts: `SPEC.md`, `PLANS.md`, `STATUS.md`, `LOG-20260409-001`
+Related artifacts: `SPEC.md`, `PLANS.md`, `STATUS.md`, `LOG-20260410-230133-logmig`
 
 ## Purpose
 
@@ -91,5 +91,5 @@ Research outputs should make it possible to answer concrete engineering question
 - Put current reality in `STATUS.md`.
 - Keep future research findings in `research/` as `RSH-*` memos.
 - Record durable decisions in `records/decisions/`.
-- Record execution history and handoffs in `records/agent-worklogs/`.
+- Record execution history and handoffs in git commit history through commit-backed `LOG-*` records.
 - Treat old copy-paste subagent prompts and orchestration-status prose as retired execution scaffolding, not research findings.

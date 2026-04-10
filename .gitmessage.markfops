@@ -1,12 +1,17 @@
-<summary>
+<subject line>
 
-Why:
+timestamp: YYYY-MM-DD HH-mm-ss KST
+changes:
+- <change 1>
+rationale:
 - <why this change exists>
-
-Notes:
+checks:
+- <validation or "none">
+notes:
 - <important context or follow-up>
 
 project: markfops
 agent: <agent-id>
 role: <orchestrator|worker|subagent|operator>
+commit: LOG-YYYYMMDD-HHMMSS-<agent-suffix>
 artifacts: <artifact-id>[, <artifact-id>...]

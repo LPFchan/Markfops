@@ -105,58 +105,47 @@ jobs:
           git fetch origin main
           git checkout -B main origin/main
           mkdir -p docs/sparkle
-          mkdir -p records/agent-worklogs
           cp "$ARCHIVE_DIR/appcast.xml" docs/appcast.xml
           cp "$ARCHIVE_DIR"/Markfops-${VERSION}*.md docs/sparkle/
-          LOG_DATE=$(TZ=Asia/Seoul date +%Y%m%d)
+          LOG_AGENT="github-actions-release"
+          LOG_SUFFIX=$(printf '%s' "$LOG_AGENT" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]' | awk '{len=length($0); if (len <= 6) print $0; else print substr($0, len - 5)}')
+          LOG_SEEN=$(git log --all --format=%B | sed -n 's/^commit: //p' | tr ',' '\n' | sed 's/^ *//; s/ *$//' | sort -u)
+          LOG_EPOCH=$(TZ=Asia/Seoul date +%s)
+          while :; do
+            LOG_STAMP=$(TZ=Asia/Seoul date -r "$LOG_EPOCH" +%Y%m%d-%H%M%S)
+            LOG_ID="LOG-${LOG_STAMP}-${LOG_SUFFIX}"
+            if ! printf '%s\n' "$LOG_SEEN" | grep -Fxq "$LOG_ID"; then
+              break
+            fi
+            LOG_EPOCH=$((LOG_EPOCH + 1))
+          done
           LOG_OPENED=$(TZ=Asia/Seoul date '+%Y-%m-%d %H-%M-%S KST')
-          LAST_LOG=$(find records/agent-worklogs -maxdepth 1 -type f -name "LOG-${LOG_DATE}-*.md" | sort | tail -n 1)
-          if [ -n "${LAST_LOG:-}" ]; then
-            LAST_NUM=$(basename "$LAST_LOG" | sed -E "s/^LOG-${LOG_DATE}-([0-9]{3}).*/\\1/")
-            LOG_NUM=$(printf '%03d' $((10#$LAST_NUM + 1)))
-          else
-            LOG_NUM=001
-          fi
-          LOG_ID="LOG-${LOG_DATE}-${LOG_NUM}"
-          LOG_FILE="records/agent-worklogs/${LOG_ID}-release-publish-${VERSION}.md"
-          cat > "$LOG_FILE" <<EOF
-          # ${LOG_ID}: Release Publish ${VERSION}
-          Opened: ${LOG_OPENED}
-          Recorded by agent: github-actions-release
+          LOG_FILE="$RUNNER_TEMP/${LOG_ID}.commit-message"
+          cat <<EOF | sed 's/^          //' > "$LOG_FILE"
+          Publish Sparkle appcast and release notes for ${VERSION}
 
-          ## Metadata
-
-          - Run type: worker
-          - Goal: publish Sparkle appcast and localized release notes for ${VERSION}
-          - Related ids: ${LOG_ID}
-
-          ## Task
-
-          Publish the generated Sparkle appcast and localized release notes for ${VERSION} to the default branch after the tagged release build completes.
-
-          ## Scope
-
-          - In scope: appcast publication, localized release notes, and release publication trace
-          - Out of scope: source changes outside release metadata and publishing outputs
-
-          ## Entry ${LOG_OPENED}
-
-          - Action: generated and published Sparkle appcast plus localized release notes for ${VERSION}
-          - Files touched: \`docs/appcast.xml\`, \`docs/sparkle/Markfops-${VERSION}*.md\`, \`${LOG_FILE}\`
-          - Checks run: release workflow archive, DMG build, Sparkle appcast generation
-          - Output: updated GitHub Pages Sparkle metadata for ${VERSION}
-          - Blockers: none
-          - Next: push the publishing commit to \`main\`
-          EOF
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/appcast.xml "docs/sparkle/Markfops-${VERSION}.md" "docs/sparkle/Markfops-${VERSION}.en.md" \
-            "docs/sparkle/Markfops-${VERSION}.ko.md" "docs/sparkle/Markfops-${VERSION}.ja.md" "docs/sparkle/Markfops-${VERSION}.zh.md" \
-            "$LOG_FILE"
-          git diff --staged --quiet || git commit -m "Update Sparkle appcast and release notes for ${VERSION}
+          timestamp: ${LOG_OPENED}
+          changes:
+          - generated and published the Sparkle appcast and localized release notes for ${VERSION}
+          - updated GitHub Pages release metadata for ${VERSION}
+          rationale:
+          - release publishing should leave commit-backed execution history instead of a parallel markdown file layer
+          - Sparkle metadata and localized release notes need to land together on main
+          checks:
+          - release workflow archive
+          - DMG build
+          - Sparkle appcast generation
+          notes:
+          - legacy markdown execution-history output is retired; execution history is recorded by the commit itself
 
           project: markfops
           agent: github-actions-release
           role: worker
-          artifacts: ${LOG_ID}"
+          commit: ${LOG_ID}
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/appcast.xml "docs/sparkle/Markfops-${VERSION}.md" "docs/sparkle/Markfops-${VERSION}.en.md" \
+            "docs/sparkle/Markfops-${VERSION}.ko.md" "docs/sparkle/Markfops-${VERSION}.ja.md" "docs/sparkle/Markfops-${VERSION}.zh.md"
+          git diff --staged --quiet || git commit -F "$LOG_FILE"
           git push origin main

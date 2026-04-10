@@ -6,16 +6,16 @@ Do not use it as a transcript or a scratchpad.
 
 ## Snapshot
 
-- Last updated: 2026-04-09
+- Last updated: 2026-04-10
 - Overall posture: `active`
-- Current focus: strict repo-template adoption plus implementation framing for the native WYSIWYG engine
+- Current focus: implementation framing for the native WYSIWYG engine
 - Highest-priority blocker: the implementation roadmap, semantic transition coverage, and risk register are still incomplete
 - Next operator decision needed: choose the first implementation spike after the framing docs are finished
-- Related decisions: `DEC-20260409-001`, `DEC-20260409-002`, `DEC-20260409-003`
+- Related decisions: `DEC-20260409-001`, `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260410-001`
 
 ## Current State Summary
 
-Markfops already ships as a native macOS Markdown app with XcodeGen project generation, GitHub Actions build and release workflows, Sparkle publishing assets, and a meaningful research corpus for a future native WYSIWYG engine. The reference deep dives and synthesis work are complete enough to support implementation framing, but the repo was only now normalized into root truth docs, decision records, worklogs, and stable research memos.
+Markfops already ships as a native macOS Markdown app with XcodeGen project generation, GitHub Actions build and release workflows, Sparkle publishing assets, and a meaningful research corpus for a future native WYSIWYG engine. The reference deep dives and synthesis work are complete enough to support implementation framing, and the repo is now normalized into root truth docs, decision records, commit-backed execution history, and stable research memos.
 
 ## Active Phases Or Tracks
 
@@ -41,17 +41,6 @@ Markfops already ships as a native macOS Markdown app with XcodeGen project gene
 - Risks: unresolved questions around semantic identity, invalidation, and synchronization can still create drift in early implementation choices
 - Related ids: `DEC-20260409-002`, `DEC-20260409-003`, `IBX-20260409-001`, `IBX-20260409-002`, `IBX-20260409-003`, `IBX-20260409-004`
 
-### Repo Operating Model Adoption
-
-- Goal: make root truth docs, research memos, worklogs, decisions, and commit provenance the canonical repo workflow
-- Status: `in progress`
-- Why this matters now: the repo already depends on long-lived research and coordination artifacts, and those need one stable home
-- Current work: migrate the retired research workspace into root surfaces, add stable IDs, and introduce local hook plus CI commit provenance enforcement
-- Exit criteria: migration commit lands, the retired research workspace is superseded, local hooks can be installed, and remote provenance checks are active in CI
-- Dependencies: `REPO.md`, `.githooks/commit-msg`, `.gitmessage.markfops`, `scripts/check-commit-standards.sh`, `scripts/check-commit-range.sh`, `scripts/install-hooks.sh`, `.github/workflows/commit-standards.yml`
-- Risks: future commits may omit trailers until the migration commit is merged and the new workflow becomes routine
-- Related ids: `DEC-20260409-001`, `LOG-20260409-001`
-
 ## Recent Changes To Project Reality
 
 - Date: 2026-04-02
@@ -65,7 +54,11 @@ Markfops already ships as a native macOS Markdown app with XcodeGen project gene
 - Date: 2026-04-09
   - Change: canonical repo truth moved to root operating surfaces and records
   - Why it matters: future work now has stable routing, provenance expectations, and durable artifact locations
-  - Related ids: `DEC-20260409-001`, `LOG-20260409-001`
+  - Related ids: `DEC-20260409-001`, `LOG-20260410-230133-logmig`
+- Date: 2026-04-10
+  - Change: commit-backed `LOG-*` execution history replaced the legacy markdown execution-history surface
+  - Why it matters: execution records now live in git history, the retired markdown surface no longer exists, and provenance stays recoverable without a parallel file layer
+  - Related ids: `DEC-20260410-001`, `LOG-20260410-230133-logmig`
 
 ## Active Blockers And Risks
 
@@ -74,11 +67,6 @@ Markfops already ships as a native macOS Markdown app with XcodeGen project gene
   - Owner: operator plus orchestrator
   - Mitigation: finish the framing docs and route the remaining open questions into a small first spike
   - Related ids: `IBX-20260409-001`, `IBX-20260409-002`, `IBX-20260409-003`, `IBX-20260409-004`
-- Blocker or risk: commit provenance is documented before it has gone through a merged workflow cycle
-  - Effect: early adopters may forget trailers or local template usage
-  - Owner: operator plus future contributors
-  - Mitigation: use the bootstrap exception once, then rely on the CI checker and local template
-  - Related ids: `DEC-20260409-001`, `LOG-20260409-001`
 
 ## Immediate Next Steps
 

@@ -45,7 +45,7 @@ Recorded by agent: agent-example-001
 
 - Status: accepted
 - Deciders: operator, orchestrator
-- Related ids: RSH-20260409-001, LOG-20260409-001
+- Related ids: RSH-20260409-001, LOG-20260410-230133-logmig
 
 ## Decision
 

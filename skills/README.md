@@ -9,7 +9,7 @@ Each reusable workflow should live at `skills/<name>/SKILL.md`.
 Required baseline skills:
 
 - `repo-orchestrator/`
-  - Markfops-local routing workflow for truth, status, plans, research, decisions, worklogs, and inbox capture.
+  - Generic routing workflow for truth, status, plans, research, decisions, commit-backed execution, and inbox capture.
 - `daily-inbox-pressure-review/`
   - Focus-protecting daily triage for `IBX-*` capture and capture packets.
 
@@ -17,7 +17,7 @@ Conditional skills:
 
 - `upstream-intake/`
   - Companion workflow for the optional upstream-review module.
-  - Omitted in Markfops while `upstream-intake/` remains intentionally dormant.
+  - Include it when the adopted repo enables `upstream-intake/`; omit it when the repo does not track an upstream.
 
 Keep skills procedural.
 Do not duplicate the canonical rules from `REPO.md` inside them.

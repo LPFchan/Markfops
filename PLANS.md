@@ -12,15 +12,6 @@ Do not put raw brainstorms or untriaged intake here.
 
 ## Approved Directions
 
-### Repo Operating Model Adoption
-
-- Outcome: Markfops uses root truth docs, stable artifact ids, worklogs, decisions, and commit provenance for future repo work.
-- Why this is accepted: the repo already accumulated durable research and coordination artifacts, and they need one canonical home.
-- Expected value: future product and research work becomes easier to route, audit, and hand off.
-- Preconditions: bootstrap migration commit lands; commit-trailer workflow starts enforcing new provenance.
-- Earliest likely start: now
-- Related ids: `DEC-20260409-001`, `LOG-20260409-001`
-
 ### Semantic Scene Foundation For The Native WYSIWYG Engine
 
 - Outcome: Markfops adds a markdown-derived semantic block layer with durable ids and source spans shared by editor and preview.

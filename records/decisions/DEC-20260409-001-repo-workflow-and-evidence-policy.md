@@ -7,11 +7,11 @@ Migrated from legacy file: resolved-decisions.md
 
 - Status: accepted
 - Scope: repo workflow, research evidence standards, and provenance
-- Related artifacts: `REPO.md`, `STATUS.md`, `LOG-20260409-001`
+- Related artifacts: `REPO.md`, `STATUS.md`, `DEC-20260410-001`, `LOG-20260410-230133-logmig`
 
 ## Decision
 
-Markfops will use a repo-native operating model with root truth docs, stable artifact ids, durable research memos, append-only decision records, append-only worklogs, and commit provenance trailers after the bootstrap migration commit.
+Markfops will use a repo-native operating model with root truth docs, stable artifact ids, durable research memos, append-only decision records, commit-backed execution history, and commit provenance trailers after the bootstrap migration commit.
 
 ## Context
 
@@ -21,7 +21,7 @@ Before this migration, the repo already relied on long-lived research coordinati
 
 - Keep using a single research workspace as the de facto operating layer
 - Move only a subset of the artifacts and leave the rest as legacy conventions
-- Normalize the repo around explicit truth, plan, research, decision, and worklog surfaces
+- Normalize the repo around explicit truth, plan, research, decision, and commit-backed execution surfaces
 
 ## Rationale
 
