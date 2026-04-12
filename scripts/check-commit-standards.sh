@@ -248,7 +248,7 @@ check_primary_id_uniqueness() {
         if [ -n "$head_sha" ] && [ "$sha" = "$head_sha" ]; then
           continue
         fi
-        fail "primary `commit:` id already exists in history: $primary_id"
+        fail "primary \`commit:\` id already exists in history: $primary_id"
       fi
     done
   done
@@ -275,6 +275,7 @@ commit_value=$(trailer_value "commit")
 artifacts_value=$(trailer_value "artifacts" || true)
 
 [ -n "$project" ] || fail "project trailer is empty"
+# Local extension: Markfops keeps project-id enforcement pinned to markfops.
 [ "$project" = "markfops" ] || fail "project trailer must be markfops"
 [ -n "$agent" ] || fail "agent trailer is empty"
 
@@ -329,7 +330,7 @@ if [ -n "$artifacts_value" ]; then
     esac
 
     printf '%s\n' "$artifact_id" | grep -Eq '^[A-Z]{3}-[0-9]{8}-[0-9]{3}$' ||
-      fail "artifacts trailer must contain only stable ids like DEC-YYYYMMDD-NNN"
+      fail "artifacts trailer must contain only file-backed ids like DEC-YYYYMMDD-NNN"
 
     case " $seen_artifacts " in
       *" $artifact_id "*) fail "duplicate artifact id inside artifacts trailer: $artifact_id" ;;

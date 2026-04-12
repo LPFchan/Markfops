@@ -3,8 +3,6 @@ name: Commit Standards
 on:
   pull_request:
   push:
-    branches:
-      - "**"
 
 jobs:
   commit-standards:
@@ -16,7 +14,7 @@ jobs:
           fetch-depth: 0
 
       - name: Make scripts executable
-        run: chmod +x .githooks/commit-msg scripts/check-commit-standards.sh scripts/check-commit-range.sh scripts/install-hooks.sh
+        run: chmod +x scripts/check-commit-standards.sh scripts/check-commit-range.sh
 
       - name: Validate pull request commits
         if: github.event_name == 'pull_request'

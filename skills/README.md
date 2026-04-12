@@ -1,7 +1,8 @@
 # Skills
 
-This directory is Markfops' repo-native procedure layer.
+This directory is part of the repo-template scaffold.
 
+Use it as repo-native procedural documentation.
 Agents should read the relevant workflow even when their runtime does not auto-load skills.
 
 Each reusable workflow should live at `skills/<name>/SKILL.md`.

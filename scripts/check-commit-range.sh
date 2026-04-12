@@ -9,6 +9,7 @@ fi
 
 base=$1
 head=$2
+# Local extension: keep zero-SHA handling and duplicate LOG-id scanning for pushed ranges.
 zero=0000000000000000000000000000000000000000
 
 repo_root=$(cd "$(dirname "$0")/.." && pwd)

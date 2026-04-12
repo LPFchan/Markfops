@@ -1,63 +1,58 @@
-# REPO
+# Repo Operating Model
 
-This file is the canonical repo contract for Markfops.
-
-This document is the instruction layer for Markfops.
+This document is the canonical repo contract for repo-template-style repos.
 
 ## Purpose
 
-Use this model to keep Markfops legible as a repo managed through durable product docs, research artifacts, decisions, and implementation history.
+Use this model when a repo is managed by one operator plus many agents and you want the repo itself to remain legible over time.
 
-Markfops is a native macOS Markdown app with an active research and implementation program around a future native WYSIWYG engine. This repo uses a repo-native operating model so that product truth, accepted future direction, reusable research, and execution history do not collapse into external transcripts or one-off notes.
+The goal is simple:
 
-The goals are:
+- keep canonical truth in-repo
+- keep noisy activity out of truth docs
+- keep provenance explicit
+- let the orchestrator route work without inventing new storage rules each time
 
-- keep canonical truth in repo-root documents
-- keep research reusable and separate from commit-backed execution records
-- keep decisions durable and append-only
-- make provenance visible through stable artifact ids and commit trailers
-- reserve `docs/` for Sparkle and GitHub Pages assets rather than canonical project truth
+This file is part of the ready-to-copy scaffold for adopted repos.
 
 ## Core Surfaces
 
+Every repo using this system should separate these surfaces:
+
 | Surface | Role | Mutability |
 | --- | --- | --- |
-| `SPEC.md` | Durable statement of what Markfops is supposed to be. | rewritten |
-| `STATUS.md` | Current accepted operational truth. | rewritten |
-| `PLANS.md` | Accepted future direction that is not true yet. | rewritten |
+| `SPEC.md` | Durable statement of what the project is supposed to be. | rewritten |
+| `STATUS.md` | What is true right now operationally. | rewritten |
+| `PLANS.md` | Accepted future direction that is not current truth yet. | rewritten |
 | `INBOX.md` | Ephemeral capture waiting for triage. | append then purge |
 | `research/` | Curated research memos worth keeping. | append by new file |
 | `records/decisions/` | Durable decision records with rationale. | append-only by new file |
 | `git commit history` | Canonical execution history through structured commit-backed `LOG-*` records. | append-only by new commit |
 | `skills/` | Required procedural workflows for repeatable agent tasks. | edit by skill |
-| `upstream-intake/` | Optional upstream review subsystem if Markfops later needs recurring upstream intake. | append by cadence |
-
-Markfops-specific repo notes:
-
-- `docs/` is for Sparkle appcast, release notes publishing, and GitHub Pages assets.
-- `ref/` is for reference repositories and local specimens used for research.
-- `upstream-intake/` is intentionally omitted until Markfops has a real upstream-review cadence to manage.
+| `upstream-intake/` | Optional upstream review subsystem for repos that track an upstream. | append by cadence |
 
 ## Agent Compatibility Files
 
 Some coding agents look for repo-root instruction files such as `AGENTS.md` or `CLAUDE.md`.
 
-When this repo includes them:
+When a repo using this model includes them:
 
-- they act as entrypoints into the canonical rules, not competing policy documents
-- they stay short enough that they do not drift from `REPO.md`
-- they point writers to the correct canonical surface and local `README.md` guide before drafting
-- `skills/<name>/SKILL.md` stays separate because it defines a bounded reusable procedure, not repo-wide policy
-- `skills/` ships with Markfops as repo-native procedural documentation, even when the agent runtime does not auto-load skills
+- they should act as entrypoints into the canonical rules, not competing policy documents
+- they should stay short enough that they do not drift from `REPO.md`
+- `AGENTS.md` should be the main editable agent-instructions file when both files exist
+- `CLAUDE.md` should be a thin shim that points to `AGENTS.md` when the tool supports it
+- `SKILL.md` stays separate because it defines a bounded reusable procedure, not repo-wide policy
+- `skills/` should ship with adopted repos as repo-native procedural documentation, even when the agent runtime does not auto-load skills
+- optional repo subsystems may have optional companion skills
 
 Recommended split:
 
 - `REPO.md`
   - canonical rules
 - `AGENTS.md`
-  - tool-facing summary plus read order
+  - canonical editable agent-instructions file
 - `CLAUDE.md`
-  - Claude-facing shim into the same rules
+  - Claude Code shim that points to `AGENTS.md`
 - `skills/<name>/SKILL.md`
   - procedure for one repeatable workflow
 
@@ -67,13 +62,20 @@ Macro structure is not enough on its own. Agents should not improvise document s
 
 When writing repo files or commit-backed execution records:
 
-- read the nearest canonical surface, local directory `README.md`, and any explicit template before drafting
+- read the nearest canonical surface, directory `README.md`, and any explicit template before drafting
 - if the local `README.md` includes a default shape or canonical example, follow it by default
 - use the established section order only when the surface actually defines one and it helps the repo stay legible
 - write normalized repo records, not external transcripts or stream-of-consciousness notes
 - keep facts, decisions, open questions, and next steps clearly separated
 - summarize evidence and outcomes instead of pasting raw command output unless the literal output is the artifact
-- prefer short declarative bullets or paragraphs over filler
+- prefer short declarative bullets or paragraphs over vague filler
+
+When a directory exists to store a durable artifact type, it should ideally include:
+
+- a `README.md` that explains what belongs there
+- a default shape or canonical example inside that same `README.md` when that artifact type benefits from it
+
+That single guide helps future agents copy a house style instead of inventing one.
 
 ## Separation Rules
 
@@ -85,13 +87,13 @@ These boundaries are mandatory:
 - `INBOX.md` is not durable truth.
 - `research/` is not raw execution history.
 - `records/decisions/` is not the same as commit-backed execution history.
-- `docs/` is not a substitute for the canonical repo operating surfaces.
+- Off-Git memory is not a substitute for repo-local canonical docs.
 
-That separation keeps common questions fast to answer:
+That separation gives future operators and future agents fast answers to different questions:
 
-- What is the product supposed to be? -> `SPEC.md`
+- What is the project? -> `SPEC.md`
 - What is true right now? -> `STATUS.md`
-- What future direction is already accepted? -> `PLANS.md`
+- What future work is actually accepted? -> `PLANS.md`
 - What did we learn from exploration? -> `research/`
 - What did we decide and why? -> `records/decisions/`
 - What actually happened during execution? -> git commit history via `commit: LOG-*`
@@ -100,7 +102,7 @@ That separation keeps common questions fast to answer:
 
 ### Operator
 
-The operator is the final authority for product direction, architecture acceptance, workflow changes, and truth updates.
+The operator is the final authority for product direction, escalation outcomes, and acceptance of truth changes.
 
 ### Orchestrator Agent
 
@@ -128,7 +130,7 @@ They may:
 - create compliant commit-backed execution records when granted commit authority
 - propose truth changes through the orchestrator
 
-They should not update `SPEC.md`, `STATUS.md`, or `PLANS.md` directly unless the operator explicitly chooses that flow.
+They should not update `SPEC.md`, `STATUS.md`, or `PLANS.md` directly unless the operator explicitly allows that flow.
 
 ### External Capture Surfaces
 
@@ -244,7 +246,7 @@ One task may legitimately touch multiple layers. For example:
 - a product choice can create `DEC-*` and update `PLANS.md`
 - implementation progress can create a committed `LOG-*` and update `STATUS.md`
 
-Touch multiple layers only when each touched layer has a distinct job.
+Touch multiple layers only when each layer receives distinct information.
 Do not copy the same evolving thought into research, decision, plan, spec, status, upstream, and execution surfaces.
 
 ## Write Rules
@@ -358,9 +360,9 @@ Body rules:
 
 ## Commit-Time Enforcement
 
-If the repo enables commit hooks, every attempted commit should be checked against these provenance rules.
+Repos using this system must enforce these provenance rules both locally and remotely.
 
-Recommended minimum enforcement:
+Required minimum enforcement:
 
 - reject commits that do not include `project:`, `agent:`, `role:`, and `commit:`
 - reject roles outside `orchestrator|worker|subagent|operator`
@@ -373,7 +375,7 @@ Recommended minimum enforcement:
 
 The goal is not perfect policy automation. The goal is to stop obviously non-compliant commits before they land.
 
-Best practice is to use both:
+Required enforcement layers:
 
 - local git hooks for fast feedback before the commit is created
 - CI for remote re-validation on push or pull request
@@ -400,10 +402,21 @@ The Off-Git runtime should answer:
 - which source events produced the artifact
 - how execution lineage maps across rebases, cherry-picks, merges, and absorbed `LOG-*` ids
 
-## Markfops Notes
+## Scaffold Rule
 
+`scaffold/` is a ready-to-copy repo skeleton, not a loose library of files to cherry-pick casually.
+
+Use it when you want a managed repo to share one canonical layout so humans and agents know exactly where work belongs.
+
+In this template, scaffold files live under `scaffold/`.
+After adoption, the scaffold contents belong at the target repo root.
+For example, `scaffold/skills/repo-orchestrator/SKILL.md` becomes `skills/repo-orchestrator/SKILL.md` in the adopted repo.
+
+## Local Divergence
+
+Markfops-specific repo notes:
+
+- `project-id` is `markfops`.
 - `docs/` is for Sparkle appcast, release notes publishing, and GitHub Pages assets.
 - `ref/` is for reference repositories and local specimens used for research.
 - `upstream-intake/` is intentionally omitted until Markfops has a real upstream-review cadence to manage.
-
-Keep skills lightweight and procedural. They should point back to this operating model rather than duplicating all of its rules.

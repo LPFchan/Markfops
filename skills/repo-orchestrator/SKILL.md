@@ -72,7 +72,7 @@ Use this skill with:
    - `role: orchestrator|worker|subagent|operator`
    - `commit: LOG-...[, LOG-...]`
    - `artifacts:` is optional and must not contain `LOG-*`
-   - If commit hooks are enabled, make the commit message pass the local validator before retrying.
+   - Make the commit message pass the required local validator before retrying.
    - Use the structured body keys `timestamp:`, `changes:`, `rationale:`, and `checks:` with `notes:` optional.
 
 8. If the task is recurring upstream maintenance and the optional module is enabled, use `upstream-intake/` instead of inventing a parallel workflow.
