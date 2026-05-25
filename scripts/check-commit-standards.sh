@@ -248,7 +248,7 @@ check_primary_id_uniqueness() {
         if [ -n "$head_sha" ] && [ "$sha" = "$head_sha" ]; then
           continue
         fi
-        fail "primary \`commit:\` id already exists in history: $primary_id"
+        fail "primary \`commit:\` id already exists in history: $primary_id (generate a fresh skeleton with sh scripts/new-commit-message.sh --subject \"...\")"
       fi
     done
   done
@@ -275,8 +275,6 @@ commit_value=$(trailer_value "commit")
 artifacts_value=$(trailer_value "artifacts" || true)
 
 [ -n "$project" ] || fail "project trailer is empty"
-# Local extension: Markfops keeps project-id enforcement pinned to markfops.
-[ "$project" = "markfops" ] || fail "project trailer must be markfops"
 [ -n "$agent" ] || fail "agent trailer is empty"
 
 case "$role" in

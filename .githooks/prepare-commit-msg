@@ -1,0 +1,93 @@
+#!/bin/sh
+
+set -eu
+
+msg_file=$1
+commit_source=${2:-}
+repo_root=$(git rev-parse --show-toplevel)
+
+if [ ! -f "$msg_file" ]; then
+  echo "repo-template commit gate failed: commit message file not found: $msg_file" >&2
+  exit 2
+fi
+
+is_exception_commit() {
+  grep -Eqi '^(bootstrap|migration)(\b| exception\b)' "$msg_file" ||
+    grep -Eqi '^exception: (bootstrap|migration)$' "$msg_file"
+}
+
+primary_log_id() {
+  sed -n 's/^commit: //p' "$msg_file" |
+    tail -n 1 |
+    tr ',' '\n' |
+    sed 's/^ *//; s/ *$//' |
+    sed -n '1p'
+}
+
+message_subject() {
+  sed -n '1p' "$msg_file"
+}
+
+trailer_value() {
+  key=$1
+  sed -n "s/^$key: //p" "$msg_file" | tail -n 1
+}
+
+registry_value() {
+  key=$1
+  sed -n "s/^$key=//p" "$registry_file" | tail -n 1
+}
+
+fail() {
+  reason=$1
+  echo "repo-template commit rejected: $reason" >&2
+  echo >&2
+  echo "Normal commits must use the repo-template generator." >&2
+  echo "  sh scripts/new-commit-message.sh --subject \"<subject>\" --agent <agent-id>" >&2
+  echo "  # fill TODO bullets" >&2
+  echo "  sh scripts/check-commit-standards.sh <message-file>" >&2
+  echo "  git commit -F <message-file>" >&2
+  exit 1
+}
+
+if is_exception_commit; then
+  exit 0
+fi
+
+log_id=$(primary_log_id)
+[ -n "$log_id" ] || fail "the commit message has no primary \`commit: LOG-...\` trailer from the generator"
+
+printf '%s\n' "$log_id" | grep -Eq '^LOG-[0-9]{8}-[0-9]{6}-[a-z0-9]{1,6}$' ||
+  fail "the primary \`commit:\` value is malformed: $log_id"
+
+git_registry_dir=$(git -C "$repo_root" rev-parse --git-path repo-template/generated-commit-ids)
+case "$git_registry_dir" in
+  /*) registry_dir=$git_registry_dir ;;
+  *) registry_dir="$repo_root/$git_registry_dir" ;;
+esac
+registry_file="$registry_dir/$log_id"
+
+[ -f "$registry_file" ] ||
+  fail "the primary LOG id was not registered by scripts/new-commit-message.sh: $log_id"
+
+registered_subject=$(registry_value "subject")
+registered_project=$(registry_value "project")
+registered_agent=$(registry_value "agent")
+registered_role=$(registry_value "role")
+
+current_subject=$(message_subject)
+current_project=$(trailer_value "project")
+current_agent=$(trailer_value "agent")
+current_role=$(trailer_value "role")
+
+[ "$current_subject" = "$registered_subject" ] ||
+  fail "the commit subject does not match the generated skeleton for $log_id; regenerate the skeleton if the subject changed"
+
+[ "$current_project" = "$registered_project" ] ||
+  fail "the project trailer does not match the generated skeleton for $log_id; regenerate with --project if needed"
+
+[ "$current_agent" = "$registered_agent" ] ||
+  fail "the agent trailer does not match the generated skeleton for $log_id; regenerate with --agent if needed"
+
+[ "$current_role" = "$registered_role" ] ||
+  fail "the role trailer does not match the generated skeleton for $log_id; regenerate with --role if needed"
