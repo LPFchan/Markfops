@@ -1,0 +1,18 @@
+chore: update repo-template to v1.1.5
+
+timestamp: TIMESTAMP
+changes:
+- Rename clean-correction-gate skill to clean-correction
+- Remove repo-vendored sharpen-the-tip, prototype-mode, housekeeping skills (now global)
+- Update AGENTS.md skills table and skills/README.md
+rationale:
+- Bring repo in line with upstream repo-template v1.1.5
+checks:
+- Verified records/REPO.md version updated to 1.1.5
+- Verified AGENTS.md skills table updated
+- Verified skills/ directory pruned and clean-correction added
+
+project: PROJECT
+agent: claude
+role: worker
+commit: COMMIT_ID
