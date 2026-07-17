@@ -30,6 +30,9 @@ Conditional skills:
 - `prototype-mode/`
   - Pre-MVP posture: break interfaces freely, skip bridge layers and migration scaffolding, refactor surgically.
   - Include it when the repo contains greenfield or pre-production code.
+- `housekeeping/`
+  - Read-only adversarial repository-boundary audit: inventory the full physical workspace, verdict every artifact, propose a gated migration.
+  - Include it when the repo accumulates generated artifacts, caches, backups, or ignored residue that need periodic justification.
 
 Keep skills procedural.
 Do not duplicate the canonical rules from `records/REPO.md` inside them.
