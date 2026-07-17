@@ -43,3 +43,4 @@ ref/
 sparkle_private*.key
 Sparkle_private*.key
 *.sparkle.pem
+.tmp_commit_msg_*.txt
