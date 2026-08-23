@@ -211,9 +211,30 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         // subtract half the viewport height to position it at the center.
         let centerY = CGFloat(ratio) * totalHeight
         let targetY = max(0, min(scrollableHeight, centerY - visibleHeight / 2))
-        scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
+        tv.scroll(NSPoint(x: 0, y: targetY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
         document.syncActiveHeadingToScrollPosition()
+    }
+
+    func scheduleScrollRestoration(to ratio: Double, attemptsRemaining: Int = 3) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self,
+                  let textView,
+                  let scrollView = textView.enclosingScrollView else { return }
+
+            if let textContainer = textView.textContainer {
+                textView.layoutManager?.ensureLayout(for: textContainer)
+            }
+            scrollView.layoutSubtreeIfNeeded()
+
+            let contentIsReady = textView.bounds.height > scrollView.contentView.bounds.height
+                || textView.string.isEmpty
+            if !contentIsReady, attemptsRemaining > 1 {
+                scheduleScrollRestoration(to: ratio, attemptsRemaining: attemptsRemaining - 1)
+                return
+            }
+            scrollToRatio(ratio)
+        }
     }
 
     func scrollToLine(_ lineNumber: Int) {

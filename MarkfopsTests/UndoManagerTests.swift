@@ -128,6 +128,74 @@ final class UndoManagerTests: XCTestCase {
         XCTAssertIdentical(window.firstResponder, textView)
     }
 
+    func testHostedDocumentSwitchRestoresScrollPositionForEachDocument() {
+        let first = Document(rawText: longDocument(prefix: "First"))
+        let second = Document(rawText: longDocument(prefix: "Second"))
+        let selection = HostedDocumentSelection(document: first)
+        let hostingView = NSHostingView(rootView: HostedDocumentContent(selection: selection))
+        hostingView.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+        let window = NSWindow(
+            contentRect: hostingView.frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hostingView
+        defer { window.orderOut(nil) }
+
+        settle(hostingView)
+        guard let firstTextView = findTextView(in: hostingView),
+              let firstScrollView = firstTextView.enclosingScrollView else {
+            return XCTFail("The first hosted editor did not create its scroll view")
+        }
+        firstTextView.layoutManager?.ensureLayout(for: firstTextView.textContainer!)
+        settle(hostingView)
+
+        let firstTargetY = (firstTextView.bounds.height - firstScrollView.contentView.bounds.height) * 0.55
+        firstTextView.scroll(NSPoint(x: 0, y: firstTargetY))
+        firstScrollView.reflectScrolledClipView(firstScrollView.contentView)
+        NotificationCenter.default.post(
+            name: NSScrollView.didLiveScrollNotification,
+            object: firstScrollView
+        )
+        let savedRatio = first.scrollRatio
+        XCTAssertGreaterThan(savedRatio, 0.4)
+
+        selection.document = second
+        settle(hostingView)
+        selection.document = first
+        settle(hostingView)
+
+        guard let restoredTextView = findTextView(in: hostingView),
+              let restoredScrollView = restoredTextView.enclosingScrollView else {
+            return XCTFail("The restored editor did not create its scroll view")
+        }
+        let visibleRect = restoredScrollView.contentView.documentVisibleRect
+        let restoredRatio = Double(
+            (visibleRect.minY + visibleRect.height / 2) / restoredTextView.bounds.height
+        )
+
+        XCTAssertGreaterThan(visibleRect.minY, 0)
+        XCTAssertEqual(restoredRatio, savedRatio, accuracy: 0.03)
+    }
+
+    func testManualSidebarScrollSuspendsAutomaticFollowingUntilResumed() {
+        let context = SidebarScrollContext()
+        context.lastTargetY = 120
+        context.desiredTargetY = 180
+
+        context.beginManualScrolling()
+
+        XCTAssertNil(context.lastTargetY)
+        XCTAssertNil(context.desiredTargetY)
+        XCTAssertFalse(context.allowsAutomaticFollowing(force: false))
+        XCTAssertTrue(context.allowsAutomaticFollowing(force: true))
+
+        context.resumeAutomaticFollowing()
+
+        XCTAssertTrue(context.allowsAutomaticFollowing(force: false))
+    }
+
     private struct EditorFixture {
         let textView: MarkdownNSTextView
         let coordinator: TextViewCoordinator
@@ -149,6 +217,11 @@ final class UndoManagerTests: XCTestCase {
         XCTAssertTrue(textView.shouldChangeText(in: range, replacementString: replacement))
         textView.replaceCharacters(in: range, with: replacement)
         textView.didChangeText()
+    }
+
+    private func longDocument(prefix: String) -> String {
+        (0..<300).map { "## \(prefix) section \($0)\nBody line \($0)" }
+            .joined(separator: "\n")
     }
 
     private func settle(_ view: NSView) {

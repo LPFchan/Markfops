@@ -396,6 +396,8 @@ struct EditorView: NSViewRepresentable {
             context.coordinator.highlighter.highlightAll(in: storage)
         }
 
+        context.coordinator.scheduleScrollRestoration(to: document.scrollRatio)
+
         // Track scroll position for mode-switch sync
         NotificationCenter.default.addObserver(
             context.coordinator,

@@ -22,7 +22,7 @@ private struct SidebarDocumentHeaderMinYKey: PreferenceKey {
     }
 }
 
-private final class SidebarScrollContext {
+final class SidebarScrollContext {
     weak var scrollView: NSScrollView?
     var lastTargetY: CGFloat?
     var desiredTargetY: CGFloat?
@@ -34,6 +34,20 @@ private final class SidebarScrollContext {
     var endLiveScrollObserver: NSObjectProtocol?
     var isRespectingManualScrollPosition = false
     var suppressTOCFollowUntil: CFTimeInterval = 0
+
+    func beginManualScrolling() {
+        isRespectingManualScrollPosition = true
+        desiredTargetY = nil
+        lastTargetY = nil
+    }
+
+    func resumeAutomaticFollowing() {
+        isRespectingManualScrollPosition = false
+    }
+
+    func allowsAutomaticFollowing(force: Bool) -> Bool {
+        force || !isRespectingManualScrollPosition
+    }
 }
 
 private struct SidebarScrollViewAccessor: NSViewRepresentable {
@@ -84,14 +98,8 @@ struct SidebarView: View {
     private static let tocFollowScrollNearTargetVelocityDamping: CGFloat = 0.46
     private static let tocFollowScrollFinalApproachDistance: CGFloat = 5
     private static let tocFollowScrollFinalApproachVelocityDamping: CGFloat = 0.24
-    private static let tocRowHeight: CGFloat = 24
     private static let sidebarContentTopPadding: CGFloat = 4
     private static let documentHeaderPinTolerance: CGFloat = 1.5
-    // The pinned document pill/header occupies the top of the scroll view, so TOC rows
-    // hidden behind it are not actually visible even if their geometry is within bounds.
-    private static let tocPinnedHeaderVisibilityInset: CGFloat = 42
-    private static let tocBottomVisibilityPadding: CGFloat = 10
-    private static let tocCenterReactivationBand: CGFloat = 30
 
     @Environment(DocumentStore.self) private var store
     var onTOCTap: (HeadingNode) -> Void
@@ -190,6 +198,7 @@ struct SidebarView: View {
                         scrollDocumentHeaderToTop(documentID: activeID)
                     }
                     if headerMinY <= Self.sidebarContentTopPadding + Self.documentHeaderPinTolerance,
+                       scrollContext.allowsAutomaticFollowing(force: false),
                        store.activeDocument?.activeHeadingID != nil {
                         scheduleScrollToActiveHeading(force: true)
                     }
@@ -204,7 +213,7 @@ struct SidebarView: View {
                     doc.isTOCExpanded = tocVisible[old] ?? false
                     scrollContext.lastTargetY = nil
                     scrollContext.suppressTOCFollowUntil = 0
-                    scrollContext.isRespectingManualScrollPosition = false
+                    scrollContext.resumeAutomaticFollowing()
                     withAnimation(.spring(duration: 0.22)) {
                         tocVisible[old] = false
                     }
@@ -215,7 +224,7 @@ struct SidebarView: View {
                     doc.syncActiveHeadingToScrollPosition()
                     scrollContext.lastTargetY = nil
                     scrollContext.suppressTOCFollowUntil = CACurrentMediaTime() + Self.documentPinSuppressFollowDuration
-                    scrollContext.isRespectingManualScrollPosition = false
+                    scrollContext.resumeAutomaticFollowing()
                     withAnimation(.spring(duration: 0.22)) {
                         tocVisible[new] = doc.isTOCExpanded
                     }
@@ -228,9 +237,7 @@ struct SidebarView: View {
                 if shouldForce {
                     pendingImmediateTOCScrollTarget = nil
                 }
-                if newID != nil {
-                    scrollContext.isRespectingManualScrollPosition = false
-                }
+                scrollContext.resumeAutomaticFollowing()
                 scheduleScrollToActiveHeading(force: shouldForce)
             }
         }
@@ -390,6 +397,11 @@ struct SidebarView: View {
               let activeHeadingID = document.activeHeadingID,
               let scrollView = scrollContext.scrollView else { return }
 
+        guard scrollContext.allowsAutomaticFollowing(force: force) else {
+            stopTOCFollowAnimation()
+            return
+        }
+
         if let headerMinY = documentHeaderMinYByID[document.id],
            headerMinY > Self.sidebarContentTopPadding + Self.documentHeaderPinTolerance {
             scrollDocumentHeaderToTop(documentID: document.id)
@@ -404,38 +416,9 @@ struct SidebarView: View {
         guard let targetMidY = headingMidYByID[activeHeadingID] else { return }
 
         let viewportHeight = scrollView.contentView.bounds.height
-        let visibleRect = scrollView.contentView.bounds
-        let rowHalfHeight = Self.tocRowHeight / 2
-        let topVisibleY = visibleRect.minY + Self.tocPinnedHeaderVisibilityInset + rowHalfHeight
-        let bottomVisibleY = visibleRect.maxY - Self.tocBottomVisibilityPadding - rowHalfHeight
-        let centerY = (topVisibleY + bottomVisibleY) / 2
-
-        if !force,
-           scrollContext.isRespectingManualScrollPosition {
-            let isVisible = targetMidY >= topVisibleY && targetMidY <= bottomVisibleY
-            if !isVisible || targetMidY > centerY {
-                scrollContext.isRespectingManualScrollPosition = false
-            } else {
-                scrollContext.lastTargetY = nil
-                scrollContext.desiredTargetY = nil
-                stopTOCFollowAnimation()
-                return
-            }
-        }
-
         let contentHeight = scrollView.documentView?.bounds.height ?? 0
         let maxOffset = max(0, contentHeight - viewportHeight)
-        let centeredTargetY = max(0, min(maxOffset, targetMidY - viewportHeight / 2))
-        let targetY: CGFloat
-        if !force, scrollContext.isRespectingManualScrollPosition {
-            if targetMidY > bottomVisibleY {
-                targetY = centeredTargetY
-            } else {
-                targetY = minimalRevealOffset(for: targetMidY, in: scrollView, maxOffset: maxOffset)
-            }
-        } else {
-            targetY = centeredTargetY
-        }
+        let targetY = max(0, min(maxOffset, targetMidY - viewportHeight / 2))
 
         if !force,
            let lastTargetY = scrollContext.lastTargetY,
@@ -588,9 +571,10 @@ struct SidebarView: View {
             queue: .main
         ) { _ in
             guard !scrollContext.isProgrammaticScroll else { return }
-            scrollContext.isRespectingManualScrollPosition = true
-            scrollContext.desiredTargetY = nil
-            scrollContext.lastTargetY = nil
+            pendingDocumentPinWorkItem?.cancel()
+            pendingInitialTOCSyncWorkItem?.cancel()
+            scrollContext.suppressTOCFollowUntil = 0
+            scrollContext.beginManualScrolling()
             stopTOCFollowAnimation()
         }
 
@@ -616,35 +600,4 @@ struct SidebarView: View {
         }
     }
 
-    private func isHeadingVisible(at midY: CGFloat, in scrollView: NSScrollView) -> Bool {
-        let rowHalfHeight = Self.tocRowHeight / 2
-        let visibleRect = scrollView.contentView.bounds
-        let minY = visibleRect.minY + Self.tocPinnedHeaderVisibilityInset + rowHalfHeight
-        let maxY = visibleRect.maxY - Self.tocBottomVisibilityPadding - rowHalfHeight
-        return midY >= minY && midY <= maxY
-    }
-
-    private func isHeadingNearCenter(at midY: CGFloat, in scrollView: NSScrollView) -> Bool {
-        let visibleRect = scrollView.contentView.bounds
-        let top = visibleRect.minY + Self.tocPinnedHeaderVisibilityInset
-        let bottom = visibleRect.maxY - Self.tocBottomVisibilityPadding
-        guard bottom > top else { return false }
-        let centerY = (top + bottom) / 2
-        return abs(midY - centerY) <= Self.tocCenterReactivationBand
-    }
-
-    private func minimalRevealOffset(for midY: CGFloat, in scrollView: NSScrollView, maxOffset: CGFloat) -> CGFloat {
-        let rowHalfHeight = Self.tocRowHeight / 2
-        let visibleRect = scrollView.contentView.bounds
-        let minY = visibleRect.minY + Self.tocPinnedHeaderVisibilityInset + rowHalfHeight
-        let maxY = visibleRect.maxY - Self.tocBottomVisibilityPadding - rowHalfHeight
-
-        if midY < minY {
-            return max(0, midY - Self.tocPinnedHeaderVisibilityInset - rowHalfHeight)
-        }
-        if midY > maxY {
-            return min(maxOffset, midY - visibleRect.height + Self.tocBottomVisibilityPadding + rowHalfHeight)
-        }
-        return visibleRect.minY
-    }
 }
