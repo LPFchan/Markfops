@@ -33,6 +33,7 @@ struct EditorContainerView: View {
                         scrollToLine: scrollToHeading?.lineNumber,
                         editorBridge: editorBridge
                     )
+                    .id(document.id)
                     .padding(.top, findOverlayReservedTopInset)
                     .focusedValue(\.editorBridge, editorBridge)
 
@@ -123,6 +124,7 @@ struct EditorContainerView: View {
                 document.updateTextMetrics()
                 document.fileURL = url
                 document.isDirty = false
+                document.clearUndoHistory()
                 document.headings = HeadingParser.parseHeadings(in: text)
                 document.reconcileActiveHeadingWithCurrentContent()
             }

@@ -28,12 +28,18 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         observedScrollView = scrollView
     }
 
-    func prepareForDocumentSwitch(to document: Document, textView: MarkdownNSTextView) {
+    func undoManager(for view: NSTextView) -> UndoManager? {
+        document.undoManager
+    }
+
+    @discardableResult
+    func prepareForDocumentSwitch(to document: Document, textView: MarkdownNSTextView) -> Bool {
+        guard textView.textStorage === document.textStorage else { return false }
         headingDebounceItem?.cancel()
         stopScrollAnimation()
-        textView.clearUndoState()
         self.document = document
         self.textView = textView
+        return true
     }
 
     func teardown() {
@@ -41,7 +47,11 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         headingDebounceItem = nil
         stopScrollAnimation()
         NotificationCenter.default.removeObserver(self)
-        textView?.clearUndoState()
+        if let textView,
+           let layoutManager = textView.layoutManager,
+           layoutManager.textStorage === document.textStorage {
+            document.textStorage.removeLayoutManager(layoutManager)
+        }
         textView = nil
         observedScrollView = nil
     }

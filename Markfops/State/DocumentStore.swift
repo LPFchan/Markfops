@@ -201,6 +201,7 @@ final class DocumentStore {
             document.rawText = text
             document.updateTextMetrics()
             document.isDirty = false
+            document.clearUndoHistory()
             document.headings = HeadingParser.parseHeadings(in: text)
             document.reconcileActiveHeadingWithCurrentContent()
         }

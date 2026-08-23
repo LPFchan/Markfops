@@ -150,6 +150,16 @@ final class EditorBridge {
 // MARK: - NSTextView subclass
 
 final class MarkdownNSTextView: NSTextView {
+    convenience init(textStorage: NSTextStorage) {
+        let layoutManager = NSLayoutManager()
+        textStorage.addLayoutManager(layoutManager)
+        let textContainer = NSTextContainer(
+            size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        )
+        layoutManager.addTextContainer(textContainer)
+        self.init(frame: .zero, textContainer: textContainer)
+    }
+
     var configuration: EditorConfiguration = .default {
         didSet {
             guard !configuration.isEquivalent(to: oldValue) else { return }
@@ -157,22 +167,10 @@ final class MarkdownNSTextView: NSTextView {
         }
     }
     private var findHighlightOverlays: [NSView] = []
-    private let editorUndoManager = UndoManager()
-
-    override var undoManager: UndoManager? {
-        editorUndoManager
-    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         applyConfiguration()
-    }
-
-    override func viewWillMove(toWindow newWindow: NSWindow?) {
-        if newWindow == nil {
-            clearUndoState()
-        }
-        super.viewWillMove(toWindow: newWindow)
     }
 
     private func applyConfiguration() {
@@ -250,12 +248,6 @@ final class MarkdownNSTextView: NSTextView {
         undoManager?.disableUndoRegistration()
         string = newText
         undoManager?.enableUndoRegistration()
-        clearUndoState()
-    }
-
-    func clearUndoState() {
-        undoManager?.removeAllActions(withTarget: self)
-        undoManager?.removeAllActions()
     }
 
     func flashFindHighlight(for range: NSRange) {
@@ -361,7 +353,7 @@ struct EditorView: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
 
-        let textView = MarkdownNSTextView()
+        let textView = MarkdownNSTextView(textStorage: document.textStorage)
         textView.delegate = context.coordinator
         textView.isEditable = true
         textView.isSelectable = true
@@ -412,7 +404,9 @@ struct EditorView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? MarkdownNSTextView else { return }
         if context.coordinator.document.id != document.id {
-            context.coordinator.prepareForDocumentSwitch(to: document, textView: textView)
+            guard context.coordinator.prepareForDocumentSwitch(to: document, textView: textView) else {
+                return
+            }
         } else {
             context.coordinator.document = document
         }
@@ -450,8 +444,6 @@ struct EditorView: NSViewRepresentable {
             if textView.textStorage?.delegate === coordinator.highlighter {
                 textView.textStorage?.delegate = nil
             }
-            textView.delegate = nil
-            textView.clearUndoState()
         }
     }
 }

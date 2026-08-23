@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Observation
 import QuartzCore
 
@@ -9,7 +10,17 @@ final class Document: Identifiable {
         didSet { notifyStateChange() }
     }
     var rawText: String {
-        didSet { notifyStateChange() }
+        didSet {
+            if textStorage.string != rawText {
+                undoManager.disableUndoRegistration()
+                textStorage.replaceCharacters(
+                    in: NSRange(location: 0, length: textStorage.length),
+                    with: rawText
+                )
+                undoManager.enableUndoRegistration()
+            }
+            notifyStateChange()
+        }
     }
     @ObservationIgnored private(set) var lineCount: Int
     var isDirty: Bool {
@@ -33,11 +44,18 @@ final class Document: Identifiable {
     @ObservationIgnored private var pendingFocusedHeading: HeadingNode?
     @ObservationIgnored private var pendingFocusedHeadingExpiry: CFTimeInterval = 0
     @ObservationIgnored var onStateChange: ((Document) -> Void)?
+    /// Undo history belongs to the document, rather than to whichever editor view is currently
+    /// presenting it. This lets the history follow a document across tabs and windows.
+    @ObservationIgnored let undoManager = UndoManager()
+    /// The text storage is shared by editor views created for this document so native undo
+    /// registrations continue to address the same storage across view recreation.
+    @ObservationIgnored let textStorage: NSTextStorage
 
     init(id: UUID = UUID(), fileURL: URL? = nil, rawText: String = "") {
         self.id = id
         self.fileURL = fileURL
         self.rawText = rawText
+        self.textStorage = NSTextStorage(string: rawText)
         self.lineCount = Self.lineCount(for: rawText)
         self.savedText = rawText
         self.isDirty = false
@@ -60,6 +78,12 @@ final class Document: Identifiable {
 
     func updateTextMetrics() {
         lineCount = Self.lineCount(for: rawText)
+    }
+
+    /// Drops edits that predate a newly adopted source baseline, such as an external reload or
+    /// an explicit revert to the saved file.
+    func clearUndoHistory() {
+        undoManager.removeAllActions()
     }
 
     func setActiveHeading(_ heading: HeadingNode?) {
@@ -154,6 +178,7 @@ final class Document: Identifiable {
             rawText = text
             updateTextMetrics()
             savedText = text
+            clearUndoHistory()
             headings = HeadingParser.parseHeadings(in: text)
             reconcileActiveHeadingWithCurrentContent()
         }
