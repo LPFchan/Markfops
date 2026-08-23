@@ -97,6 +97,37 @@ final class UndoManagerTests: XCTestCase {
         XCTAssertTrue(second.undoManager.canUndo)
     }
 
+    func testHostedEditorHasInteractiveScrollableGeometry() {
+        let text = Array(repeating: "A long line of editable Markdown text.", count: 200)
+            .joined(separator: "\n")
+        let document = Document(rawText: text)
+        let selection = HostedDocumentSelection(document: document)
+        let hostingView = NSHostingView(rootView: HostedDocumentContent(selection: selection))
+        hostingView.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+        let window = NSWindow(
+            contentRect: hostingView.frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hostingView
+        defer { window.orderOut(nil) }
+
+        settle(hostingView)
+        guard let textView = findTextView(in: hostingView),
+              let scrollView = textView.enclosingScrollView else {
+            return XCTFail("The hosted editor did not create its scrollable text view")
+        }
+        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+        settle(hostingView)
+
+        XCTAssertTrue(textView.isEditable)
+        XCTAssertTrue(textView.isVerticallyResizable)
+        XCTAssertGreaterThan(textView.frame.height, scrollView.contentView.bounds.height)
+        XCTAssertTrue(window.makeFirstResponder(textView))
+        XCTAssertIdentical(window.firstResponder, textView)
+    }
+
     private struct EditorFixture {
         let textView: MarkdownNSTextView
         let coordinator: TextViewCoordinator
