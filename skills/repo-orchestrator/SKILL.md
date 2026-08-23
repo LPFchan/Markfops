@@ -8,7 +8,7 @@ argument-hint: "Task, capture item, or maintenance request"
 
 Use this skill with:
 
-- [../../REPO.md](../../REPO.md)
+- [../../records/REPO.md](../../records/REPO.md)
 
 ## What This Skill Produces
 
@@ -30,14 +30,14 @@ Use this skill with:
    - Is this execution history?
 
 2. Route it to the correct artifact layer.
-   - `SPEC.md`
-   - `STATUS.md`
-   - `PLANS.md`
-   - `INBOX.md`
-   - `research/`
+   - `records/SPEC.md`
+   - `records/STATUS.md`
+   - `records/PLANS.md`
+   - `records/INBOX.md`
+   - `records/research/`
    - `records/decisions/`
    - git commit history via `commit: LOG-*`
-   - `upstream-intake/`
+   - `records/upstream-intake/`
 
 3. Assign stable IDs when needed.
    - `IBX-*`
@@ -54,15 +54,15 @@ Use this skill with:
    - Match the local guide when it is prescriptive, and stay lightweight when the guide is intentionally minimal.
 
 5. Preserve the separation rules.
-   - Do not write speculation straight into `PLANS.md`.
+   - Do not write speculation straight into `records/PLANS.md`.
    - Do not let execution records masquerade as decisions.
    - Do not let inbox entries become long-term truth.
    - Do not treat research memos as raw transcripts.
 
 6. If the task crosses layers, create multiple artifacts deliberately.
    - Example: `RSH-*` plus a committed `LOG-*`
-   - Example: `DEC-*` plus `PLANS.md`
-   - Example: a committed `LOG-*` plus `STATUS.md`
+   - Example: `DEC-*` plus `records/PLANS.md`
+   - Example: a committed `LOG-*` plus `records/STATUS.md`
    - Touch multiple layers only when each touched layer has a distinct job.
    - Do not mirror the same evolving thought into every artifact type.
 
@@ -75,7 +75,7 @@ Use this skill with:
    - Make the commit message pass the required local validator before retrying.
    - Use the structured body keys `timestamp:`, `changes:`, `rationale:`, and `checks:` with `notes:` optional.
 
-8. If the task is recurring upstream maintenance and the optional module is enabled, use `upstream-intake/` instead of inventing a parallel workflow.
+8. If the task is recurring upstream maintenance and the optional module is enabled, use `records/upstream-intake/` instead of inventing a parallel workflow.
 
 9. If the task is daily inbox pressure review, cluster and triage capture before routing it.
    - Do not summarize every inbox item by default.

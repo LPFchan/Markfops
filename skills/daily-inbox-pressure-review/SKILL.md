@@ -8,8 +8,8 @@ argument-hint: "Date, inbox range, capture packet, external source, or triage fo
 
 Use this skill with:
 
-- [../../REPO.md](../../REPO.md)
-- [../../INBOX.md](../../INBOX.md)
+- [../../records/REPO.md](../../records/REPO.md)
+- [../../records/INBOX.md](../../records/INBOX.md)
 
 Use it when the operator or orchestrator wants a daily IBX review.
 
@@ -26,7 +26,7 @@ It should not produce a giant digest of every captured idea.
 ## Procedure
 
 1. Gather active capture.
-   - Read `INBOX.md`.
+   - Read `records/INBOX.md`.
    - Include relevant external capture packets when available.
    - Treat raw external source events as immutable Off-Git events, not as repo artifacts.
 
@@ -49,7 +49,7 @@ It should not produce a giant digest of every captured idea.
    - `leave` when the operator wants the pressure valve to hold it a little longer.
 
 5. Promote only survived triage.
-   - Do not update `SPEC.md`, `STATUS.md`, `PLANS.md`, `research/`, or `records/decisions/` directly from raw inbox.
+   - Do not update `records/SPEC.md`, `records/STATUS.md`, `records/PLANS.md`, `records/research/`, or `records/decisions/` directly from raw inbox.
    - Route through the orchestrator or operator-approved decision.
    - Copy short summaries and provenance IDs into routed artifacts.
    - Do not rely on raw external source staying visible.

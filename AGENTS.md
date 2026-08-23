@@ -23,7 +23,7 @@ Load the skill before the trigger condition fires. Each skill defines the proced
 | Before replacing, deleting, or rewriting content that already exists | `skills/clean-correction/SKILL.md` |
 | When routing work or creating repo artifacts | `skills/repo-orchestrator/SKILL.md` |
 | When reviewing inbox pressure | `skills/daily-inbox-pressure-review/SKILL.md` |
-| When reviewing upstream changes | `skills/upstream-intake/SKILL.md` |
+| When reviewing upstream changes *(only if the optional `records/upstream-intake/` module is enabled)* | `skills/upstream-intake/SKILL.md` |
 
 Repo-agnostic skills (`sharpen-the-tip`, `prototype-mode`, `housekeeping`, `proactive-docs`) are **global**, not vendored per repo — they live in `~/.agents/skills/` via the `agents` module of LPFchan/setup, and your runtime surfaces them automatically.
 
