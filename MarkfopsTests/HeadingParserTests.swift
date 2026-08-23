@@ -43,6 +43,10 @@ final class HeadingParserTests: XCTestCase {
         XCTAssertTrue(HeadingParser.parseHeadings(in: "").isEmpty)
     }
 
+    func testDocumentTableOfContentsStartsExpanded() {
+        XCTAssertTrue(Document().isTOCExpanded)
+    }
+
     func testHeadingLineNumbers() {
         let text = "Intro\n# Title\nBody\n## Sub"
         let headings = HeadingParser.parseHeadings(in: text)
@@ -122,6 +126,8 @@ final class HeadingParserTests: XCTestCase {
         XCTAssertEqual(migrated.windows.count, 1)
         XCTAssertEqual(migrated.documents.map(\.id), [document.id])
         XCTAssertEqual(migrated.activeID, document.id)
+        XCTAssertTrue(migrated.documents[0].isTOCExpanded)
+        XCTAssertEqual(migrated.tocExpansionDefaultsVersion, 0)
     }
 
     func testRecoverySnapshotRoundTripsMultipleWindows() throws {
@@ -148,6 +154,10 @@ final class HeadingParserTests: XCTestCase {
         XCTAssertEqual(restored.windows.map(\.id), [firstID, secondID])
         XCTAssertEqual(restored.activeWindowID, secondID)
         XCTAssertEqual(restored.documents.map(\.id), [firstDocument.id, secondDocument.id])
+        XCTAssertEqual(
+            restored.tocExpansionDefaultsVersion,
+            RecoverySnapshot.currentTOCExpansionDefaultsVersion
+        )
     }
 
     func testDocumentCannotAppearInTwoStoresAfterMove() {

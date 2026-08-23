@@ -63,7 +63,7 @@ final class Document: Identifiable {
         self.scrollRatio = 0
         self.headings = []
         self.activeHeadingID = nil
-        self.isTOCExpanded = false
+        self.isTOCExpanded = true
     }
 
     static func lineCount(for text: String) -> Int {

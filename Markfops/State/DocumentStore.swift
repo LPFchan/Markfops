@@ -656,6 +656,8 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
 
         var seenIDs = Set<UUID>()
         var seenURLs = Set<URL>()
+        let usesLegacyTOCDefault = snapshot.tocExpansionDefaultsVersion
+            < RecoverySnapshot.currentTOCExpansionDefaultsVersion
         for windowSnapshot in snapshot.windows {
             let session = self.session(for: windowSnapshot.id)!
             var restored: [Document] = []
@@ -663,7 +665,10 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
                 guard !seenIDs.contains(documentSnapshot.id) else { continue }
                 let url = documentSnapshot.fileURLString.flatMap(URL.init(string:)).map(Self.normalizedFileURL)
                 if let url, seenURLs.contains(url) { continue }
-                guard let document = Self.restoreDocument(from: documentSnapshot) else { continue }
+                guard let document = Self.restoreDocument(
+                    from: documentSnapshot,
+                    usesLegacyTOCDefault: usesLegacyTOCDefault
+                ) else { continue }
                 seenIDs.insert(document.id)
                 if let url { seenURLs.insert(url) }
                 restored.append(document)
@@ -821,7 +826,10 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
         )
     }
 
-    private static func restoreDocument(from snapshot: RecoveryDocumentSnapshot) -> Document? {
+    private static func restoreDocument(
+        from snapshot: RecoveryDocumentSnapshot,
+        usesLegacyTOCDefault: Bool = false
+    ) -> Document? {
         let fileURL = snapshot.fileURLString.flatMap(URL.init(string:))
         if let fileURL, FileManager.default.fileExists(atPath: fileURL.path) {
             let diskText = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
@@ -832,7 +840,7 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
             document.mode = EditMode(rawValue: snapshot.mode) ?? .edit
             document.scrollRatio = snapshot.scrollRatio
             document.activeHeadingID = snapshot.activeHeadingID
-            document.isTOCExpanded = snapshot.isTOCExpanded
+            document.isTOCExpanded = usesLegacyTOCDefault ? true : snapshot.isTOCExpanded
             document.collapsedHeadingIDs = snapshot.collapsedHeadingIDs
             document.headings = HeadingParser.parseHeadings(in: rawText)
             document.startWatching()
@@ -845,7 +853,7 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
         document.mode = EditMode(rawValue: snapshot.mode) ?? .edit
         document.scrollRatio = snapshot.scrollRatio
         document.activeHeadingID = snapshot.activeHeadingID
-        document.isTOCExpanded = snapshot.isTOCExpanded
+        document.isTOCExpanded = usesLegacyTOCDefault ? true : snapshot.isTOCExpanded
         document.collapsedHeadingIDs = snapshot.collapsedHeadingIDs
         document.headings = HeadingParser.parseHeadings(in: rawText)
         return document
@@ -853,22 +861,29 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
 }
 
 struct RecoverySnapshot: Codable {
+    static let currentTOCExpansionDefaultsVersion = 1
+
     var windows: [RecoveryWindowSnapshot]
     var activeWindowID: UUID?
+    var tocExpansionDefaultsVersion: Int
 
     /// Legacy flat fields are accepted for migration from the single-window snapshot.
     init(windows: [RecoveryWindowSnapshot], activeWindowID: UUID?) {
         self.windows = windows
         self.activeWindowID = activeWindowID
+        self.tocExpansionDefaultsVersion = Self.currentTOCExpansionDefaultsVersion
     }
 
     init(documents: [RecoveryDocumentSnapshot], activeID: UUID?) {
         let id = UUID()
         self.windows = [RecoveryWindowSnapshot(id: id, documents: documents, activeID: activeID)]
         self.activeWindowID = id
+        self.tocExpansionDefaultsVersion = Self.currentTOCExpansionDefaultsVersion
     }
 
-    enum CodingKeys: String, CodingKey { case windows, activeWindowID, documents, activeID }
+    enum CodingKeys: String, CodingKey {
+        case windows, activeWindowID, documents, activeID, tocExpansionDefaultsVersion
+    }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -882,12 +897,17 @@ struct RecoverySnapshot: Codable {
             self.windows = [RecoveryWindowSnapshot(id: id, documents: documents, activeID: activeID)]
             self.activeWindowID = id
         }
+        self.tocExpansionDefaultsVersion = try values.decodeIfPresent(
+            Int.self,
+            forKey: .tocExpansionDefaultsVersion
+        ) ?? 0
     }
 
     func encode(to encoder: Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(windows, forKey: .windows)
         try values.encodeIfPresent(activeWindowID, forKey: .activeWindowID)
+        try values.encode(tocExpansionDefaultsVersion, forKey: .tocExpansionDefaultsVersion)
     }
 
     var documents: [RecoveryDocumentSnapshot] { windows.flatMap(\.documents) }
@@ -913,7 +933,7 @@ struct RecoveryDocumentSnapshot: Codable {
     var mode: String = EditMode.edit.rawValue
     var scrollRatio: Double = 0
     var activeHeadingID: String?
-    var isTOCExpanded: Bool = false
+    var isTOCExpanded: Bool = true
     var collapsedHeadingIDs: Set<String> = []
 
     enum CodingKeys: String, CodingKey {
@@ -923,7 +943,7 @@ struct RecoveryDocumentSnapshot: Codable {
 
     init(id: UUID, displayTitle: String, fileURLString: String?, rawText: String?, savedText: String?,
          isDirty: Bool, mode: String = EditMode.edit.rawValue, scrollRatio: Double = 0,
-         activeHeadingID: String? = nil, isTOCExpanded: Bool = false,
+         activeHeadingID: String? = nil, isTOCExpanded: Bool = true,
          collapsedHeadingIDs: Set<String> = []) {
         self.id = id
         self.displayTitle = displayTitle
@@ -949,7 +969,7 @@ struct RecoveryDocumentSnapshot: Codable {
         mode = try values.decodeIfPresent(String.self, forKey: .mode) ?? EditMode.edit.rawValue
         scrollRatio = try values.decodeIfPresent(Double.self, forKey: .scrollRatio) ?? 0
         activeHeadingID = try values.decodeIfPresent(String.self, forKey: .activeHeadingID)
-        isTOCExpanded = try values.decodeIfPresent(Bool.self, forKey: .isTOCExpanded) ?? false
+        isTOCExpanded = try values.decodeIfPresent(Bool.self, forKey: .isTOCExpanded) ?? true
         collapsedHeadingIDs = try values.decodeIfPresent(Set<String>.self, forKey: .collapsedHeadingIDs) ?? []
     }
 }
