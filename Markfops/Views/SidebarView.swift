@@ -100,7 +100,7 @@ struct SidebarView: View {
 
     /// Per-document TOC visibility — collapses on deselect, restores on reselect.
     @State private var tocVisible: [UUID: Bool] = [:]
-    /// Index before which the accent insertion line is shown during a cross-window drag.
+    /// Index before which the accent insertion line is shown during a tab reorder.
     @State private var dropInsertionIndex: Int? = nil
     @State private var pendingTOCFollowScroll: DispatchWorkItem? = nil
     @State private var headingMidYByID: [String: CGFloat] = [:]
@@ -266,9 +266,6 @@ struct SidebarView: View {
     private func sectionHeader(document: Document, index: Int) -> some View {
         let isDragging    = TabDragState.shared.draggingDocumentID == document.id
         let isAnyDragging = TabDragState.shared.draggingDocumentID != nil
-        let translation   = TabDragState.shared.dragTranslation
-        // In the sidebar (vertical list), horizontal drag = detach; vertical drag = reorder.
-        let inDetachZone  = isDragging && abs(translation.width) > 60
 
         VStack(spacing: 0) {
             if dropInsertionIndex == index {
@@ -286,8 +283,7 @@ struct SidebarView: View {
                     set: { tocVisible[document.id] = $0 }
                 ),
                 onSelect: { store.activeID = document.id },
-                onClose: { store.close(id: document.id) },
-                isInDetachZone: inDetachZone
+                onClose: { store.close(id: document.id) }
             )
             .id(document.id)
             .padding(.horizontal, 6)
@@ -300,22 +296,14 @@ struct SidebarView: View {
                 }
             }
             .opacity(isAnyDragging && !isDragging ? 0.45 : 1.0)
-            .scaleEffect(
-                inDetachZone ? 1.04 : (isDragging ? 1.03 : (isAnyDragging ? 0.97 : 1.0)),
-                anchor: .trailing
-            )
+            .scaleEffect(isDragging ? 1.03 : (isAnyDragging ? 0.97 : 1.0), anchor: .trailing)
             .shadow(
                 color: isDragging ? .black.opacity(0.25) : .clear,
-                radius: inDetachZone ? 12 : (isDragging ? 8 : 0),
+                radius: isDragging ? 8 : 0,
                 y: isDragging ? 4 : 0
-            )
-            .offset(
-                x: isDragging ? translation.width : 0,
-                y: isDragging ? translation.height : 0
             )
             .zIndex(isDragging ? 100 : 0)
             .animation(.spring(duration: 0.22), value: isDragging)
-            .animation(.spring(duration: 0.18), value: inDetachZone)
             .animation(.spring(duration: 0.15), value: isAnyDragging)
             .onDrag { makeDragProvider(for: document) }
             .onDrop(of: [TabDragState.documentDragType],
@@ -332,30 +320,7 @@ struct SidebarView: View {
     }
 
     private func makeDragProvider(for document: Document) -> NSItemProvider {
-        TabDragState.shared.begin(documentID: document.id, from: store)
-
-        var upMonitor:   Any?
-        var moveMonitor: Any?
-
-        // Global monitors (not local) so events are received during system drag sessions.
-        moveMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDragged) { event in
-            DispatchQueue.main.async {
-                TabDragState.shared.dragTranslation.width  += event.deltaX
-                TabDragState.shared.dragTranslation.height -= event.deltaY
-            }
-        }
-
-        upMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { _ in
-            if let m = upMonitor   { NSEvent.removeMonitor(m) }
-            if let m = moveMonitor { NSEvent.removeMonitor(m) }
-            upMonitor = nil; moveMonitor = nil
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                guard TabDragState.shared.draggingDocumentID == document.id else { return }
-                let shouldDetach = TabDragState.shared.wasInDetachZone
-                TabDragState.shared.reset()
-                if shouldDetach { store.detachToNewWindow(document) }
-            }
-        }
+        TabDragState.shared.begin(documentID: document.id)
 
         let provider = NSItemProvider()
         provider.registerDataRepresentation(

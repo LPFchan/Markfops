@@ -52,10 +52,6 @@ struct DocumentContextMenu: View {
 
             Divider()
 
-            Button("Move to New Window") { store.detachToNewWindow(document) }
-
-            Divider()
-
             Button("Close Tab") { onClose() }
         }
     }
@@ -100,15 +96,8 @@ struct DocumentDropDelegate: DropDelegate {
         onInsertionIndexChange?(nil)
         guard let draggingID = TabDragState.shared.draggingDocumentID else { return false }
 
-        let sourceStore = TabDragState.shared.sourceStore
         TabDragState.shared.clear()
-
-        if let src = sourceStore, src !== store,
-           let doc = src.documents.first(where: { $0.id == draggingID }),
-           let toIdx = store.documents.firstIndex(where: { $0.id == targetDocument.id }) {
-            src.removeDocument(id: draggingID)
-            store.insertDocument(doc, at: toIdx)
-        }
+        guard store.documents.contains(where: { $0.id == draggingID }) else { return false }
         return true
     }
 
@@ -126,9 +115,6 @@ struct SidebarTabRowView: View {
     @Binding var isTOCVisible: Bool
     let onSelect: () -> Void
     let onClose: () -> Void
-    /// True when this row has been dragged far enough horizontally to trigger detach-to-window.
-    var isInDetachZone: Bool = false
-
     @State private var isHovered        = false
     @State private var isFaviconHovered = false
     @State private var isCloseHovered   = false
@@ -170,7 +156,7 @@ struct SidebarTabRowView: View {
             .onHover { isFaviconHovered = $0 }
             .animation(.spring(duration: 0.15), value: isFaviconHovered)
 
-            // Title / rename field / detach indicator
+            // Title / rename field
             Group {
                 if isRenaming {
                     TextField("", text: $renameText)
@@ -179,11 +165,6 @@ struct SidebarTabRowView: View {
                         .onSubmit { commitRename() }
                         .onKeyPress(.escape) { isRenaming = false; return .handled }
                         .onAppear { renameFieldFocused = true }
-                } else if isInDetachZone {
-                    Label("New Window", systemImage: "macwindow")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.accentColor)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     Text(document.sidebarDisplayTitle)
                         .font(.system(size: 13))
@@ -195,7 +176,7 @@ struct SidebarTabRowView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .animation(.spring(duration: 0.18), value: isInDetachZone)
+            .animation(.spring(duration: 0.18), value: isRenaming)
 
             // Close button — fixed width, always at trailing edge
             if !isRenaming {
@@ -205,19 +186,11 @@ struct SidebarTabRowView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: isInDetachZone ? 4 : 6)
+            RoundedRectangle(cornerRadius: 6)
                 .fill(isActive
                     ? Color(NSColor.controlAccentColor).opacity(0.15)
                     : Color.clear)
-                .animation(.spring(duration: 0.2), value: isInDetachZone)
         )
-        .overlay {
-            if isInDetachZone {
-                RoundedRectangle(cornerRadius: 4)
-                    .strokeBorder(Color.accentColor, lineWidth: 1.5)
-                    .transition(.opacity)
-            }
-        }
         .contentShape(Rectangle())
         // Rename: only schedule when this doc is already active (not on switch-to).
         .onTapGesture {
@@ -242,10 +215,6 @@ struct SidebarTabRowView: View {
         .contextMenu { DocumentContextMenu(document: document, onClose: onClose) }
         .background(Color(NSColor.windowBackgroundColor))
         .background(TabBackground())
-        // Record that the drag crossed into the detach zone so mouseUp can trigger detach.
-        .onChange(of: isInDetachZone) { _, inZone in
-            if inZone { TabDragState.shared.wasInDetachZone = true }
-        }
     }
 
     // MARK: - Rename
@@ -327,8 +296,6 @@ struct DocumentTabView: View {
     let isActive: Bool
     let onSelect: () -> Void
     let onClose: () -> Void
-    /// Set from the parent (pillCell) when the drag has left the tab bar vertically.
-    var isInDetachZone: Bool = false
     /// Dynamic width passed from TabPillRowView; nil = hug content.
     var pillWidth: CGFloat? = nil
 
@@ -375,7 +342,7 @@ struct DocumentTabView: View {
 
     var body: some View {
         Group {
-            if isIconOnly && !isRenaming && !isInDetachZone {
+            if isIconOnly && !isRenaming {
                 ZStack(alignment: .trailing) {
                     HStack(spacing: 0) {
                         Spacer(minLength: 0)
@@ -386,47 +353,32 @@ struct DocumentTabView: View {
                 }
             } else {
                 HStack(spacing: 5) {
-                    if isInDetachZone && isIconOnly {
-                        Spacer(minLength: 0)
-                        Image(systemName: "macwindow")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.accentColor)
-                        Spacer(minLength: 0)
-                    } else {
-                        faviconView
+                    faviconView
 
-                        // Title / rename field / detach indicator — fills remaining space.
-                        // Close button overlays the trailing edge so the title can extend to the pill's right edge;
-                        // the trailing gradient mask fades the text behind the button when hovering.
-                        Group {
-                            if isRenaming {
-                                TextField("", text: $renameText)
-                                    .font(.system(size: 12))
-                                    .focused($renameFieldFocused)
-                                    .frame(maxWidth: .infinity)
-                                    .onSubmit { commitRename() }
-                                    .onKeyPress(.escape) { isRenaming = false; return .handled }
-                                    .onAppear { renameFieldFocused = true }
-                            } else if isInDetachZone {
-                                Label("New Window", systemImage: "macwindow")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(.accentColor)
-                                    .frame(maxWidth: .infinity, alignment: .center)
-                                    .lineLimit(1)
-                            } else {
-                                Text(document.sidebarDisplayTitle)
-                                    .font(.system(size: 12))
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .mask(trailingFadeMask)
-                            }
+                    // Title / rename field — fills remaining space.
+                    // Close button overlays the trailing edge so the title can extend to the pill's right edge;
+                    // the trailing gradient mask fades the text behind the button when hovering.
+                    Group {
+                        if isRenaming {
+                            TextField("", text: $renameText)
+                                .font(.system(size: 12))
+                                .focused($renameFieldFocused)
+                                .frame(maxWidth: .infinity)
+                                .onSubmit { commitRename() }
+                                .onKeyPress(.escape) { isRenaming = false; return .handled }
+                                .onAppear { renameFieldFocused = true }
+                        } else {
+                            Text(document.sidebarDisplayTitle)
+                                .font(.system(size: 12))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .mask(trailingFadeMask)
                         }
-                        .animation(.spring(duration: 0.18), value: isInDetachZone)
-                        .animation(.spring(duration: 0.18), value: isRenaming)
-                        .overlay(alignment: .trailing) {
-                            if !isRenaming && !isInDetachZone { closeSlot }
-                        }
+                    }
+                    .animation(.spring(duration: 0.18), value: isRenaming)
+                    .overlay(alignment: .trailing) {
+                        if !isRenaming { closeSlot }
                     }
                 }
             }
@@ -434,21 +386,16 @@ struct DocumentTabView: View {
         .padding(.horizontal, horizontalPadding)
         .padding(.vertical, 6)
         .frame(width: pillWidth)
-        // Shape morphs from rounded pill → squarish window as pill enters detach zone
         .background(
-            RoundedRectangle(cornerRadius: isInDetachZone ? 3 : 7)
+            RoundedRectangle(cornerRadius: 7)
                 .fill(backgroundFill)
-                .animation(.spring(duration: 0.2), value: isInDetachZone)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: isInDetachZone ? 3 : 7)
+            RoundedRectangle(cornerRadius: 7)
                 .stroke(
-                    isInDetachZone
-                        ? Color.accentColor
-                        : (isActive ? Color.accentColor.opacity(0.3) : Color.clear),
-                    lineWidth: isInDetachZone ? 1.5 : 1
+                    isActive ? Color.accentColor.opacity(0.3) : Color.clear,
+                    lineWidth: 1
                 )
-                .animation(.spring(duration: 0.2), value: isInDetachZone)
         )
         .contentShape(Rectangle())
         .background(TabBackground())

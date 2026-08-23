@@ -74,19 +74,8 @@ struct ContentView: View {
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleWindowDrop(providers: providers)
         }
-        // Catch tab drags that land on the editor content area (i.e. the user dragged a
-        // pill out of the toolbar and dropped it on the main content) → detach to new window.
-        // The guard ensures this never fires for non-tab .data drags (e.g. text drops).
-          .onDrop(of: [TabDragState.documentDragType], isTargeted: nil) { _ in
-            guard let dragID = TabDragState.shared.draggingDocumentID,
-                TabDragState.shared.wasInDetachZone,
-                let doc = store.documents.first(where: { $0.id == dragID }) else { return false }
-            TabDragState.shared.clear()
-            store.detachToNewWindow(doc)
-            return true
-        }
         .onChange(of: store.activeDocument?.isDirty) { _, isDirty in
-            NSApp.mainWindow?.isDocumentEdited = isDirty ?? false
+            documentWindow?.isDocumentEdited = isDirty ?? false
         }
         .onChange(of: store.activeDocument?.fileURL) { _, _ in
             refreshProxyIcon()
@@ -96,7 +85,7 @@ struct ContentView: View {
         }
         .onChange(of: store.activeID) { _, _ in
             let doc = store.activeDocument
-            NSApp.mainWindow?.isDocumentEdited = doc?.isDirty ?? false
+            documentWindow?.isDocumentEdited = doc?.isDirty ?? false
             refreshProxyIcon()
         }
     }
@@ -106,7 +95,7 @@ struct ContentView: View {
     /// For unsaved files with no H1 (= no colored-badge favicon), we force-show
     /// a generic markdown icon so the proxy icon area is never empty.
     private func refreshProxyIcon() {
-        guard let window = NSApp.mainWindow else { return }
+        guard let window = documentWindow else { return }
         let doc = store.activeDocument
         window.representedURL = doc?.fileURL
 
@@ -119,6 +108,10 @@ struct ContentView: View {
             btn.image = icon
             btn.isHidden = false
         }
+    }
+
+    private var documentWindow: NSWindow? {
+        (NSApp.delegate as? AppDelegate)?.mainDocumentWindow
     }
 
     private func handleTOCTap(_ heading: HeadingNode) {

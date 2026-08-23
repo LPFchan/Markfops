@@ -6,6 +6,15 @@ final class MarkdownSyntaxHighlighter: NSObject, NSTextStorageDelegate {
     var configuration: EditorConfiguration = .default
     private var isHighlighting = false
 
+    /// Updates the attributes that the highlighter owns. The caller can use the return value
+    /// to avoid re-highlighting for incidental SwiftUI updates.
+    @discardableResult
+    func updateConfiguration(_ newConfiguration: EditorConfiguration) -> Bool {
+        guard !configuration.isHighlightingEquivalent(to: newConfiguration) else { return false }
+        configuration = newConfiguration
+        return true
+    }
+
     func textStorage(
         _ textStorage: NSTextStorage,
         didProcessEditing editedMask: NSTextStorageEditActions,
@@ -42,6 +51,9 @@ final class MarkdownSyntaxHighlighter: NSObject, NSTextStorageDelegate {
 
         textStorage.addAttribute(.foregroundColor, value: configuration.textColor, range: range)
         textStorage.addAttribute(.font, value: configuration.font, range: range)
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineHeightMultiple = configuration.lineHeightMultiple
+        textStorage.addAttribute(.paragraphStyle, value: paragraphStyle, range: range)
 
         struct Rule {
             let pattern: String
@@ -51,7 +63,7 @@ final class MarkdownSyntaxHighlighter: NSObject, NSTextStorageDelegate {
 
         let rules: [Rule] = [
             Rule(pattern: #"^#{1,6}\s.+"#, color: .systemBlue),
-            Rule(pattern: #"\*\*[^*\n]+\*\*|__[^_\n]+__"#, color: .textColor, options: []),
+            Rule(pattern: #"\*\*[^*\n]+\*\*|__[^_\n]+__"#, color: configuration.textColor, options: []),
             Rule(pattern: #"(?<!\*)\*(?!\*)([^*\n]+)(?<!\*)\*(?!\*)|(?<!_)_(?!_)([^_\n]+)(?<!_)_(?!_)"#, color: .systemPurple, options: []),
             Rule(pattern: #"`[^`\n]+`"#, color: .systemOrange, options: []),
             Rule(pattern: #"^```.*$"#, color: .systemOrange),

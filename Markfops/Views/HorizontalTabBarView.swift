@@ -128,8 +128,6 @@ struct TabPillRowView: View {
     private func pillCell(document: Document, index: Int) -> some View {
         let isDragging    = TabDragState.shared.draggingDocumentID == document.id
         let isAnyDragging = TabDragState.shared.draggingDocumentID != nil
-        let translation   = TabDragState.shared.dragTranslation
-        let inDetachZone  = isDragging && abs(translation.height) > 60
 
         if dropInsertionIndex == index { insertionIndicator }
 
@@ -138,7 +136,6 @@ struct TabPillRowView: View {
             isActive: store.activeID == document.id,
             onSelect: { store.activeID = document.id },
             onClose: { store.close(id: document.id) },
-            isInDetachZone: inDetachZone,
             pillWidth: pillWidth
         )
         .id(document.id)
@@ -149,13 +146,7 @@ struct TabPillRowView: View {
         // Animate pill width changes as tabs open/close.
         .animation(.spring(duration: 0.28), value: pillWidth)
         .animation(.spring(duration: 0.22), value: isDragging)
-        .animation(.spring(duration: 0.18), value: inDetachZone)
         .animation(.spring(duration: 0.15), value: isAnyDragging)
-        // Track detach zone entry directly here so wasInDetachZone is set even when
-        // DocumentTabView doesn't re-render (the @Observable dependency is in pillCell).
-        .onChange(of: inDetachZone) { _, inZone in
-            if inZone { TabDragState.shared.wasInDetachZone = true }
-        }
         .onDrag { makeDragProvider(for: document) }
         .onDrop(of: [TabDragState.documentDragType],
                 delegate: DocumentDropDelegate(
@@ -177,36 +168,7 @@ struct TabPillRowView: View {
     // MARK: - Drag provider
 
     private func makeDragProvider(for document: Document) -> NSItemProvider {
-        TabDragState.shared.begin(documentID: document.id, from: store)
-
-        var upMonitor:   Any?
-        var moveMonitor: Any?
-
-        // IMPORTANT: Use addGlobalMonitorForEvents, NOT addLocalMonitorForEvents.
-        // Local monitors are NOT delivered during a system drag session (.onDrag hands
-        // mouse control to the OS). Global monitors fire regardless of drag state,
-        // so dragTranslation accumulates correctly and the mouseUp is always caught.
-        moveMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDragged) { event in
-            DispatchQueue.main.async {
-                TabDragState.shared.dragTranslation.width  += event.deltaX
-                TabDragState.shared.dragTranslation.height -= event.deltaY
-            }
-        }
-
-        upMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { _ in
-            if let m = upMonitor   { NSEvent.removeMonitor(m) }
-            if let m = moveMonitor { NSEvent.removeMonitor(m) }
-            upMonitor = nil; moveMonitor = nil
-            // 150 ms delay: lets performDrop (if any drop target accepted) call clear()
-            // first, so the guard below fails for accepted drops and only passes for
-            // drags that ended in empty space (= detach).
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                guard TabDragState.shared.draggingDocumentID == document.id else { return }
-                let shouldDetach = TabDragState.shared.wasInDetachZone
-                TabDragState.shared.reset()
-                if shouldDetach { store.detachToNewWindow(document) }
-            }
-        }
+        TabDragState.shared.begin(documentID: document.id)
 
         let provider = NSItemProvider()
         provider.registerDataRepresentation(
@@ -234,13 +196,8 @@ private struct TrailingDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         onInsertionIndexChange?(nil)
         guard let draggingID = TabDragState.shared.draggingDocumentID else { return false }
-        let sourceStore = TabDragState.shared.sourceStore
         TabDragState.shared.clear()
-        if let src = sourceStore, src !== store,
-           let doc = src.documents.first(where: { $0.id == draggingID }) {
-            src.removeDocument(id: draggingID)
-            store.insertDocument(doc, at: store.documents.count)
-        } else if let fromIdx = store.documents.firstIndex(where: { $0.id == draggingID }) {
+        if let fromIdx = store.documents.firstIndex(where: { $0.id == draggingID }) {
             withAnimation(.spring(duration: 0.2)) {
                 store.moveTab(fromOffsets: IndexSet(integer: fromIdx),
                               toOffset: store.documents.count)

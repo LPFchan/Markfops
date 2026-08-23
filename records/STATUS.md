@@ -6,16 +6,16 @@ Do not use it as a transcript or a scratchpad.
 
 ## Snapshot
 
-- Last updated: 2026-04-10
+- Last updated: 2026-08-24
 - Overall posture: `active`
-- Current focus: implementation framing for the native WYSIWYG engine
-- Highest-priority blocker: the implementation roadmap, semantic transition coverage, and risk register are still incomplete
-- Next operator decision needed: choose the first implementation spike after the framing docs are finished
+- Current focus: stabilize and validate the native app for the `0.1.0` release
+- Highest-priority blocker: final release smoke testing and packaging validation are still pending
+- Next operator decision needed: decide when the stabilized native app is ready to tag as `0.1.0`
 - Related decisions: `DEC-20260409-001`, `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260410-001`
 
 ## Current State Summary
 
-Markfops already ships as a native macOS Markdown app with XcodeGen project generation, GitHub Actions build and release workflows, Sparkle publishing assets, and a meaningful research corpus for a future native WYSIWYG engine. The reference deep dives and synthesis work are complete enough to support implementation framing, and the repo is now normalized into root truth docs, decision records, commit-backed execution history, and stable research memos.
+Markfops is a working native macOS Markdown app with XcodeGen project generation, GitHub Actions build and release workflows, Sparkle publishing assets, and a meaningful research corpus for a future native WYSIWYG engine. The app now uses one document window with tabs: external Markdown files join the existing window instead of creating independently synchronized windows. Edit-mode syntax highlighting is stable across view and configuration updates, and CI now enforces the full test suite. The immediate product focus is validating this baseline for the first `0.1.0` release.
 
 ## Active Phases Or Tracks
 
@@ -59,6 +59,10 @@ Markfops already ships as a native macOS Markdown app with XcodeGen project gene
   - Change: commit-backed `LOG-*` execution history replaced the legacy markdown execution-history surface
   - Why it matters: execution records now live in git history, the retired markdown surface no longer exists, and provenance stays recoverable without a parallel file layer
   - Related ids: `DEC-20260410-001`, `LOG-20260410-230133-logmig`
+- Date: 2026-08-24
+  - Change: document handling became explicitly single-window and tab-first, edit-mode syntax highlighting became stable, and CI began enforcing renderer and highlighting tests
+  - Why it matters: external file opens no longer create conflicting document windows, editor colors no longer disappear during view updates, and regressions now fail the build
+  - Related ids: none yet
 
 ## Active Blockers And Risks
 
@@ -70,9 +74,13 @@ Markfops already ships as a native macOS Markdown app with XcodeGen project gene
 
 ## Immediate Next Steps
 
+- Next: complete the `0.1.0` release smoke test and packaging validation
+  - Owner: operator plus release agent
+  - Trigger: the single-window and syntax-highlighting fixes are merged
+  - Related ids: `STATUS.md`
 - Next: finish `RSH-20260402-010` through `RSH-20260402-013`
   - Owner: orchestrator with operator review
-  - Trigger: repo migration is complete
+  - Trigger: `0.1.0` release stabilization is complete
   - Related ids: `RSH-20260402-010`, `RSH-20260402-011`, `RSH-20260402-012`, `RSH-20260402-013`
 - Next: choose and execute the first implementation spike
   - Owner: operator plus implementation agent

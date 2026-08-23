@@ -20,6 +20,7 @@
 		1F56B58BFA0C13FDC10A028B /* PreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35ABE72586B11782CBEF1196 /* PreviewView.swift */; };
 		244ECCE7A99431A581667DE0 /* EditMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9DC1A7625D654E0BA585E10 /* EditMode.swift */; };
 		3F2BDA9D46E8FF6AC6D6DF9B /* MarkfopsCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C916E9DBBDC508AC9B40C6 /* MarkfopsCommands.swift */; };
+		466214DFDEBB82A2E8EF3C90 /* MarkdownSyntaxHighlighterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F05696E977748169F11526C /* MarkdownSyntaxHighlighterTests.swift */; };
 		4773F129D7E392E1E516AC2B /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14011151494BB8C871B4D646 /* AppDelegate.swift */; };
 		51151CAB4FFDDC744AD66BFB /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = DAD2AA09699D1444F08346FB /* Localizable.strings */; };
 		57A4E3783E6BDD7422375BFC /* HTMLTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DCA6FE1E92902863C9859DD /* HTMLTemplate.swift */; };
@@ -57,6 +58,7 @@
 		01485A1CB5D8FFA84DCBA0D1 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		09B10FD753918B5A7C3073B7 /* HeadingParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeadingParser.swift; sourceTree = "<group>"; };
 		0DCA6FE1E92902863C9859DD /* HTMLTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLTemplate.swift; sourceTree = "<group>"; };
+		0F05696E977748169F11526C /* MarkdownSyntaxHighlighterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownSyntaxHighlighterTests.swift; sourceTree = "<group>"; };
 		100148C8EC6ECFEE19ACB63E /* ToolbarItems.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarItems.swift; sourceTree = "<group>"; };
 		14011151494BB8C871B4D646 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		2138F5AC97A090E4B6272FB3 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
@@ -211,6 +213,7 @@
 			children = (
 				CFB5DBBC98ED92CDEC01BA31 /* HeadingParserTests.swift */,
 				9474347D5E720593FBBE8726 /* MarkdownRendererTests.swift */,
+				0F05696E977748169F11526C /* MarkdownSyntaxHighlighterTests.swift */,
 			);
 			path = MarkfopsTests;
 			sourceTree = "<group>";
@@ -380,6 +383,7 @@
 			files = (
 				FF91F9B05F650E29F7C95A4E /* HeadingParserTests.swift in Sources */,
 				1206DCA30D179D228DF1E42F /* MarkdownRendererTests.swift in Sources */,
+				466214DFDEBB82A2E8EF3C90 /* MarkdownSyntaxHighlighterTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

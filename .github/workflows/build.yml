@@ -31,9 +31,18 @@ jobs:
 
       - name: Test
         run: |
-          xcodebuild test \
-            -project Markfops.xcodeproj \
-            -scheme MarkfopsTests \
-            -destination 'platform=macOS' \
-            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
-            | xcpretty || true
+          set -o pipefail
+          if command -v xcpretty >/dev/null 2>&1; then
+            xcodebuild test \
+              -project Markfops.xcodeproj \
+              -scheme MarkfopsTests \
+              -destination 'platform=macOS' \
+              CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
+              | xcpretty
+          else
+            xcodebuild test \
+              -project Markfops.xcodeproj \
+              -scheme MarkfopsTests \
+              -destination 'platform=macOS' \
+              CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+          fi

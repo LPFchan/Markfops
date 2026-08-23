@@ -224,7 +224,7 @@ final class DocumentStore {
         }
     }
 
-    // internal (not private) so cross-window drop delegate and file-watch teardown can call it
+    // internal so tab drop delegates and file-watch teardown can call it
     func removeDocument(id: UUID) {
         guard let idx = documents.firstIndex(where: { $0.id == id }) else { return }
         documents[idx].onStateChange = nil
@@ -234,65 +234,9 @@ final class DocumentStore {
             activeID = documents.isEmpty ? nil : documents[min(idx, documents.count - 1)].id
         }
         scheduleRecoverySave()
-        // Close this window if it was a single-tab detached window and is now empty.
-        if documents.isEmpty, let win = managedWindow {
-            DispatchQueue.main.async { win.performClose(nil) }
-        }
-    }
-
-    /// Set by `detachToNewWindow` so a window that loses its last tab auto-closes.
-    @ObservationIgnored weak var managedWindow: NSWindow?
-
-    // MARK: - Detach to new window
-
-    /// Removes `document` from this store and opens it in a brand-new, independent window.
-    func detachToNewWindow(_ document: Document) {
-        guard let idx = documents.firstIndex(where: { $0.id == document.id }) else { return }
-        document.onStateChange = nil
-        documents.remove(at: idx)
-        if activeID == document.id {
-            activeID = documents.isEmpty ? nil : documents[min(idx, documents.count - 1)].id
-        }
-        scheduleRecoverySave()
-
-        let newStore = DocumentStore()
-        newStore.documents = [document]
-        newStore.observe(document)
-        newStore.activeID  = document.id
-        newStore.scheduleRecoverySave()
-
-        let rootView = ContentView()
-            .environment(newStore)
-            .focusedSceneValue(\.documentStore, newStore)
-            .frame(minHeight: 500)
-
-        let controller = NSHostingController(rootView: rootView)
-        let window = NSWindow(contentViewController: controller)
-        window.title = document.displayTitle
-        window.setContentSize(NSSize(width: 900, height: 650))
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
-        // Track this window so the store can close it when its last tab is removed.
-        newStore.managedWindow = window
-
-        // Cascade 20 pt below/right of the key window
-        if let src = NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isMainWindow }) {
-            window.setFrameOrigin(NSPoint(x: src.frame.minX + 20,
-                                          y: src.frame.maxY - window.frame.height - 20))
-        } else {
-            window.center()
-        }
-        window.makeKeyAndOrderFront(nil)
-        TabDragState.shared.reset()
     }
 
     // MARK: - Tab order
-
-    func insertDocument(_ document: Document, at index: Int) {
-        let clamped = max(0, min(index, documents.count))
-        observe(document)
-        documents.insert(document, at: clamped)
-        activeID = document.id
-    }
 
     func moveTab(fromOffsets: IndexSet, toOffset: Int) {
         documents.move(fromOffsets: fromOffsets, toOffset: toOffset)
@@ -353,9 +297,10 @@ final class DocumentStore {
     // MARK: - Proxy icon + dirty close button
 
     private func updateProxyIcon(for document: Document) {
-        NSApp.mainWindow?.representedURL = document.fileURL
-        NSApp.mainWindow?.title = document.displayTitle
-        NSApp.mainWindow?.isDocumentEdited = document.isDirty
+        let window = (NSApp.delegate as? AppDelegate)?.mainDocumentWindow
+        window?.representedURL = document.fileURL
+        window?.title = document.displayTitle
+        window?.isDocumentEdited = document.isDirty
     }
 
     // MARK: - Quit handling (called by AppDelegate, async sheet)
@@ -388,7 +333,7 @@ final class DocumentStore {
 
     /// Shows an NSAlert as a sheet when a main window is available, falls back to modal.
     private func showAlert(_ alert: NSAlert, completion: @escaping (NSApplication.ModalResponse) -> Void) {
-        if let window = NSApp.mainWindow {
+        if let window = (NSApp.delegate as? AppDelegate)?.mainDocumentWindow {
             alert.beginSheetModal(for: window, completionHandler: completion)
         } else {
             completion(alert.runModal())
@@ -396,7 +341,7 @@ final class DocumentStore {
     }
 
     private func presentError(_ error: Error) {
-        if let window = NSApp.mainWindow {
+        if let window = (NSApp.delegate as? AppDelegate)?.mainDocumentWindow {
             NSAlert(error: error).beginSheetModal(for: window)
         } else {
             NSAlert(error: error).runModal()

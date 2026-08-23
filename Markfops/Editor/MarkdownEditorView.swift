@@ -151,7 +151,10 @@ final class EditorBridge {
 
 final class MarkdownNSTextView: NSTextView {
     var configuration: EditorConfiguration = .default {
-        didSet { applyConfiguration() }
+        didSet {
+            guard !configuration.isEquivalent(to: oldValue) else { return }
+            applyConfiguration()
+        }
     }
     private var findHighlightOverlays: [NSView] = []
     private let editorUndoManager = UndoManager()
@@ -173,9 +176,7 @@ final class MarkdownNSTextView: NSTextView {
     }
 
     private func applyConfiguration() {
-        font = configuration.font
         backgroundColor = configuration.backgroundColor
-        textColor = configuration.textColor
         textContainerInset = NSSize(
             width: configuration.editorInsets.left,
             height: configuration.editorInsets.top
@@ -384,7 +385,7 @@ struct EditorView: NSViewRepresentable {
         textView.string = text
 
         // Wire syntax highlighter
-        context.coordinator.highlighter.configuration = configuration
+        context.coordinator.highlighter.updateConfiguration(configuration)
         textView.textStorage?.delegate = context.coordinator.highlighter
         context.coordinator.textView = textView
         context.coordinator.attach(scrollView: scrollView)
@@ -415,7 +416,7 @@ struct EditorView: NSViewRepresentable {
         } else {
             context.coordinator.document = document
         }
-        context.coordinator.highlighter.configuration = configuration
+        let highlightingConfigurationChanged = context.coordinator.highlighter.updateConfiguration(configuration)
         textView.configuration = configuration
 
         if textView.string != text {
@@ -426,6 +427,10 @@ struct EditorView: NSViewRepresentable {
             }
             let safe = NSRange(location: min(sel.location, textView.string.count), length: 0)
             textView.setSelectedRange(safe)
+        } else if highlightingConfigurationChanged,
+                  let storage = textView.textStorage,
+                  storage.length > 0 {
+            context.coordinator.highlighter.highlightAll(in: storage)
         }
 
         // Scroll to specific line if requested

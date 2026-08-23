@@ -37,23 +37,6 @@ struct MarkfopsCommands: Commands {
             }
             .keyboardShortcut("t", modifiers: .command)
 
-            Button("New Window") {
-                let newStore = DocumentStore()
-                newStore.newDocument()
-                let rootView = ContentView()
-                    .environment(newStore)
-                    .focusedSceneValue(\.documentStore, newStore)
-                    .frame(minHeight: 500)
-                let controller = NSHostingController(rootView: rootView)
-                let window = NSWindow(contentViewController: controller)
-                window.setContentSize(NSSize(width: 900, height: 650))
-                window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
-                newStore.managedWindow = window
-                window.center()
-                window.makeKeyAndOrderFront(nil)
-            }
-            .keyboardShortcut("n", modifiers: [.command, .shift])
-
             Button("Open…") {
                 openFile()
             }

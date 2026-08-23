@@ -5,13 +5,13 @@ final class MarkdownRendererTests: XCTestCase {
 
     func testBasicParagraph() {
         let html = MarkdownRenderer.renderHTML(from: "Hello, world!")
-        XCTAssertTrue(html.contains("<p>"))
+        XCTAssertTrue(containsOpeningTag("p", in: html))
         XCTAssertTrue(html.contains("Hello, world!"))
     }
 
     func testHeading() {
         let html = MarkdownRenderer.renderHTML(from: "# Title")
-        XCTAssertTrue(html.contains("<h1>"))
+        XCTAssertTrue(containsOpeningTag("h1", in: html))
         XCTAssertTrue(html.contains("Title"))
     }
 
@@ -22,9 +22,9 @@ final class MarkdownRendererTests: XCTestCase {
         | 1     | 2     |
         """
         let html = MarkdownRenderer.renderHTML(from: text)
-        XCTAssertTrue(html.contains("<table>"))
-        XCTAssertTrue(html.contains("<th>"))
-        XCTAssertTrue(html.contains("<td>"))
+        XCTAssertTrue(containsOpeningTag("table", in: html))
+        XCTAssertTrue(containsOpeningTag("th", in: html))
+        XCTAssertTrue(containsOpeningTag("td", in: html))
     }
 
     func testStrikethrough() {
@@ -35,5 +35,9 @@ final class MarkdownRendererTests: XCTestCase {
     func testEmptyInput() {
         let html = MarkdownRenderer.renderHTML(from: "")
         XCTAssertNotNil(html)
+    }
+
+    private func containsOpeningTag(_ tag: String, in html: String) -> Bool {
+        html.range(of: "<\(tag)(?:\\s[^>]*)?>", options: .regularExpression) != nil
     }
 }
