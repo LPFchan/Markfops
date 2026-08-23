@@ -8,6 +8,7 @@ A lightweight, native macOS Markdown reader and editor. No Electron — built wi
 - **Edit / Preview mode** per tab (⌘⇧P to toggle)
 - **Vertical sidebar** with document list — like Notes or ChatGPT
 - **Horizontal tab bar** with favicon-style letter badges
+- **Independent windows** with tabs that can move or detach between windows
 - **Table of contents** — click the ▶ triangle in the sidebar to expand a document's headings; click any heading to jump to it in the editor or preview
 - **Favicon letter** — the first letter of the H1 heading shown in both sidebar and tab bar
 - **Drag and drop** — drag any `.md` file onto the app window to open it; title-bar proxy icon for macOS-native drag behaviour (Cmd+click to see path)
@@ -37,6 +38,7 @@ open Markfops.xcodeproj  # then press ⌘R
 |---|---|
 | New document | ⌘N |
 | New tab | ⌘T |
+| New window | ⌘⇧N |
 | Open file | ⌘O |
 | Save | ⌘S |
 | Save As | ⌘⇧S |

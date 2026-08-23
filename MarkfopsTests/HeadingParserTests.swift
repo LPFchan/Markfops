@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import Markfops
 
@@ -47,5 +48,185 @@ final class HeadingParserTests: XCTestCase {
         let headings = HeadingParser.parseHeadings(in: text)
         XCTAssertEqual(headings[0].lineNumber, 1)
         XCTAssertEqual(headings[1].lineNumber, 3)
+    }
+
+    func testDocumentCoordinatorRoutesExternalOpenToMostRecentWindow() {
+        let coordinator = makeTestCoordinator()
+        let first = coordinator.session(for: UUID())!
+        let second = coordinator.session(for: UUID())!
+        coordinator.touch(sessionID: second.id)
+
+        let url = URL(fileURLWithPath: "/tmp/markfops-route-\(UUID().uuidString).md")
+        let document = coordinator.open(url: url)
+
+        XCTAssertIdentical(document, second.store.documents.first)
+        XCTAssertTrue(first.store.documents.isEmpty)
+    }
+
+    func testDocumentCoordinatorFocusesExistingOwner() {
+        let coordinator = makeTestCoordinator()
+        let first = coordinator.session(for: UUID())!
+        let second = coordinator.session(for: UUID())!
+        let url = URL(fileURLWithPath: "/tmp/markfops-owner-\(UUID().uuidString).md")
+        let document = first.store.openLocally(url: url)
+        second.store.newDocument()
+
+        let reopened = coordinator.open(url: url)
+
+        XCTAssertIdentical(reopened, document)
+        XCTAssertEqual(first.store.activeID, document.id)
+        XCTAssertTrue(second.store.documents.allSatisfy { $0.id != document.id })
+    }
+
+    func testMovePreservesIdentityAndDirtyState() {
+        let coordinator = makeTestCoordinator()
+        let source = coordinator.session(for: UUID())!
+        let destination = coordinator.session(for: UUID())!
+        let document = source.store.newDocument()
+        document.rawText = "# Changed"
+        document.isDirty = true
+
+        coordinator.move(documentID: document.id, from: source.id, to: destination.id)
+
+        XCTAssertIdentical(destination.store.documents.first, document)
+        XCTAssertTrue(document.isDirty)
+        XCTAssertEqual(document.rawText, "# Changed")
+        XCTAssertNil(coordinator.sessions[source.id])
+    }
+
+    func testMovingFinalTabRemovesEmptySourceSession() {
+        let coordinator = makeTestCoordinator()
+        let source = coordinator.session(for: UUID())!
+        let destination = coordinator.session(for: UUID())!
+        let document = source.store.newDocument()
+
+        coordinator.move(documentID: document.id, from: source.id, to: destination.id)
+
+        XCTAssertNil(coordinator.sessions[source.id])
+        XCTAssertTrue(destination.store.documents.contains(document))
+    }
+
+    func testRecoverySnapshotMigratesFlatPayload() throws {
+        let document = RecoveryDocumentSnapshot(
+            id: UUID(), displayTitle: "Untitled", fileURLString: nil,
+            rawText: "draft", savedText: "", isDirty: true
+        )
+        let flatJSON = """
+        {"documents":[{"id":"\(document.id.uuidString)","displayTitle":"Untitled","rawText":"draft","savedText":"","isDirty":true}],"activeID":"\(document.id.uuidString)"}
+        """
+        let migrated = try JSONDecoder().decode(
+            RecoverySnapshot.self,
+            from: Data(flatJSON.utf8)
+        )
+
+        XCTAssertEqual(migrated.windows.count, 1)
+        XCTAssertEqual(migrated.documents.map(\.id), [document.id])
+        XCTAssertEqual(migrated.activeID, document.id)
+    }
+
+    func testRecoverySnapshotRoundTripsMultipleWindows() throws {
+        let firstID = UUID()
+        let secondID = UUID()
+        let firstDocument = RecoveryDocumentSnapshot(
+            id: UUID(), displayTitle: "First", fileURLString: nil,
+            rawText: "one", savedText: "", isDirty: true
+        )
+        let secondDocument = RecoveryDocumentSnapshot(
+            id: UUID(), displayTitle: "Second", fileURLString: nil,
+            rawText: "two", savedText: "", isDirty: true
+        )
+        let snapshot = RecoverySnapshot(windows: [
+            RecoveryWindowSnapshot(id: firstID, documents: [firstDocument], activeID: firstDocument.id),
+            RecoveryWindowSnapshot(id: secondID, documents: [secondDocument], activeID: secondDocument.id)
+        ], activeWindowID: secondID)
+
+        let restored = try JSONDecoder().decode(
+            RecoverySnapshot.self,
+            from: JSONEncoder().encode(snapshot)
+        )
+
+        XCTAssertEqual(restored.windows.map(\.id), [firstID, secondID])
+        XCTAssertEqual(restored.activeWindowID, secondID)
+        XCTAssertEqual(restored.documents.map(\.id), [firstDocument.id, secondDocument.id])
+    }
+
+    func testDocumentCannotAppearInTwoStoresAfterMove() {
+        let coordinator = makeTestCoordinator()
+        let source = coordinator.session(for: UUID())!
+        let destination = coordinator.session(for: UUID())!
+        let document = source.store.newDocument()
+
+        coordinator.move(documentID: document.id, from: source.id, to: destination.id)
+
+        let occurrences = coordinator.sessions.values.reduce(into: 0) { count, session in
+            count += session.store.documents.filter { $0.id == document.id }.count
+        }
+        XCTAssertEqual(occurrences, 1)
+    }
+
+    func testWindowRegistrationRefreshDoesNotStealMostRecentWindow() {
+        let coordinator = makeTestCoordinator()
+        let first = coordinator.session(for: UUID())!
+        let second = coordinator.session(for: UUID())!
+        let firstWindow = NSWindow(contentRect: .zero, styleMask: .borderless,
+                                   backing: .buffered, defer: true)
+        let secondWindow = NSWindow(contentRect: .zero, styleMask: .borderless,
+                                    backing: .buffered, defer: true)
+
+        coordinator.registerWindow(id: first.id, window: firstWindow)
+        coordinator.registerWindow(id: second.id, window: secondWindow)
+        coordinator.touch(sessionID: second.id)
+        coordinator.registerWindow(id: first.id, window: firstWindow)
+
+        XCTAssertEqual(coordinator.lastActiveWindowID, second.id)
+    }
+
+    func testActiveDocumentChangesRefreshItsWindowAppearance() {
+        let coordinator = makeTestCoordinator()
+        let session = coordinator.session(for: UUID())!
+        let window = NSWindow(contentRect: .zero, styleMask: .borderless,
+                              backing: .buffered, defer: true)
+        coordinator.registerWindow(id: session.id, window: window)
+        let document = session.store.newDocument()
+
+        document.rawText = "# Updated"
+        document.isDirty = true
+
+        XCTAssertEqual(window.title, "Updated")
+        XCTAssertTrue(window.isDocumentEdited)
+    }
+
+    func testTabDragDisplacementUsesGlobalCoordinatesAndThreshold() {
+        let translation = TabDragState.displacement(
+            from: NSPoint(x: 85, y: 73),
+            to: NSPoint(x: 420, y: 210)
+        )
+
+        XCTAssertEqual(translation.width, 335)
+        XCTAssertEqual(translation.height, -137)
+        XCTAssertTrue(TabDragState.shouldDetach(translation: translation))
+        XCTAssertFalse(TabDragState.shouldDetach(translation: CGSize(width: 60, height: 0)))
+    }
+
+    func testCoordinatorPersistenceUsesInjectedRecoveryDirectory() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MarkfopsTests-\(UUID().uuidString)", isDirectory: true)
+        let coordinator = DocumentCoordinator(recoveryDirectoryURL: directory)
+        let session = coordinator.session(for: UUID())!
+        let document = session.store.newDocument()
+        document.rawText = "draft"
+        document.isDirty = true
+
+        coordinator.persistSession()
+
+        let snapshotURL = directory.appendingPathComponent("RecoverySession.json")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: snapshotURL.path))
+        XCTAssertTrue(String(data: try Data(contentsOf: snapshotURL), encoding: .utf8)?.contains(document.id.uuidString) == true)
+    }
+
+    private func makeTestCoordinator() -> DocumentCoordinator {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MarkfopsTests-\(UUID().uuidString)", isDirectory: true)
+        return DocumentCoordinator(recoveryDirectoryURL: directory)
     }
 }

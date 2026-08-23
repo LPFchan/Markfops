@@ -111,7 +111,7 @@ struct ContentView: View {
     }
 
     private var documentWindow: NSWindow? {
-        (NSApp.delegate as? AppDelegate)?.mainDocumentWindow
+        store.managedWindow
     }
 
     private func handleTOCTap(_ heading: HeadingNode) {
@@ -132,7 +132,7 @@ struct ContentView: View {
                         || url.pathExtension.lowercased() == "markdown"
                         || url.pathExtension.lowercased() == "txt" else { return }
                 DispatchQueue.main.async {
-                    store.open(url: url)
+                    store.coordinator?.open(url: url, preferredWindowID: store.windowID)
                 }
             }
         }
@@ -208,7 +208,9 @@ private struct WelcomeView: View {
                     panel.allowedContentTypes = [.init(filenameExtension: "md")!, .init(filenameExtension: "markdown")!]
                     panel.allowsMultipleSelection = true
                     if panel.runModal() == .OK {
-                        for url in panel.urls { store.open(url: url) }
+                        for url in panel.urls {
+                            store.coordinator?.open(url: url, preferredWindowID: store.windowID)
+                        }
                     }
                 }
                 .buttonStyle(.bordered)

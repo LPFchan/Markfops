@@ -42,6 +42,10 @@ struct DocumentContextMenu: View {
                 }
             }
 
+            Button("Move to New Window") {
+                store.detachToNewWindow(document)
+            }
+
             Divider()
 
             Button("Export as PDF\u{2026}") { store.exportAsPDF(document) }
@@ -96,7 +100,14 @@ struct DocumentDropDelegate: DropDelegate {
         onInsertionIndexChange?(nil)
         guard let draggingID = TabDragState.shared.draggingDocumentID else { return false }
 
+        let sourceStore = TabDragState.shared.sourceStore
+        let sourceID = sourceStore?.windowID
+        let targetIndex = store.documents.firstIndex(where: { $0.id == targetDocument.id }) ?? store.documents.count
         TabDragState.shared.clear()
+        if let sourceStore, sourceStore !== store, let sourceID {
+            store.coordinator?.move(documentID: draggingID, from: sourceID, to: store.windowID, at: targetIndex)
+            return true
+        }
         guard store.documents.contains(where: { $0.id == draggingID }) else { return false }
         return true
     }
@@ -115,6 +126,7 @@ struct SidebarTabRowView: View {
     @Binding var isTOCVisible: Bool
     let onSelect: () -> Void
     let onClose: () -> Void
+    var isInDetachZone: Bool = false
     @State private var isHovered        = false
     @State private var isFaviconHovered = false
     @State private var isCloseHovered   = false
@@ -165,6 +177,11 @@ struct SidebarTabRowView: View {
                         .onSubmit { commitRename() }
                         .onKeyPress(.escape) { isRenaming = false; return .handled }
                         .onAppear { renameFieldFocused = true }
+                } else if isInDetachZone {
+                    Label("New Window", systemImage: "macwindow")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.accentColor)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     Text(document.sidebarDisplayTitle)
                         .font(.system(size: 13))
@@ -186,11 +203,17 @@ struct SidebarTabRowView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: isInDetachZone ? 4 : 6)
                 .fill(isActive
                     ? Color(NSColor.controlAccentColor).opacity(0.15)
                     : Color.clear)
         )
+        .overlay {
+            if isInDetachZone {
+                RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(Color.accentColor, lineWidth: 1.5)
+            }
+        }
         .contentShape(Rectangle())
         // Rename: only schedule when this doc is already active (not on switch-to).
         .onTapGesture {
@@ -296,6 +319,7 @@ struct DocumentTabView: View {
     let isActive: Bool
     let onSelect: () -> Void
     let onClose: () -> Void
+    var isInDetachZone: Bool = false
     /// Dynamic width passed from TabPillRowView; nil = hug content.
     var pillWidth: CGFloat? = nil
 
@@ -342,7 +366,13 @@ struct DocumentTabView: View {
 
     var body: some View {
         Group {
-            if isIconOnly && !isRenaming {
+            if isInDetachZone {
+                Label("New Window", systemImage: "macwindow")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.accentColor)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .lineLimit(1)
+            } else if isIconOnly && !isRenaming {
                 ZStack(alignment: .trailing) {
                     HStack(spacing: 0) {
                         Spacer(minLength: 0)
@@ -387,14 +417,14 @@ struct DocumentTabView: View {
         .padding(.vertical, 6)
         .frame(width: pillWidth)
         .background(
-            RoundedRectangle(cornerRadius: 7)
+            RoundedRectangle(cornerRadius: isInDetachZone ? 3 : 7)
                 .fill(backgroundFill)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 7)
+            RoundedRectangle(cornerRadius: isInDetachZone ? 3 : 7)
                 .stroke(
-                    isActive ? Color.accentColor.opacity(0.3) : Color.clear,
-                    lineWidth: 1
+                    isInDetachZone ? Color.accentColor : (isActive ? Color.accentColor.opacity(0.3) : Color.clear),
+                    lineWidth: isInDetachZone ? 1.5 : 1
                 )
         )
         .contentShape(Rectangle())

@@ -6,31 +6,50 @@ struct MarkfopsApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
-        Window("Markfops", id: "document") {
-            ContentView()
-                .environment(appDelegate.store)
-                .focusedSceneValue(\.documentStore, appDelegate.store)
-                .onOpenURL { url in
-                    appDelegate.open(url: url)
-                }
-                .background {
-                    DocumentWindowAccessor { window in
-                        appDelegate.registerDocumentWindow(window)
-                    }
-                    .frame(width: 0, height: 0)
-                }
-                .frame(minHeight: 500)
+        WindowGroup("Markfops", id: "document", for: UUID.self) { $windowID in
+            DocumentWindowScene(windowID: $windowID, coordinator: appDelegate.coordinator)
         }
-        // Match sidebar-mode titlebar/toolbar height; `.unifiedCompact` (often the default) is shorter.
         .windowToolbarStyle(.unified)
-        .commands {
-            MarkfopsCommands()
-        }
+        .commands { MarkfopsCommands() }
         .defaultSize(width: 660, height: 700)
 
-        Settings {
-            SettingsView()
-        }
+        Settings { SettingsView() }
+    }
+}
+
+private struct DocumentWindowScene: View {
+    @Binding var windowID: UUID?
+    let coordinator: DocumentCoordinator
+    @Environment(\.openWindow) private var openWindow
+    @State private var resolvedID: UUID
+
+    init(windowID: Binding<UUID?>, coordinator: DocumentCoordinator) {
+        _windowID = windowID
+        self.coordinator = coordinator
+        _resolvedID = State(initialValue: windowID.wrappedValue ?? coordinator.bootstrapWindowID())
+    }
+
+    private var id: UUID { windowID ?? resolvedID }
+
+    var body: some View {
+        let store = coordinator.store(for: id)
+        ContentView()
+            .environment(store)
+            .focusedSceneValue(\.documentStore, store)
+            .background {
+                DocumentWindowAccessor { window in
+                    coordinator.registerWindow(id: id, window: window)
+                    window.setFrameAutosaveName("Markfops-\(id.uuidString)")
+                }
+                .frame(width: 0, height: 0)
+            }
+            .task {
+                if windowID == nil { windowID = resolvedID }
+                coordinator.install(openWindow: { requestedID in
+                    openWindow(id: "document", value: requestedID)
+                })
+            }
+            .frame(minHeight: 500)
     }
 }
 

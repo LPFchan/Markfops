@@ -266,6 +266,8 @@ struct SidebarView: View {
     private func sectionHeader(document: Document, index: Int) -> some View {
         let isDragging    = TabDragState.shared.draggingDocumentID == document.id
         let isAnyDragging = TabDragState.shared.draggingDocumentID != nil
+        let translation   = TabDragState.shared.dragTranslation
+        let inDetachZone  = isDragging && abs(translation.width) > 60
 
         VStack(spacing: 0) {
             if dropInsertionIndex == index {
@@ -283,7 +285,8 @@ struct SidebarView: View {
                     set: { tocVisible[document.id] = $0 }
                 ),
                 onSelect: { store.activeID = document.id },
-                onClose: { store.close(id: document.id) }
+                onClose: { store.close(id: document.id) },
+                isInDetachZone: inDetachZone
             )
             .id(document.id)
             .padding(.horizontal, 6)
@@ -296,14 +299,16 @@ struct SidebarView: View {
                 }
             }
             .opacity(isAnyDragging && !isDragging ? 0.45 : 1.0)
-            .scaleEffect(isDragging ? 1.03 : (isAnyDragging ? 0.97 : 1.0), anchor: .trailing)
+            .scaleEffect(inDetachZone ? 1.04 : (isDragging ? 1.03 : (isAnyDragging ? 0.97 : 1.0)), anchor: .trailing)
             .shadow(
                 color: isDragging ? .black.opacity(0.25) : .clear,
-                radius: isDragging ? 8 : 0,
+                radius: inDetachZone ? 12 : (isDragging ? 8 : 0),
                 y: isDragging ? 4 : 0
             )
+            .offset(x: isDragging ? translation.width : 0, y: isDragging ? translation.height : 0)
             .zIndex(isDragging ? 100 : 0)
             .animation(.spring(duration: 0.22), value: isDragging)
+            .animation(.spring(duration: 0.18), value: inDetachZone)
             .animation(.spring(duration: 0.15), value: isAnyDragging)
             .onDrag { makeDragProvider(for: document) }
             .onDrop(of: [TabDragState.documentDragType],
@@ -320,7 +325,7 @@ struct SidebarView: View {
     }
 
     private func makeDragProvider(for document: Document) -> NSItemProvider {
-        TabDragState.shared.begin(documentID: document.id)
+        TabDragState.shared.begin(documentID: document.id, from: store)
 
         let provider = NSItemProvider()
         provider.registerDataRepresentation(

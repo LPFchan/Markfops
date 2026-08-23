@@ -15,7 +15,7 @@ Do not use it as a transcript or a scratchpad.
 
 ## Current State Summary
 
-Markfops is a working native macOS Markdown app with XcodeGen project generation, GitHub Actions build and release workflows, Sparkle publishing assets, and a meaningful research corpus for a future native WYSIWYG engine. The app now uses one document window with tabs: external Markdown files join the existing window instead of creating independently synchronized windows. Edit-mode syntax highlighting is stable across view and configuration updates, and CI now enforces the full test suite. The immediate product focus is validating this baseline for the first `0.1.0` release.
+Markfops is a working native macOS Markdown app with XcodeGen project generation, GitHub Actions build and release workflows, Sparkle publishing assets, and a meaningful research corpus for a future native WYSIWYG engine. Each document window now owns its own tabs, while an app-level coordinator routes external files, tab transfers, close handling, and recovery across windows. External Markdown files join the most recently active window, and reopening a file focuses its existing tab instead of creating another copy. Edit-mode syntax highlighting is stable across view and configuration updates, and CI now enforces the full test suite. The immediate product focus is validating this baseline for the first `0.1.0` release.
 
 ## Active Phases Or Tracks
 
@@ -60,8 +60,8 @@ Markfops is a working native macOS Markdown app with XcodeGen project generation
   - Why it matters: execution records now live in git history, the retired markdown surface no longer exists, and provenance stays recoverable without a parallel file layer
   - Related ids: `DEC-20260410-001`, `LOG-20260410-230133-logmig`
 - Date: 2026-08-24
-  - Change: document handling became explicitly single-window and tab-first, edit-mode syntax highlighting became stable, and CI began enforcing renderer and highlighting tests
-  - Why it matters: external file opens no longer create conflicting document windows, editor colors no longer disappear during view updates, and regressions now fail the build
+  - Change: document handling gained explicit per-window ownership, coordinated external opens and recovery, and transferable tabs; edit-mode syntax highlighting became stable; CI began enforcing renderer and highlighting tests
+  - Why it matters: new windows and detached tabs remain independent, external files join the active window without duplicate state, editor colors no longer disappear during view updates, and regressions now fail the build
   - Related ids: none yet
 
 ## Active Blockers And Risks
@@ -76,7 +76,7 @@ Markfops is a working native macOS Markdown app with XcodeGen project generation
 
 - Next: complete the `0.1.0` release smoke test and packaging validation
   - Owner: operator plus release agent
-  - Trigger: the single-window and syntax-highlighting fixes are merged
+  - Trigger: the multi-window, tab-transfer, and syntax-highlighting fixes are merged
   - Related ids: `STATUS.md`
 - Next: finish `RSH-20260402-010` through `RSH-20260402-013`
   - Owner: orchestrator with operator review

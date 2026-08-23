@@ -4,12 +4,21 @@ import Observation
 
 @Observable
 final class DocumentStore {
-    @ObservationIgnored private let recoveryStore = RecoveryStore()
+    let windowID: UUID
+    @ObservationIgnored weak var coordinator: DocumentCoordinator?
+    @ObservationIgnored weak var managedWindow: NSWindow?
     @ObservationIgnored private var pendingRecoverySave: DispatchWorkItem?
     @ObservationIgnored private var isRestoringRecovery = false
 
-    init() {
-        updateCrashRecoveryMetadata(using: RecoverySnapshot(documents: [], activeID: nil))
+    init(windowID: UUID = UUID(), coordinator: DocumentCoordinator? = nil) {
+        self.windowID = windowID
+        self.coordinator = coordinator
+    }
+
+    deinit {
+        // A delayed recovery write must not outlive a test/application store and write after its
+        // owner has gone away.
+        pendingRecoverySave?.cancel()
     }
 
     private(set) var documents: [Document] = []
@@ -18,6 +27,7 @@ final class DocumentStore {
             guard activeID != oldValue else { return }
             activeDocument?.reloadFromDiskIfClean(restartWatching: true)
             activeDocument?.reconcileActiveHeadingWithCurrentContent()
+            refreshWindowAppearance()
             scheduleRecoverySave()
         }
     }
@@ -53,6 +63,13 @@ final class DocumentStore {
         doc.startWatching()
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
         return doc
+    }
+
+    /// Opens a URL in this store without consulting another window. The coordinator is the
+    /// only app-level caller, so global uniqueness remains centralized there.
+    @discardableResult
+    func openLocally(url: URL) -> Document {
+        open(url: url)
     }
 
     func save(_ document: Document) throws {
@@ -236,6 +253,34 @@ final class DocumentStore {
         scheduleRecoverySave()
     }
 
+    /// Removes a document for a move/detach. A transfer is not a close: preserve the watcher,
+    /// editor state, and recovery observation until the destination adopts the object.
+    @discardableResult
+    func removeForTransfer(id: UUID) -> Document? {
+        guard let idx = documents.firstIndex(where: { $0.id == id }) else { return nil }
+        let document = documents.remove(at: idx)
+        if activeID == id {
+            activeID = documents.isEmpty ? nil : documents[min(idx, documents.count - 1)].id
+        }
+        scheduleRecoverySave()
+        return document
+    }
+
+    func insertDocument(_ document: Document, at index: Int) {
+        let clamped = max(0, min(index, documents.count))
+        observe(document)
+        documents.insert(document, at: clamped)
+        activeID = document.id
+    }
+
+    func detachToNewWindow(_ document: Document) {
+        coordinator?.detach(documentID: document.id, from: windowID)
+    }
+
+    func closeWindow() {
+        coordinator?.closeWindow(id: windowID)
+    }
+
     // MARK: - Tab order
 
     func moveTab(fromOffsets: IndexSet, toOffset: Int) {
@@ -263,8 +308,13 @@ final class DocumentStore {
     // MARK: - Recovery persistence
 
     func restorePersistedSession() {
-        guard documents.isEmpty else { return }
-        guard let snapshot = recoveryStore.load() else { return }
+        coordinator?.restorePersistedSession()
+    }
+
+    /// Installs coordinator-owned recovery state into this store without creating a second
+    /// recovery writer.
+    func restore(documents restoredDocuments: [Document], activeID restoredActiveID: UUID?) {
+        guard self.documents.isEmpty else { return }
 
         isRestoringRecovery = true
         defer {
@@ -272,17 +322,9 @@ final class DocumentStore {
             scheduleRecoverySave()
         }
 
-        var restoredDocuments: [Document] = []
-
-        for documentSnapshot in snapshot.documents {
-            let restored = restoreDocument(from: documentSnapshot)
-            guard let restored else { continue }
-            observe(restored)
-            restoredDocuments.append(restored)
-        }
-
         documents = restoredDocuments
-        if let activeID = snapshot.activeID,
+        restoredDocuments.forEach(observe)
+        if let activeID = restoredActiveID,
            restoredDocuments.contains(where: { $0.id == activeID }) {
             self.activeID = activeID
         } else {
@@ -291,16 +333,29 @@ final class DocumentStore {
     }
 
     func persistSession() {
-        saveRecoverySnapshotNow()
+        coordinator?.persistSession()
+    }
+
+    func saveIgnoringErrors(_ document: Document) {
+        try? save(document)
     }
 
     // MARK: - Proxy icon + dirty close button
 
+    func refreshWindowAppearance() {
+        guard let document = activeDocument else {
+            managedWindow?.representedURL = nil
+            managedWindow?.title = "Markfops"
+            managedWindow?.isDocumentEdited = false
+            return
+        }
+        updateProxyIcon(for: document)
+    }
+
     private func updateProxyIcon(for document: Document) {
-        let window = (NSApp.delegate as? AppDelegate)?.mainDocumentWindow
-        window?.representedURL = document.fileURL
-        window?.title = document.displayTitle
-        window?.isDocumentEdited = document.isDirty
+        managedWindow?.representedURL = document.fileURL
+        managedWindow?.title = document.displayTitle
+        managedWindow?.isDocumentEdited = document.isDirty
     }
 
     // MARK: - Quit handling (called by AppDelegate, async sheet)
@@ -331,9 +386,9 @@ final class DocumentStore {
 
     // MARK: - Helpers
 
-    /// Shows an NSAlert as a sheet when a main window is available, falls back to modal.
+    /// Shows an NSAlert as a sheet on this store's registered document window.
     private func showAlert(_ alert: NSAlert, completion: @escaping (NSApplication.ModalResponse) -> Void) {
-        if let window = (NSApp.delegate as? AppDelegate)?.mainDocumentWindow {
+        if let window = managedWindow {
             alert.beginSheetModal(for: window, completionHandler: completion)
         } else {
             completion(alert.runModal())
@@ -341,7 +396,7 @@ final class DocumentStore {
     }
 
     private func presentError(_ error: Error) {
-        if let window = (NSApp.delegate as? AppDelegate)?.mainDocumentWindow {
+        if let window = managedWindow {
             NSAlert(error: error).beginSheetModal(for: window)
         } else {
             NSAlert(error: error).runModal()
@@ -349,103 +404,563 @@ final class DocumentStore {
     }
 
     private func observe(_ document: Document) {
-        document.onStateChange = { [weak self] _ in
-            self?.scheduleRecoverySave()
+        document.onStateChange = { [weak self] changedDocument in
+            guard let self else { return }
+            if self.activeID == changedDocument.id {
+                self.refreshWindowAppearance()
+            }
+            self.scheduleRecoverySave()
         }
     }
 
     private func scheduleRecoverySave() {
         guard !isRestoringRecovery else { return }
+        guard coordinator != nil else { return }
         pendingRecoverySave?.cancel()
 
         let workItem = DispatchWorkItem { [weak self] in
-            self?.saveRecoverySnapshotNow()
+            self?.coordinator?.persistSession()
         }
         pendingRecoverySave = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: workItem)
     }
+}
 
-    private func saveRecoverySnapshotNow() {
-        guard !isRestoringRecovery else { return }
-        pendingRecoverySave?.cancel()
-        pendingRecoverySave = nil
-        let snapshot = makeRecoverySnapshot()
-        recoveryStore.save(snapshot)
-        updateCrashRecoveryMetadata(using: snapshot)
+/// One live document scene. A document is owned by exactly one session at a time; the
+/// coordinator, rather than SwiftUI view lifetime, owns the session's store.
+final class DocumentWindowSession {
+    let id: UUID
+    let store: DocumentStore
+    weak var window: NSWindow?
+
+    init(id: UUID, coordinator: DocumentCoordinator) {
+        self.id = id
+        self.store = DocumentStore(windowID: id, coordinator: coordinator)
+    }
+}
+
+/// App-lifetime registry for document windows and documents.
+///
+/// This is deliberately the only owner of global open routing and recovery writes. Stores keep
+/// document-local editing operations, while this object handles ownership-changing operations.
+@Observable
+final class DocumentCoordinator: NSObject, NSWindowDelegate {
+    static let documentWindowIdentifierPrefix = "Markfops.DocumentWindow."
+
+    private(set) var sessions: [UUID: DocumentWindowSession] = [:]
+    private(set) var lastActiveWindowID: UUID?
+
+    @ObservationIgnored private let recoveryStore: RecoveryStore
+    @ObservationIgnored private var didLoadRecovery = false
+    @ObservationIgnored private var pendingURLs: [URL] = []
+    @ObservationIgnored private var pendingPresentationIDs: [UUID] = []
+    @ObservationIgnored private var openWindowRequest: ((UUID) -> Void)?
+    @ObservationIgnored private var closingWindowIDs: Set<UUID> = []
+    @ObservationIgnored private var notificationTokens: [NSObjectProtocol] = []
+
+    init(recoveryDirectoryURL: URL? = nil) {
+        self.recoveryStore = RecoveryStore(directoryURL: recoveryDirectoryURL)
+        super.init()
+        let center = NotificationCenter.default
+        notificationTokens.append(center.addObserver(
+            forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let window = note.object as? NSWindow else { return }
+            self?.touch(window: window)
+        })
+        notificationTokens.append(center.addObserver(
+            forName: NSWindow.willCloseNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let window = note.object as? NSWindow else { return }
+            self?.deregister(window: window)
+        })
     }
 
-    private func makeRecoverySnapshot() -> RecoverySnapshot {
-        let documentSnapshots = documents.compactMap { document -> RecoveryDocumentSnapshot? in
-            let fileURLString = document.fileURL?.absoluteString
-            let shouldEmbedDraft = document.isDirty || document.fileURL == nil
-            let rawText = shouldEmbedDraft ? document.rawText : nil
-            let savedText = shouldEmbedDraft ? document.savedText : nil
+    deinit {
+        notificationTokens.forEach(NotificationCenter.default.removeObserver)
+    }
 
-            guard fileURLString != nil || !(rawText ?? "").isEmpty || document.isDirty else {
-                return nil
-            }
+    func session(for id: UUID, create: Bool = true) -> DocumentWindowSession? {
+        if let session = sessions[id] { return session }
+        guard create else { return nil }
+        let session = DocumentWindowSession(id: id, coordinator: self)
+        sessions[id] = session
+        return session
+    }
 
-            return RecoveryDocumentSnapshot(
-                id: document.id,
-                displayTitle: document.displayTitle,
-                fileURLString: fileURLString,
-                rawText: rawText,
-                savedText: savedText,
-                isDirty: document.isDirty
-            )
+    func store(for id: UUID) -> DocumentStore {
+        session(for: id)!.store
+    }
+
+    /// Returns the first restored session for a value-less initial WindowGroup scene, or creates
+    /// a fresh session for a normal launch.
+    func bootstrapWindowID() -> UUID {
+        if let id = sessions.keys.first(where: { sessions[$0]?.window == nil }) { return id }
+        let id = UUID()
+        _ = session(for: id)
+        return id
+    }
+
+    func install(openWindow: @escaping (UUID) -> Void) {
+        openWindowRequest = openWindow
+        presentPendingScenes()
+        flushPendingURLs()
+    }
+
+    func registerWindow(id: UUID, window: NSWindow) {
+        guard let session = session(for: id) else { return }
+        let isNewWindowRegistration = session.window !== window
+        session.window = window
+        session.store.managedWindow = window
+        window.identifier = NSUserInterfaceItemIdentifier(Self.documentWindowIdentifierPrefix + id.uuidString)
+        window.delegate = self
+        window.representedURL = session.store.activeDocument?.fileURL
+        window.title = session.store.activeDocument?.displayTitle ?? "Markfops"
+        window.isDocumentEdited = session.store.activeDocument?.isDirty ?? false
+        session.store.refreshWindowAppearance()
+        // SwiftUI may update the accessor repeatedly during unrelated view refreshes. Only a
+        // genuinely new, already-key window gets an initial MRU touch; subsequent ordering is
+        // owned by NSWindow.didBecomeKeyNotification.
+        if isNewWindowRegistration, window.isKeyWindow {
+            touch(sessionID: id)
+        }
+        flushPendingURLs()
+    }
+
+    func touch(window: NSWindow) {
+        guard let id = sessions.first(where: { $0.value.window === window })?.key else { return }
+        touch(sessionID: id)
+    }
+
+    func touch(sessionID: UUID) {
+        guard sessions[sessionID] != nil else { return }
+        lastActiveWindowID = sessionID
+    }
+
+    // MARK: - Global open routing
+
+    @discardableResult
+    func open(url: URL, preferredWindowID: UUID? = nil) -> Document? {
+        let normalized = Self.normalizedFileURL(url)
+        if let owner = owner(of: normalized) {
+            focus(sessionID: owner.id, documentID: owner.document.id)
+            return owner.document
         }
 
-        return RecoverySnapshot(documents: documentSnapshots, activeID: activeID)
+        guard let target = preferredSession(preferredWindowID) else {
+            pendingURLs.append(normalized)
+            presentPendingScenes()
+            return nil
+        }
+        let document = target.store.openLocally(url: normalized)
+        focus(sessionID: target.id, documentID: document.id)
+        return document
     }
 
-    private func restoreDocument(from snapshot: RecoveryDocumentSnapshot) -> Document? {
-        let fileURL = snapshot.fileURLString.flatMap(URL.init(string:))
+    func open(urls: [URL], preferredWindowID: UUID? = nil) {
+        urls.forEach { _ = open(url: $0, preferredWindowID: preferredWindowID) }
+    }
 
-        if let fileURL,
-           FileManager.default.fileExists(atPath: fileURL.path) {
+    private func preferredSession(_ preferredID: UUID?) -> DocumentWindowSession? {
+        if let preferredID, let preferred = sessions[preferredID] { return preferred }
+        if let lastActiveWindowID, let last = sessions[lastActiveWindowID] { return last }
+        return sessions.values.first
+    }
+
+    private func owner(of url: URL) -> (id: UUID, document: Document)? {
+        for (id, session) in sessions {
+            if let document = session.store.documents.first(where: {
+                guard let existingURL = $0.fileURL else { return false }
+                return Self.normalizedFileURL(existingURL) == url
+            }) {
+                return (id, document)
+            }
+        }
+        return nil
+    }
+
+    func focus(sessionID: UUID, documentID: UUID? = nil) {
+        guard let session = sessions[sessionID] else { return }
+        if let documentID { session.store.activeID = documentID }
+        session.store.refreshWindowAppearance()
+        touch(sessionID: sessionID)
+        guard let window = session.window else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    // MARK: - New windows and transfers
+
+    @discardableResult
+    func newWindow(withNewDocument: Bool = true) -> DocumentWindowSession {
+        let id = UUID()
+        let session = self.session(for: id)!
+        if withNewDocument { session.store.newDocument() }
+        requestScene(id: id)
+        return session
+    }
+
+    func detach(documentID: UUID, from sourceID: UUID) {
+        let destination = newWindow(withNewDocument: false)
+        move(documentID: documentID, from: sourceID, to: destination.id, at: 0)
+        focus(sessionID: destination.id, documentID: documentID)
+    }
+
+    func move(documentID: UUID, from sourceID: UUID, to destinationID: UUID, at index: Int? = nil) {
+        guard sourceID != destinationID,
+              let source = sessions[sourceID],
+              let destination = sessions[destinationID],
+              let document = source.store.removeForTransfer(id: documentID)
+        else {
+            if sourceID == destinationID, let store = sessions[sourceID]?.store,
+               let from = store.documents.firstIndex(where: { $0.id == documentID }),
+               let index {
+                store.moveTab(fromOffsets: IndexSet(integer: from), toOffset: index)
+            }
+            return
+        }
+        destination.store.insertDocument(document, at: index ?? destination.store.documents.count)
+        focus(sessionID: destinationID, documentID: documentID)
+        if source.store.documents.isEmpty { closeEmptySession(sourceID) }
+        persistSession()
+    }
+
+    private func requestScene(id: UUID) {
+        guard !pendingPresentationIDs.contains(id) else { return }
+        pendingPresentationIDs.append(id)
+        presentPendingScenes()
+    }
+
+    private func presentPendingScenes() {
+        guard let openWindowRequest else { return }
+        let ids = pendingPresentationIDs
+        pendingPresentationIDs.removeAll()
+        ids.forEach(openWindowRequest)
+    }
+
+    // MARK: - Recovery
+
+    func restorePersistedSession() {
+        loadRecoveryIfNeeded()
+        presentPendingScenes()
+    }
+
+    private func loadRecoveryIfNeeded() {
+        guard !didLoadRecovery else { return }
+        didLoadRecovery = true
+        guard let snapshot = recoveryStore.load() else {
+            if sessions.isEmpty { _ = session(for: UUID()) }
+            return
+        }
+
+        var seenIDs = Set<UUID>()
+        var seenURLs = Set<URL>()
+        for windowSnapshot in snapshot.windows {
+            let session = self.session(for: windowSnapshot.id)!
+            var restored: [Document] = []
+            for documentSnapshot in windowSnapshot.documents {
+                guard !seenIDs.contains(documentSnapshot.id) else { continue }
+                let url = documentSnapshot.fileURLString.flatMap(URL.init(string:)).map(Self.normalizedFileURL)
+                if let url, seenURLs.contains(url) { continue }
+                guard let document = Self.restoreDocument(from: documentSnapshot) else { continue }
+                seenIDs.insert(document.id)
+                if let url { seenURLs.insert(url) }
+                restored.append(document)
+            }
+            session.store.restore(documents: restored, activeID: windowSnapshot.activeID)
+        }
+
+        if sessions.isEmpty { _ = session(for: UUID()) }
+        lastActiveWindowID = snapshot.activeWindowID ?? sessions.keys.first
+        // The first WindowGroup scene consumes the first value-less session; all additional
+        // restored sessions are explicitly opened by their stable UUID values.
+        pendingPresentationIDs = sessions.keys.filter { sessions[$0]?.window == nil }.dropFirst().map { $0 }
+    }
+
+    func persistSession() {
+        loadRecoveryIfNeeded()
+        let windows = sessions.values.compactMap { session -> RecoveryWindowSnapshot? in
+            let docs = session.store.documents.compactMap(Self.snapshot(for:))
+            guard !docs.isEmpty else { return nil }
+            return RecoveryWindowSnapshot(id: session.id, documents: docs, activeID: session.store.activeID)
+        }
+        let snapshot = RecoverySnapshot(windows: windows, activeWindowID: lastActiveWindowID)
+        recoveryStore.save(snapshot)
+        CrashRecoveryInfoReporter.shared.update(
+            recoveryStore.status(for: snapshot, activeDocumentTitle: sessions[lastActiveWindowID ?? UUID()]?.store.activeDocument?.displayTitle).crashLogMessage
+        )
+    }
+
+    private func flushPendingURLs() {
+        guard !pendingURLs.isEmpty, preferredSession(nil) != nil else { return }
+        let urls = pendingURLs
+        pendingURLs.removeAll()
+        urls.forEach { _ = open(url: $0) }
+    }
+
+    // MARK: - Closing
+
+    func closeWindow(id: UUID) {
+        guard let session = sessions[id] else { return }
+        let dirty = session.store.documents.filter(\.isDirty)
+        if dirty.isEmpty {
+            closeWindowImmediately(id: id)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = NSLocalizedString("You have unsaved changes", comment: "Close window alert title")
+        alert.informativeText = dirty.map(\.displayTitle).joined(separator: ", ")
+        alert.addButton(withTitle: NSLocalizedString("Save", comment: "Save button"))
+        alert.addButton(withTitle: NSLocalizedString("Don't Save", comment: "Discard button"))
+        alert.addButton(withTitle: NSLocalizedString("Cancel", comment: "Cancel button"))
+        if let window = session.window {
+            alert.beginSheetModal(for: window) { [weak self] response in
+                self?.finishCloseWindow(id: id, dirty: dirty, response: response)
+            }
+        } else {
+            finishCloseWindow(id: id, dirty: dirty, response: alert.runModal())
+        }
+    }
+
+    private func finishCloseWindow(id: UUID, dirty: [Document], response: NSApplication.ModalResponse) {
+        switch response {
+        case .alertFirstButtonReturn:
+            guard let store = sessions[id]?.store else { return }
+            dirty.forEach { try? store.save($0) }
+            closeWindowImmediately(id: id)
+        case .alertSecondButtonReturn:
+            closeWindowImmediately(id: id)
+        default:
+            break
+        }
+    }
+
+    private func closeWindowImmediately(id: UUID) {
+        guard let session = sessions[id] else { return }
+        closingWindowIDs.insert(id)
+        if let window = session.window {
+            window.performClose(nil)
+        } else {
+            deregister(sessionID: id)
+        }
+    }
+
+    private func closeEmptySession(_ id: UUID) {
+        guard sessions[id]?.store.documents.isEmpty == true else { return }
+        closeWindowImmediately(id: id)
+    }
+
+    func reviewUnsavedForQuit(completion: @escaping (Bool) -> Void) {
+        let dirty = sessions.values.flatMap { $0.store.documents }.filter(\.isDirty)
+        guard !dirty.isEmpty else { completion(true); return }
+        let alert = NSAlert()
+        alert.messageText = NSLocalizedString("You have unsaved changes", comment: "Quit alert title")
+        alert.informativeText = dirty.map(\.displayTitle).joined(separator: ", ")
+        alert.addButton(withTitle: NSLocalizedString("Save", comment: "Save button"))
+        alert.addButton(withTitle: NSLocalizedString("Quit Anyway", comment: "Quit without saving"))
+        alert.addButton(withTitle: NSLocalizedString("Cancel", comment: "Cancel button"))
+        let window = sessions[lastActiveWindowID ?? UUID()]?.window
+        let finish: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard let self else { completion(false); return }
+            switch response {
+            case .alertFirstButtonReturn:
+                dirty.forEach { document in
+                    self.sessions.values.first(where: { $0.store.documents.contains(document) })?.store.saveIgnoringErrors(document)
+                }
+                completion(true)
+            case .alertSecondButtonReturn: completion(true)
+            default: completion(false)
+            }
+        }
+        if let window { alert.beginSheetModal(for: window, completionHandler: finish) }
+        else { finish(alert.runModal()) }
+    }
+
+    func windowShouldClose(_ window: NSWindow) -> Bool {
+        guard let id = sessions.first(where: { $0.value.window === window })?.key else { return true }
+        if closingWindowIDs.remove(id) != nil { return true }
+        closeWindow(id: id)
+        return false
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        deregister(window: window)
+    }
+
+    private func deregister(window: NSWindow) {
+        guard let id = sessions.first(where: { $0.value.window === window })?.key else { return }
+        deregister(sessionID: id)
+    }
+
+    private func deregister(sessionID id: UUID) {
+        guard let session = sessions.removeValue(forKey: id) else { return }
+        session.store.managedWindow = nil
+        session.store.documents.forEach { $0.stopWatching(); $0.onStateChange = nil }
+        if lastActiveWindowID == id { lastActiveWindowID = sessions.keys.first }
+        persistSession()
+    }
+
+    static func normalizedFileURL(_ url: URL) -> URL {
+        url.standardizedFileURL.resolvingSymlinksInPath()
+    }
+
+    private static func snapshot(for document: Document) -> RecoveryDocumentSnapshot? {
+        let fileURLString = document.fileURL?.absoluteString
+        let shouldEmbedDraft = document.isDirty || document.fileURL == nil
+        let rawText = shouldEmbedDraft ? document.rawText : nil
+        let savedText = shouldEmbedDraft ? document.savedText : nil
+        guard fileURLString != nil || !(rawText ?? "").isEmpty || document.isDirty else { return nil }
+        return RecoveryDocumentSnapshot(
+            id: document.id, displayTitle: document.displayTitle, fileURLString: fileURLString,
+            rawText: rawText, savedText: savedText, isDirty: document.isDirty,
+            mode: document.mode.rawValue, scrollRatio: document.scrollRatio,
+            activeHeadingID: document.activeHeadingID, isTOCExpanded: document.isTOCExpanded,
+            collapsedHeadingIDs: document.collapsedHeadingIDs
+        )
+    }
+
+    private static func restoreDocument(from snapshot: RecoveryDocumentSnapshot) -> Document? {
+        let fileURL = snapshot.fileURLString.flatMap(URL.init(string:))
+        if let fileURL, FileManager.default.fileExists(atPath: fileURL.path) {
             let diskText = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
             let rawText = snapshot.isDirty ? (snapshot.rawText ?? diskText) : diskText
             let document = Document(id: snapshot.id, fileURL: fileURL, rawText: rawText)
             document.savedText = snapshot.savedText ?? diskText
             document.isDirty = snapshot.isDirty && rawText != document.savedText
+            document.mode = EditMode(rawValue: snapshot.mode) ?? .edit
+            document.scrollRatio = snapshot.scrollRatio
+            document.activeHeadingID = snapshot.activeHeadingID
+            document.isTOCExpanded = snapshot.isTOCExpanded
+            document.collapsedHeadingIDs = snapshot.collapsedHeadingIDs
             document.headings = HeadingParser.parseHeadings(in: rawText)
             document.startWatching()
             return document
         }
-
-        guard let rawText = snapshot.rawText,
-              !rawText.isEmpty || snapshot.isDirty else { return nil }
-
+        guard let rawText = snapshot.rawText, !rawText.isEmpty || snapshot.isDirty else { return nil }
         let document = Document(id: snapshot.id, rawText: rawText)
         document.savedText = snapshot.savedText ?? ""
         document.isDirty = true
+        document.mode = EditMode(rawValue: snapshot.mode) ?? .edit
+        document.scrollRatio = snapshot.scrollRatio
+        document.activeHeadingID = snapshot.activeHeadingID
+        document.isTOCExpanded = snapshot.isTOCExpanded
+        document.collapsedHeadingIDs = snapshot.collapsedHeadingIDs
         document.headings = HeadingParser.parseHeadings(in: rawText)
         return document
     }
+}
 
-    private func updateCrashRecoveryMetadata(using snapshot: RecoverySnapshot) {
-        let status = recoveryStore.status(for: snapshot, activeDocumentTitle: activeDocument?.displayTitle)
-        CrashRecoveryInfoReporter.shared.update(status.crashLogMessage)
+struct RecoverySnapshot: Codable {
+    var windows: [RecoveryWindowSnapshot]
+    var activeWindowID: UUID?
+
+    /// Legacy flat fields are accepted for migration from the single-window snapshot.
+    init(windows: [RecoveryWindowSnapshot], activeWindowID: UUID?) {
+        self.windows = windows
+        self.activeWindowID = activeWindowID
+    }
+
+    init(documents: [RecoveryDocumentSnapshot], activeID: UUID?) {
+        let id = UUID()
+        self.windows = [RecoveryWindowSnapshot(id: id, documents: documents, activeID: activeID)]
+        self.activeWindowID = id
+    }
+
+    enum CodingKeys: String, CodingKey { case windows, activeWindowID, documents, activeID }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        if let windows = try values.decodeIfPresent([RecoveryWindowSnapshot].self, forKey: .windows) {
+            self.windows = windows
+            self.activeWindowID = try values.decodeIfPresent(UUID.self, forKey: .activeWindowID)
+        } else {
+            let documents = try values.decodeIfPresent([RecoveryDocumentSnapshot].self, forKey: .documents) ?? []
+            let activeID = try values.decodeIfPresent(UUID.self, forKey: .activeID)
+            let id = UUID()
+            self.windows = [RecoveryWindowSnapshot(id: id, documents: documents, activeID: activeID)]
+            self.activeWindowID = id
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(windows, forKey: .windows)
+        try values.encodeIfPresent(activeWindowID, forKey: .activeWindowID)
+    }
+
+    var documents: [RecoveryDocumentSnapshot] { windows.flatMap(\.documents) }
+    var activeID: UUID? {
+        guard let window = windows.first(where: { $0.id == activeWindowID }) else { return nil }
+        return window.activeID
     }
 }
 
-private struct RecoverySnapshot: Codable {
+struct RecoveryWindowSnapshot: Codable {
+    var id: UUID
     var documents: [RecoveryDocumentSnapshot]
     var activeID: UUID?
 }
 
-private struct RecoveryDocumentSnapshot: Codable {
+struct RecoveryDocumentSnapshot: Codable {
     var id: UUID
     var displayTitle: String
     var fileURLString: String?
     var rawText: String?
     var savedText: String?
     var isDirty: Bool
+    var mode: String = EditMode.edit.rawValue
+    var scrollRatio: Double = 0
+    var activeHeadingID: String?
+    var isTOCExpanded: Bool = false
+    var collapsedHeadingIDs: Set<String> = []
+
+    enum CodingKeys: String, CodingKey {
+        case id, displayTitle, fileURLString, rawText, savedText, isDirty
+        case mode, scrollRatio, activeHeadingID, isTOCExpanded, collapsedHeadingIDs
+    }
+
+    init(id: UUID, displayTitle: String, fileURLString: String?, rawText: String?, savedText: String?,
+         isDirty: Bool, mode: String = EditMode.edit.rawValue, scrollRatio: Double = 0,
+         activeHeadingID: String? = nil, isTOCExpanded: Bool = false,
+         collapsedHeadingIDs: Set<String> = []) {
+        self.id = id
+        self.displayTitle = displayTitle
+        self.fileURLString = fileURLString
+        self.rawText = rawText
+        self.savedText = savedText
+        self.isDirty = isDirty
+        self.mode = mode
+        self.scrollRatio = scrollRatio
+        self.activeHeadingID = activeHeadingID
+        self.isTOCExpanded = isTOCExpanded
+        self.collapsedHeadingIDs = collapsedHeadingIDs
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        displayTitle = try values.decode(String.self, forKey: .displayTitle)
+        fileURLString = try values.decodeIfPresent(String.self, forKey: .fileURLString)
+        rawText = try values.decodeIfPresent(String.self, forKey: .rawText)
+        savedText = try values.decodeIfPresent(String.self, forKey: .savedText)
+        isDirty = try values.decode(Bool.self, forKey: .isDirty)
+        mode = try values.decodeIfPresent(String.self, forKey: .mode) ?? EditMode.edit.rawValue
+        scrollRatio = try values.decodeIfPresent(Double.self, forKey: .scrollRatio) ?? 0
+        activeHeadingID = try values.decodeIfPresent(String.self, forKey: .activeHeadingID)
+        isTOCExpanded = try values.decodeIfPresent(Bool.self, forKey: .isTOCExpanded) ?? false
+        collapsedHeadingIDs = try values.decodeIfPresent(Set<String>.self, forKey: .collapsedHeadingIDs) ?? []
+    }
 }
 
 private struct RecoveryStore {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private let configuredDirectoryURL: URL?
+
+    init(directoryURL: URL? = nil) {
+        self.configuredDirectoryURL = directoryURL
+    }
 
     func load() -> RecoverySnapshot? {
         guard let data = try? Data(contentsOf: snapshotURL) else { return nil }
@@ -497,6 +1012,7 @@ private struct RecoveryStore {
     }
 
     private var directoryURL: URL {
+        if let configuredDirectoryURL { return configuredDirectoryURL }
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
         return appSupport.appendingPathComponent("Markfops", isDirectory: true)

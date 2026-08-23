@@ -37,6 +37,11 @@ struct MarkfopsCommands: Commands {
             }
             .keyboardShortcut("t", modifiers: .command)
 
+            Button("New Window") {
+                store?.coordinator?.newWindow()
+            }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
+
             Button("Open…") {
                 openFile()
             }
@@ -51,7 +56,9 @@ struct MarkfopsCommands: Commands {
                 } else {
                     ForEach(recents.prefix(10), id: \.self) { url in
                         Button(url.deletingPathExtension().lastPathComponent) {
-                            store?.open(url: url)
+                            store?.coordinator?.open(
+                                url: url, preferredWindowID: store?.windowID
+                            )
                         }
                     }
                     Divider()
@@ -117,13 +124,13 @@ struct MarkfopsCommands: Commands {
                 if let s = store, !s.documents.isEmpty, let id = s.activeID {
                     s.close(id: id)
                 } else {
-                    NSApp.keyWindow?.performClose(nil)
+                    store?.closeWindow()
                 }
             }
             .keyboardShortcut("w", modifiers: .command)
 
             Button("Close Window") {
-                NSApp.keyWindow?.performClose(nil)
+                store?.closeWindow()
             }
             .keyboardShortcut("w", modifiers: [.command, .shift])
         }
@@ -297,7 +304,11 @@ struct MarkfopsCommands: Commands {
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK else { return }
-        for url in panel.urls { store?.open(url: url) }
+        for url in panel.urls {
+            store?.coordinator?.open(
+                url: url, preferredWindowID: store?.windowID
+            )
+        }
     }
 }
 

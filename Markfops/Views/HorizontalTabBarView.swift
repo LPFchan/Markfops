@@ -128,6 +128,8 @@ struct TabPillRowView: View {
     private func pillCell(document: Document, index: Int) -> some View {
         let isDragging    = TabDragState.shared.draggingDocumentID == document.id
         let isAnyDragging = TabDragState.shared.draggingDocumentID != nil
+        let translation   = TabDragState.shared.dragTranslation
+        let inDetachZone  = isDragging && abs(translation.height) > 60
 
         if dropInsertionIndex == index { insertionIndicator }
 
@@ -136,6 +138,7 @@ struct TabPillRowView: View {
             isActive: store.activeID == document.id,
             onSelect: { store.activeID = document.id },
             onClose: { store.close(id: document.id) },
+            isInDetachZone: inDetachZone,
             pillWidth: pillWidth
         )
         .id(document.id)
@@ -146,6 +149,7 @@ struct TabPillRowView: View {
         // Animate pill width changes as tabs open/close.
         .animation(.spring(duration: 0.28), value: pillWidth)
         .animation(.spring(duration: 0.22), value: isDragging)
+        .animation(.spring(duration: 0.18), value: inDetachZone)
         .animation(.spring(duration: 0.15), value: isAnyDragging)
         .onDrag { makeDragProvider(for: document) }
         .onDrop(of: [TabDragState.documentDragType],
@@ -168,7 +172,7 @@ struct TabPillRowView: View {
     // MARK: - Drag provider
 
     private func makeDragProvider(for document: Document) -> NSItemProvider {
-        TabDragState.shared.begin(documentID: document.id)
+        TabDragState.shared.begin(documentID: document.id, from: store)
 
         let provider = NSItemProvider()
         provider.registerDataRepresentation(
@@ -196,8 +200,12 @@ private struct TrailingDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         onInsertionIndexChange?(nil)
         guard let draggingID = TabDragState.shared.draggingDocumentID else { return false }
+        let sourceStore = TabDragState.shared.sourceStore
         TabDragState.shared.clear()
-        if let fromIdx = store.documents.firstIndex(where: { $0.id == draggingID }) {
+        if let sourceStore, sourceStore !== store {
+            store.coordinator?.move(documentID: draggingID, from: sourceStore.windowID,
+                                    to: store.windowID, at: store.documents.count)
+        } else if let fromIdx = store.documents.firstIndex(where: { $0.id == draggingID }) {
             withAnimation(.spring(duration: 0.2)) {
                 store.moveTab(fromOffsets: IndexSet(integer: fromIdx),
                               toOffset: store.documents.count)
