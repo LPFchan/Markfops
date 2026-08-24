@@ -77,6 +77,9 @@ struct TabPillRowView: View {
                             insertionIndicator
                         }
                     }
+                    // Width and neighbor positions must share one animation transaction. Animating
+                    // each pill independently lets its rendered frame overlap the row's stale layout.
+                    .animation(.spring(duration: 0.22), value: store.activeID)
                     .padding(.leading, 8)
                     .padding(.vertical, 5)
                 }
@@ -166,7 +169,6 @@ struct TabPillRowView: View {
         .scaleEffect(isDragging ? 0.92 : (isAnyDragging ? 0.96 : 1.0), anchor: .center)
         // Animate pill width changes as tabs open/close.
         .animation(.spring(duration: 0.28), value: uniformPillWidth)
-        .animation(.spring(duration: 0.22), value: isActive)
         .animation(.spring(duration: 0.22), value: isDragging)
         .animation(.spring(duration: 0.18), value: inDetachZone)
         .animation(.spring(duration: 0.15), value: isAnyDragging)
