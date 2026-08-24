@@ -25,10 +25,12 @@ struct ContentView: View {
     private var transitionAwareColumnVisibility: Binding<NavigationSplitViewVisibility> {
         Binding(
             get: { columnVisibility },
-            set: { newVisibility in
+            set: { newVisibility, transaction in
                 guard newVisibility != columnVisibility else { return }
                 beginSidebarTransition()
-                columnVisibility = newVisibility
+                withTransaction(transaction) {
+                    columnVisibility = newVisibility
+                }
             }
         )
     }
