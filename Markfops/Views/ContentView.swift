@@ -9,6 +9,11 @@ struct ContentView: View {
 
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var scrollToHeading: HeadingNode? = nil
+    @State private var isSidebarTransitioning = false
+    @State private var isToolbarContentVisible = true
+    @State private var sidebarTransitionGeneration = 0
+
+    private static let sidebarTransitionDuration: TimeInterval = 0.22
 
     private var editorConfig: EditorConfiguration {
         var config = EditorConfiguration.default
@@ -33,17 +38,24 @@ struct ContentView: View {
                     .toolbar {
                         ToolbarItem(placement: .principal) {
                             CompactToolbarPrincipalItem(
-                                isCompact: columnVisibility == .detailOnly
+                                isCompact: columnVisibility == .detailOnly,
+                                isTransitioning: isSidebarTransitioning,
+                                isVisible: isToolbarContentVisible
                             )
                         }
-                        ModeToggleToolbarItem(mode: $doc.mode)
+                        ModeToggleToolbarItem(
+                            mode: $doc.mode,
+                            isVisible: isToolbarContentVisible
+                        )
                     }
                 } else {
                     WelcomeView()
                         .toolbar {
                             ToolbarItem(placement: .principal) {
                                 CompactToolbarPrincipalItem(
-                                    isCompact: columnVisibility == .detailOnly
+                                    isCompact: columnVisibility == .detailOnly,
+                                    isTransitioning: isSidebarTransitioning,
+                                    isVisible: isToolbarContentVisible
                                 )
                             }
                         }
@@ -53,7 +65,11 @@ struct ContentView: View {
         }
         .focusedValue(\.sidebarVisibility, $columnVisibility)
         // The native title owns the draggable file proxy while the sidebar is visible.
-        .navigationTitle(columnVisibility == .detailOnly ? "" : (store.activeDocument?.displayTitle ?? "Markfops"))
+        .navigationTitle(
+            columnVisibility == .detailOnly || !isToolbarContentVisible
+                ? ""
+                : (store.activeDocument?.displayTitle ?? "Markfops")
+        )
         // Hidden Cmd+1-9 / Cmd+0 shortcuts for tab selection — not in Commands so they don't create menu items
         .background {
             VStack {
@@ -83,6 +99,9 @@ struct ContentView: View {
             documentWindow?.isDocumentEdited = doc?.isDirty ?? false
             refreshProxyIcon()
         }
+        .onChange(of: columnVisibility) { _, _ in
+            beginSidebarTransition()
+        }
     }
 
     /// Keeps the window proxy icon in sync with the active document.
@@ -107,6 +126,31 @@ struct ContentView: View {
 
     private var documentWindow: NSWindow? {
         store.managedWindow
+    }
+
+    private func beginSidebarTransition() {
+        sidebarTransitionGeneration &+= 1
+        let generation = sidebarTransitionGeneration
+
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            isToolbarContentVisible = false
+            isSidebarTransitioning = true
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.sidebarTransitionDuration) {
+            guard generation == sidebarTransitionGeneration else { return }
+            withTransaction(transaction) {
+                isSidebarTransitioning = false
+            }
+            DispatchQueue.main.async {
+                guard generation == sidebarTransitionGeneration else { return }
+                withAnimation(.easeIn(duration: 0.10)) {
+                    isToolbarContentVisible = true
+                }
+            }
+        }
     }
 
     private func handleTOCTap(_ heading: HeadingNode) {
@@ -142,6 +186,8 @@ struct ContentView: View {
 /// without replacing AppKit's draggable document title and proxy icon.
 private struct CompactToolbarPrincipalItem: View {
     let isCompact: Bool
+    let isTransitioning: Bool
+    let isVisible: Bool
     @Environment(DocumentStore.self) private var store
 
     private static let reservedChromeWidth: CGFloat = 244
@@ -154,6 +200,10 @@ private struct CompactToolbarPrincipalItem: View {
         return max(Self.minimumIdealWidth, windowWidth - Self.reservedChromeWidth)
     }
 
+    private var occupiesToolbarSpace: Bool {
+        isCompact && !isTransitioning
+    }
+
     var body: some View {
         GeometryReader { geo in
             let w = max(1, geo.size.width)
@@ -161,13 +211,13 @@ private struct CompactToolbarPrincipalItem: View {
                 .frame(width: w, alignment: .center)
                 .clipped()
         }
-        .opacity(isCompact ? 1 : 0)
-        .allowsHitTesting(isCompact)
-        .accessibilityHidden(!isCompact)
+        .opacity(occupiesToolbarSpace && isVisible ? 1 : 0)
+        .allowsHitTesting(occupiesToolbarSpace && isVisible)
+        .accessibilityHidden(!occupiesToolbarSpace || !isVisible)
         .frame(
-            minWidth: isCompact ? 120 : 0,
-            idealWidth: isCompact ? idealWidth : 0,
-            maxWidth: isCompact ? .infinity : 0
+            minWidth: occupiesToolbarSpace ? 120 : 0,
+            idealWidth: occupiesToolbarSpace ? idealWidth : 0,
+            maxWidth: occupiesToolbarSpace ? .infinity : 0
         )
         .frame(height: ToolbarMetrics.compactPillRowHeight)
         .layoutPriority(-1)

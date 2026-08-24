@@ -8,6 +8,7 @@ enum ToolbarMetrics {
 
 struct ModeToggleToolbarItem: ToolbarContent {
     @Binding var mode: EditMode
+    var isVisible = true
 
     var body: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
@@ -22,6 +23,9 @@ struct ModeToggleToolbarItem: ToolbarContent {
             .controlSize(.regular)
             .frame(width: 72)
             .frame(height: ToolbarMetrics.compactPillRowHeight)
+            .opacity(isVisible ? 1 : 0)
+            .allowsHitTesting(isVisible)
+            .accessibilityHidden(!isVisible)
             .layoutPriority(1)
             .help("Toggle Edit / Preview  ⌘⇧P")
         }
