@@ -341,6 +341,36 @@ final class UndoManagerTests: XCTestCase {
         editor.coordinator.scrollToRatio(0.5)
 
         XCTAssertEqual(document.userContentScrollGeneration, 0)
+        XCTAssertEqual(editor.coordinator.currentScrollRatio() ?? -1, 0.5, accuracy: 0.01)
+    }
+
+    func testHiddenEditorScrollDoesNotOverwriteActiveSurfaceRatio() {
+        let document = Document(rawText: longDocument(prefix: "Hidden"))
+        document.scrollRatio = 0.73
+        let editor = makeEditor(for: document)
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 600, height: 300))
+        editor.textView.frame = NSRect(x: 0, y: 0, width: 600, height: 3_000)
+        scrollView.documentView = editor.textView
+        editor.coordinator.attach(scrollView: scrollView)
+        editor.coordinator.isActive = false
+
+        editor.coordinator.scrollViewDidLiveScroll(
+            Notification(name: NSScrollView.didLiveScrollNotification, object: scrollView)
+        )
+
+        XCTAssertEqual(document.scrollRatio, 0.73, accuracy: 0.001)
+        XCTAssertEqual(document.userContentScrollGeneration, 0)
+    }
+
+    func testPreviewScrollRestoreCanWaitForUpdatedContent() {
+        let bridge = PreviewBridge()
+        let coordinator = PreviewView.Coordinator()
+        coordinator.isPageReady = true
+        bridge.coordinator = coordinator
+
+        bridge.setPendingScrollRatio(0.42, applyImmediately: false)
+
+        XCTAssertEqual(coordinator.pendingScrollRatio ?? -1, 0.42, accuracy: 0.001)
     }
 
     func testPreviewScrollReportCarriesUserGestureSeparatelyFromRatio() {

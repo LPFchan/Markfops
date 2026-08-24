@@ -18,6 +18,7 @@ struct UserScrollGestureState {
 final class TextViewCoordinator: NSObject, NSTextViewDelegate {
     var document: Document
     var textView: MarkdownNSTextView?
+    var isActive = true
     let highlighter = MarkdownSyntaxHighlighter()
     private var headingDebounceItem: DispatchWorkItem?
     private weak var observedScrollView: NSScrollView?
@@ -212,19 +213,20 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
     }
 
     @objc func scrollViewDidLiveScroll(_ notification: Notification) {
-        guard let scrollView = notification.object as? NSScrollView,
+        guard isActive,
+              let scrollView = notification.object as? NSScrollView,
               let docView = scrollView.documentView else { return }
         if userScrollGesture.begin() {
             document.registerUserContentScroll()
         }
         scheduleUserScrollIdleReset()
-        let visibleRect = scrollView.contentView.documentVisibleRect
-        let totalHeight = docView.bounds.height
-        guard totalHeight > 0 else { document.scrollRatio = 0; return }
+        guard let ratio = currentScrollRatio(in: scrollView, documentView: docView) else {
+            document.scrollRatio = 0
+            return
+        }
         // Capture the center of the visible viewport (not the top edge) so the
         // same content stays centered when switching between edit and preview modes.
-        let centerY = visibleRect.minY + visibleRect.height / 2
-        document.scrollRatio = max(0, min(1, Double(centerY / totalHeight)))
+        document.scrollRatio = ratio
         syncActiveHeadingToVisibleContent(in: scrollView)
     }
 
@@ -254,6 +256,23 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         userScrollIdleResetGeneration &+= 1
         userScrollIdleResetItem?.cancel()
         userScrollIdleResetItem = nil
+    }
+
+    func currentScrollRatio() -> Double? {
+        guard let textView,
+              let scrollView = textView.enclosingScrollView else { return nil }
+        return currentScrollRatio(in: scrollView, documentView: textView)
+    }
+
+    private func currentScrollRatio(
+        in scrollView: NSScrollView,
+        documentView: NSView
+    ) -> Double? {
+        let totalHeight = documentView.bounds.height
+        guard totalHeight > 0 else { return nil }
+        let visibleRect = scrollView.contentView.documentVisibleRect
+        let centerY = visibleRect.minY + visibleRect.height / 2
+        return max(0, min(1, Double(centerY / totalHeight)))
     }
 
     func scrollToRatio(_ ratio: Double) {

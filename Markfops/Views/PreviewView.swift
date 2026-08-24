@@ -10,9 +10,12 @@ final class PreviewBridge {
     /// was queued before makeNSView had a chance to create the coordinator.
     weak var coordinator: PreviewView.Coordinator? {
         didSet {
-            if let ratio = _bufferedScrollRatio, let coord = coordinator {
-                coord.pendingScrollRatio = ratio
-                _bufferedScrollRatio = nil
+            if let request = _bufferedScrollRequest, let coord = coordinator {
+                coord.setPendingScrollRatio(
+                    request.ratio,
+                    applyImmediately: request.applyImmediately
+                )
+                _bufferedScrollRequest = nil
             }
             if let heading = _bufferedHeading, let coord = coordinator {
                 coord.pendingHeading = heading
@@ -22,7 +25,7 @@ final class PreviewBridge {
     }
     /// Holds a scroll ratio when setPendingScrollRatio is called before the
     /// coordinator exists (i.e. before makeNSView runs for this mode switch).
-    private var _bufferedScrollRatio: Double?
+    private var _bufferedScrollRequest: (ratio: Double, applyImmediately: Bool)?
     private var _bufferedHeading: HeadingNode?
 
     func extractText(completion: @escaping (String) -> Void) {
@@ -53,27 +56,17 @@ final class PreviewBridge {
         coordinator?.promoteSelectionToHeading(level, in: document)
     }
 
-    func setPendingScrollRatio(_ ratio: Double) {
-        _bufferedScrollRatio = ratio
-        guard let coordinator else { return }
-        _bufferedScrollRatio = nil
-        coordinator.pendingScrollRatio = ratio
+    func currentScrollRatio(completion: @escaping (Double?) -> Void) {
+        coordinator?.currentScrollRatio(completion: completion) ?? completion(nil)
+    }
 
-        // If the page is already loaded (coordinator + webView exist), apply immediately
-        // via JS rather than waiting for didFinish — which never fires when HTML is cached.
-        guard coordinator.isPageReady, let webView = coordinator.webView else { return }
-        coordinator.pendingScrollRatio = nil
-            let js = """
-            (function() {
-                var h = document.documentElement.scrollHeight;
-                if (h > 0) {
-                    var targetY = \(ratio) * h - window.innerHeight / 2;
-                    window.__markfopsProgrammaticScrollUntil = performance.now() + 180;
-                    window.scrollTo(0, Math.max(0, Math.round(targetY)));
-                }
-            })();
-            """
-            webView.evaluateJavaScript(js)
+    func setPendingScrollRatio(_ ratio: Double, applyImmediately: Bool = true) {
+        guard let coordinator else {
+            _bufferedScrollRequest = (ratio, applyImmediately)
+            return
+        }
+        _bufferedScrollRequest = nil
+        coordinator.setPendingScrollRatio(ratio, applyImmediately: applyImmediately)
     }
 }
 
@@ -167,6 +160,7 @@ struct PreviewView: NSViewRepresentable {
         var pendingHeading: HeadingNode?
         var pendingMorphSourceLine: Int?
         private var lastReportedUserScrollGesture = 0
+        private var isBodyUpdateInFlight = false
 
         func teardown() {
             webView = nil
@@ -262,22 +256,74 @@ struct PreviewView: NSViewRepresentable {
             }
         }
 
+        func currentScrollRatio(completion: @escaping (Double?) -> Void) {
+            guard isPageReady, let webView else {
+                completion(nil)
+                return
+            }
+            let js = """
+            (function() {
+                var h = document.documentElement.scrollHeight;
+                if (h <= 0) return null;
+                return (window.scrollY + window.innerHeight / 2) / h;
+            })();
+            """
+            webView.evaluateJavaScript(js) { result, _ in
+                completion((result as? NSNumber)?.doubleValue)
+            }
+        }
+
+        func setPendingScrollRatio(_ ratio: Double, applyImmediately: Bool) {
+            pendingScrollRatio = max(0, min(1, ratio))
+            if applyImmediately {
+                applyPendingScrollRatioIfReady()
+            }
+        }
+
+        private func applyPendingScrollRatioIfReady() {
+            guard isPageReady,
+                  !isBodyUpdateInFlight,
+                  let webView,
+                  let ratio = pendingScrollRatio else { return }
+            pendingScrollRatio = nil
+            let js = """
+            (function() {
+                var h = document.documentElement.scrollHeight;
+                if (h > 0) {
+                    var targetY = \(ratio) * h - window.innerHeight / 2;
+                    window.__markfopsProgrammaticScrollUntil = performance.now() + 180;
+                    window.scrollTo(0, Math.max(0, Math.round(targetY)));
+                }
+            })();
+            """
+            webView.evaluateJavaScript(js)
+        }
+
         func updateBodyHTML(_ html: String) {
             guard let webView,
                   let encodedHTML = Self.javaScriptStringLiteral(html) else { return }
 
             let sourceLine = pendingMorphSourceLine.map(String.init) ?? "null"
+            let requestedScrollRatio = pendingScrollRatio
+            let requestedRatio = requestedScrollRatio.map { String($0) } ?? "null"
+            pendingScrollRatio = nil
+            isBodyUpdateInFlight = true
             let js = """
             (function() {
                 if (!window.__markfopsPreview) return false;
-                return window.__markfopsPreview.applyHTML(\(encodedHTML), \(sourceLine));
+                return window.__markfopsPreview.applyHTML(\(encodedHTML), \(sourceLine), \(requestedRatio));
             })();
             """
 
             webView.evaluateJavaScript(js) { [weak self] _, error in
+                guard let self else { return }
+                self.isBodyUpdateInFlight = false
                 if error == nil {
-                    self?.pendingMorphSourceLine = nil
+                    self.pendingMorphSourceLine = nil
+                } else if self.pendingScrollRatio == nil {
+                    self.pendingScrollRatio = requestedScrollRatio
                 }
+                self.applyPendingScrollRatioIfReady()
             }
         }
 
@@ -448,12 +494,14 @@ struct PreviewView: NSViewRepresentable {
                 }
 
                 window.__markfopsPreview = {
-                    applyHTML: function(nextHTML, sourceLine) {
+                    applyHTML: function(nextHTML, sourceLine, requestedRatio) {
                         var previousStyles = snapshotBlockStyles();
                         var totalBefore = document.documentElement.scrollHeight;
-                        var ratio = totalBefore > 0
-                            ? (window.scrollY + window.innerHeight / 2) / totalBefore
-                            : 0;
+                        var ratio = typeof requestedRatio === 'number' && !Number.isNaN(requestedRatio)
+                            ? requestedRatio
+                            : totalBefore > 0
+                                ? (window.scrollY + window.innerHeight / 2) / totalBefore
+                                : 0;
 
                         article.innerHTML = nextHTML;
 
@@ -539,18 +587,7 @@ struct PreviewView: NSViewRepresentable {
 
             // Apply deferred scroll ratio now that the page is ready.
             // ratio = center-of-viewport / scrollHeight, so restore: scrollTo(ratio*h - innerHeight/2)
-            if let ratio = pendingScrollRatio {
-                pendingScrollRatio = nil
-                let scrollJS = """
-                (function() {
-                    var h = document.documentElement.scrollHeight;
-                    var targetY = \(ratio) * h - window.innerHeight / 2;
-                    window.__markfopsProgrammaticScrollUntil = performance.now() + 180;
-                    window.scrollTo(0, Math.max(0, Math.round(targetY)));
-                })();
-                """
-                webView.evaluateJavaScript(scrollJS)
-            }
+            applyPendingScrollRatioIfReady()
 
             if let heading = pendingHeading {
                 pendingHeading = nil

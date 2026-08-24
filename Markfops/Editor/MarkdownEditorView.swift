@@ -121,6 +121,10 @@ enum MarkdownHeadingFormatter {
 final class EditorBridge {
     weak var coordinator: TextViewCoordinator?
 
+    func currentScrollRatio() -> Double? {
+        coordinator?.currentScrollRatio()
+    }
+
     func scrollToRatio(_ ratio: Double) {
         coordinator?.scrollToRatio(ratio)
     }
@@ -388,6 +392,7 @@ struct EditorView: NSViewRepresentable {
         // Wire syntax highlighter
         context.coordinator.highlighter.updateConfiguration(configuration)
         context.coordinator.highlighter.isEnabled = isActive
+        context.coordinator.isActive = isActive
         textView.textStorage?.delegate = context.coordinator.highlighter
         context.coordinator.textView = textView
         context.coordinator.attach(scrollView: scrollView)
@@ -429,6 +434,7 @@ struct EditorView: NSViewRepresentable {
             context.coordinator.document = document
         }
         context.coordinator.highlighter.isEnabled = isActive
+        context.coordinator.isActive = isActive
         let highlightingConfigurationChanged = context.coordinator.highlighter.updateConfiguration(configuration)
         textView.configuration = configuration
 

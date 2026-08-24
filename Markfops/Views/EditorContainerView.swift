@@ -49,10 +49,12 @@ struct EditorContainerView: View {
                 themeKey: colorScheme == .dark ? "dark" : "light",
                 bridge: bridge,
                 onScrollChange: { ratio in
+                    guard document.mode == .preview else { return }
                     document.scrollRatio = ratio
                     document.syncActiveHeadingToScrollPosition()
                 },
                 onUserScroll: {
+                    guard document.mode == .preview else { return }
                     document.registerUserContentScroll()
                 }
             )
@@ -86,7 +88,7 @@ struct EditorContainerView: View {
         }
         .onChange(of: document.rawText, initial: true) { _, newText in
             guard document.mode == .preview else { return }
-            refreshPreview(from: newText)
+            refreshPreviewPreservingScroll(from: newText, ratio: document.scrollRatio)
         }
         .onChange(of: document.mode) { oldMode, newMode in
             findController.activeMode = newMode
@@ -94,24 +96,34 @@ struct EditorContainerView: View {
                 findController.showsReplace = false
             }
             if oldMode == .preview && newMode == .edit {
-                // Restore editor scroll position after view switches back
-                let ratio = document.scrollRatio
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    editorBridge.scrollToRatio(ratio)
-                    _ = editorBridge.focus()
+                let fallbackRatio = document.scrollRatio
+                let documentID = document.id
+                bridge.currentScrollRatio { liveRatio in
+                    DispatchQueue.main.async {
+                        guard document.id == documentID, document.mode == .edit else { return }
+                        let ratio = liveRatio ?? fallbackRatio
+                        document.scrollRatio = ratio
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            guard document.id == documentID, document.mode == .edit else { return }
+                            editorBridge.scrollToRatio(ratio)
+                            _ = editorBridge.focus()
+                        }
+                    }
                 }
             } else if newMode == .preview {
-                bridge.setPendingScrollRatio(document.scrollRatio)
-                refreshPreview(from: document.rawText)
+                let ratio = editorBridge.currentScrollRatio() ?? document.scrollRatio
+                document.scrollRatio = ratio
+                refreshPreviewPreservingScroll(from: document.rawText, ratio: ratio)
+                let documentID = document.id
                 DispatchQueue.main.async {
+                    guard document.id == documentID, document.mode == .preview else { return }
                     _ = bridge.focus()
                 }
             }
         }
         .onChange(of: document.id) { _, _ in
             guard document.mode == .preview else { return }
-            bridge.setPendingScrollRatio(document.scrollRatio)
-            refreshPreview(from: document.rawText)
+            refreshPreviewPreservingScroll(from: document.rawText, ratio: document.scrollRatio)
         }
         .onChange(of: scrollToHeading) { _, heading in
             guard document.mode == .preview, let heading else { return }
@@ -119,18 +131,24 @@ struct EditorContainerView: View {
         }
         .onChange(of: colorScheme) { _, _ in
             if document.mode == .preview {
-                refreshPreview(from: document.rawText)
+                refreshPreviewPreservingScroll(from: document.rawText, ratio: document.scrollRatio)
             }
         }
     }
 
-    private func refreshPreview(from text: String) {
+    private func refreshPreviewPreservingScroll(from text: String, ratio: Double) {
+        let contentChanged = refreshPreview(from: text)
+        bridge.setPendingScrollRatio(ratio, applyImmediately: !contentChanged)
+    }
+
+    @discardableResult
+    private func refreshPreview(from text: String) -> Bool {
         let themeKey = colorScheme == .dark ? "dark" : "light"
         guard renderedDocumentID != document.id
                 || renderedText != text
                 || renderedThemeKey != themeKey
                 || bodyHTML.isEmpty else {
-            return
+            return false
         }
 
         renderedDocumentID = document.id
@@ -140,6 +158,7 @@ struct EditorContainerView: View {
         bodyHTML = fragment
         let page = HTMLTemplate.currentPage(body: fragment, colorScheme: colorScheme)
         htmlContent = page
+        return true
     }
 
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
