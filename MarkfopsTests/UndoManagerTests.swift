@@ -277,6 +277,88 @@ final class UndoManagerTests: XCTestCase {
         XCTAssertTrue(context.allowsAutomaticFollowing(force: false))
     }
 
+    func testForcedSidebarFollowAtLiveTargetDoesNotRearmAfterGeometryCallback() {
+        let context = SidebarScrollContext()
+        let snapDistance = SidebarScrollPhysics.snapDistance(backingScaleFactor: 2)
+        context.desiredTargetY = 240
+
+        XCTAssertTrue(
+            context.hasSettledTOCTarget(
+                currentY: 180,
+                targetY: 180,
+                snapDistance: snapDistance
+            )
+        )
+        XCTAssertNil(context.desiredTargetY)
+
+        let timer = Timer(timeInterval: 1, repeats: true) { _ in }
+        context.displayTimer = timer
+        XCTAssertFalse(
+            context.hasSettledTOCTarget(
+                currentY: 180,
+                targetY: 180,
+                snapDistance: snapDistance
+            )
+        )
+        timer.invalidate()
+    }
+
+    func testSidebarSpringSnapsAtBackingScaleQuantumOrWatchdog() {
+        XCTAssertEqual(
+            SidebarScrollPhysics.snapDistance(backingScaleFactor: 2),
+            0.5,
+            accuracy: 0.001
+        )
+        XCTAssertTrue(
+            SidebarScrollPhysics.shouldSnap(
+                currentY: 179.6,
+                targetY: 180,
+                nextY: 179.7,
+                elapsed: 0,
+                tickCount: 1,
+                snapDistance: 0.5,
+                maximumDuration: 0.9,
+                maximumTicks: 180
+            )
+        )
+        XCTAssertTrue(
+            SidebarScrollPhysics.shouldSnap(
+                currentY: 0,
+                targetY: 180,
+                nextY: 1,
+                elapsed: 0.9,
+                tickCount: 2,
+                snapDistance: 0.5,
+                maximumDuration: 0.9,
+                maximumTicks: 180
+            )
+        )
+        XCTAssertTrue(
+            SidebarScrollPhysics.shouldSnap(
+                currentY: 0,
+                targetY: 180,
+                nextY: 1,
+                elapsed: 0,
+                tickCount: 180,
+                snapDistance: 0.5,
+                maximumDuration: 0.9,
+                maximumTicks: 180
+            )
+        )
+        XCTAssertFalse(
+            SidebarScrollPhysics.shouldSnap(
+                currentY: 0,
+                targetY: 180,
+                nextY: 1,
+                elapsed: 0.1,
+                tickCount: 2,
+                snapDistance: 0.5,
+                maximumDuration: 0.9,
+                maximumTicks: 180
+            )
+        )
+    }
+
     func testEditorUserScrollReattachesOncePerGestureWithoutHeadingChange() {
         let text = "## One long section\n" + Array(repeating: "Body", count: 200).joined(separator: "\n")
         let document = Document(rawText: text)

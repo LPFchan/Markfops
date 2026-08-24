@@ -49,6 +49,31 @@ enum SidebarTOCModel {
     }
 }
 
+enum SidebarScrollPhysics {
+    /// AppKit may quantize a clip-view origin to the display's backing-scale grid.
+    /// Use at least one backing pixel when deciding that a spring is close enough
+    /// to snap, otherwise the remaining sub-pixel displacement can oscillate forever.
+    static func snapDistance(backingScaleFactor: CGFloat) -> CGFloat {
+        max(0.12, 1 / max(backingScaleFactor, 1))
+    }
+
+    static func shouldSnap(
+        currentY: CGFloat,
+        targetY: CGFloat,
+        nextY: CGFloat,
+        elapsed: CFTimeInterval,
+        tickCount: Int,
+        snapDistance: CGFloat,
+        maximumDuration: CFTimeInterval,
+        maximumTicks: Int
+    ) -> Bool {
+        abs(targetY - currentY) <= snapDistance
+            || abs(targetY - nextY) <= snapDistance
+            || elapsed >= maximumDuration
+            || tickCount >= maximumTicks
+    }
+}
+
 enum SidebarDocumentModel {
     static func showsTableOfContents(
         isExpanded: Bool,
@@ -62,10 +87,18 @@ enum SidebarDocumentModel {
 final class SidebarScrollContext {
     weak var scrollView: NSScrollView?
     weak var observedScrollView: NSScrollView?
+    // These values only coordinate deferred work. Keeping them here avoids making
+    // SidebarView invalidate every time a follow request is replaced or cancelled.
+    var pendingTOCFollowScroll: DispatchWorkItem?
+    var pendingImmediateTOCScrollTarget: String?
+    var pendingDocumentPinWorkItem: DispatchWorkItem?
+    var pendingInitialTOCSyncWorkItem: DispatchWorkItem?
     var lastTargetY: CGFloat?
     var desiredTargetY: CGFloat?
     var displayTimer: Timer?
     var lastStepTime: CFTimeInterval?
+    var animationStartTime: CFTimeInterval?
+    var animationTickCount = 0
     var velocity: CGFloat = 0
     var isProgrammaticScroll = false
     var liveScrollObserver: NSObjectProtocol?
@@ -74,6 +107,34 @@ final class SidebarScrollContext {
     var suppressTOCFollowUntil: CFTimeInterval = 0
     var headingMidYByID: [String: CGFloat] = [:]
     var documentHeaderMinYByID: [UUID: CGFloat] = [:]
+
+    func cancelPendingWork() {
+        pendingTOCFollowScroll?.cancel()
+        pendingTOCFollowScroll = nil
+        pendingDocumentPinWorkItem?.cancel()
+        pendingDocumentPinWorkItem = nil
+        pendingInitialTOCSyncWorkItem?.cancel()
+        pendingInitialTOCSyncWorkItem = nil
+        pendingImmediateTOCScrollTarget = nil
+    }
+
+    func hasSettledTOCTarget(
+        currentY: CGFloat,
+        targetY: CGFloat,
+        snapDistance: CGFloat
+    ) -> Bool {
+        guard displayTimer == nil,
+              abs(currentY - targetY) <= snapDistance else { return false }
+
+        // `desiredTargetY` is only meaningful while the timer is alive. If a
+        // cancellation left it stale, the live clip-view position still wins and
+        // this request clears the stale value instead of rearming a timer.
+        if let desiredTargetY,
+           abs(desiredTargetY - targetY) > snapDistance {
+            self.desiredTargetY = nil
+        }
+        return true
+    }
 
     func beginManualScrolling() {
         isRespectingManualScrollPosition = true
@@ -139,11 +200,12 @@ struct SidebarView: View {
     private static let tocFollowScrollStiffness: CGFloat = 30
     private static let tocFollowScrollDamping: CGFloat = 12
     private static let tocFollowScrollSettlingDistance: CGFloat = 0.12
-    private static let tocFollowScrollSettlingVelocity: CGFloat = 1.2
     private static let tocFollowScrollNearTargetDistance: CGFloat = 14
     private static let tocFollowScrollNearTargetVelocityDamping: CGFloat = 0.46
     private static let tocFollowScrollFinalApproachDistance: CGFloat = 5
     private static let tocFollowScrollFinalApproachVelocityDamping: CGFloat = 0.24
+    private static let tocFollowScrollMaximumDuration: CFTimeInterval = 0.9
+    private static let tocFollowScrollMaximumTicks = 180
     private static let sidebarContentTopPadding: CGFloat = 4
     private static let documentHeaderPinTolerance: CGFloat = 1.5
 
@@ -156,11 +218,7 @@ struct SidebarView: View {
     @State private var tocVisible: [UUID: Bool] = [:]
     /// Index before which the accent insertion line is shown during a tab reorder.
     @State private var dropInsertionIndex: Int? = nil
-    @State private var pendingTOCFollowScroll: DispatchWorkItem? = nil
     @State private var scrollContext = SidebarScrollContext()
-    @State private var pendingImmediateTOCScrollTarget: String? = nil
-    @State private var pendingDocumentPinWorkItem: DispatchWorkItem? = nil
-    @State private var pendingInitialTOCSyncWorkItem: DispatchWorkItem? = nil
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -191,8 +249,8 @@ struct SidebarView: View {
                 scheduleScrollToActiveHeading()
             }
             .onChange(of: store.activeID) { oldID, newID in
-                pendingDocumentPinWorkItem?.cancel()
-                pendingInitialTOCSyncWorkItem?.cancel()
+                scrollContext.pendingDocumentPinWorkItem?.cancel()
+                scrollContext.pendingInitialTOCSyncWorkItem?.cancel()
                 // Collapse outgoing document (persist its expanded intent first)
                 if let old = oldID,
                    let doc = store.documents.first(where: { $0.id == old }) {
@@ -219,9 +277,9 @@ struct SidebarView: View {
                 }
             }
             .onChange(of: store.activeDocument?.activeHeadingID) { _, newID in
-                let shouldForce = newID != nil && newID == pendingImmediateTOCScrollTarget
+                let shouldForce = newID != nil && newID == scrollContext.pendingImmediateTOCScrollTarget
                 if shouldForce {
-                    pendingImmediateTOCScrollTarget = nil
+                    scrollContext.pendingImmediateTOCScrollTarget = nil
                 }
                 scheduleScrollToActiveHeading(force: shouldForce)
             }
@@ -251,7 +309,7 @@ struct SidebarView: View {
             }
         }
         .onDisappear {
-            pendingInitialTOCSyncWorkItem?.cancel()
+            scrollContext.cancelPendingWork()
             removeScrollObserver()
             stopTOCFollowAnimation()
         }
@@ -291,7 +349,7 @@ struct SidebarView: View {
                 isCollapsible: row.hasChildren,
                 isCollapsed: document.collapsedHeadingIDs.contains(heading.id),
                 onTap: {
-                    pendingImmediateTOCScrollTarget = heading.id
+                    scrollContext.pendingImmediateTOCScrollTarget = heading.id
                     if store.activeID != document.id {
                         store.activeID = document.id
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
@@ -421,11 +479,11 @@ struct SidebarView: View {
     }
 
     private func scheduleScrollToActiveHeading(force: Bool = false) {
-        pendingTOCFollowScroll?.cancel()
+        scrollContext.pendingTOCFollowScroll?.cancel()
         let workItem = DispatchWorkItem {
             scrollToActiveHeading(force: force)
         }
-        pendingTOCFollowScroll = workItem
+        scrollContext.pendingTOCFollowScroll = workItem
         let delay = force ? 0 : Self.tocFollowScrollLeadDelay
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
@@ -477,6 +535,24 @@ struct SidebarView: View {
         let maxOffset = max(0, contentHeight - viewportHeight)
         let targetY = max(0, min(maxOffset, targetMidY - viewportHeight / 2))
 
+        let currentY = scrollView.contentView.bounds.origin.y
+        let snapDistance = tocFollowScrollSnapDistance(for: scrollView)
+
+        // Geometry changes can synchronously re-arm this method while the clip view
+        // is already at its target. In particular, a forced request must not start
+        // another timer just because the active header reported the same position.
+        // Read the live bounds rather than trusting the last requested target.
+        if scrollContext.hasSettledTOCTarget(
+            currentY: currentY,
+            targetY: targetY,
+            snapDistance: snapDistance
+        ) {
+            scrollContext.lastTargetY = targetY
+            scrollContext.desiredTargetY = nil
+            scrollContext.velocity = 0
+            return
+        }
+
         if !force,
            let lastTargetY = scrollContext.lastTargetY,
            abs(lastTargetY - targetY) < Self.tocFollowScrollSettlingDistance {
@@ -489,12 +565,21 @@ struct SidebarView: View {
         if force,
            scrollContext.displayTimer == nil,
            let clipView = scrollView.contentView as NSClipView? {
-            clipView.setBoundsOrigin(NSPoint(x: 0, y: targetY))
-            scrollView.reflectScrolledClipView(clipView)
+            if abs(targetY - currentY) > 0.001 {
+                clipView.setBoundsOrigin(NSPoint(x: 0, y: targetY))
+                scrollView.reflectScrolledClipView(clipView)
+            }
             scrollContext.velocity = 0
         }
 
         startTOCFollowAnimationIfNeeded()
+    }
+
+    private func tocFollowScrollSnapDistance(for scrollView: NSScrollView) -> CGFloat {
+        let backingScaleFactor = scrollView.window?.backingScaleFactor
+            ?? NSScreen.main?.backingScaleFactor
+            ?? 1
+        return SidebarScrollPhysics.snapDistance(backingScaleFactor: backingScaleFactor)
     }
 
     private func scrollDocumentHeaderToTop(documentID: UUID) {
@@ -514,7 +599,7 @@ struct SidebarView: View {
     }
 
     private func scheduleDocumentHeaderPin(documentID: UUID, attemptsRemaining: Int = Self.documentPinRetargetAttempts) {
-        pendingDocumentPinWorkItem?.cancel()
+        scrollContext.pendingDocumentPinWorkItem?.cancel()
 
         let workItem = DispatchWorkItem {
             guard store.activeID == documentID else { return }
@@ -528,13 +613,13 @@ struct SidebarView: View {
             scheduleDocumentHeaderPin(documentID: documentID, attemptsRemaining: attemptsRemaining - 1)
         }
 
-        pendingDocumentPinWorkItem = workItem
+        scrollContext.pendingDocumentPinWorkItem = workItem
         let initialDelay: CFTimeInterval = attemptsRemaining == Self.documentPinRetargetAttempts ? 0.25 : Self.documentPinRetargetDelay
         DispatchQueue.main.asyncAfter(deadline: .now() + initialDelay, execute: workItem)
     }
 
     private func scheduleInitialTOCSync(documentID: UUID, attemptsRemaining: Int = Self.initialTOCSyncAttempts) {
-        pendingInitialTOCSyncWorkItem?.cancel()
+        scrollContext.pendingInitialTOCSyncWorkItem?.cancel()
 
         let workItem = DispatchWorkItem {
             guard store.activeID == documentID,
@@ -550,7 +635,7 @@ struct SidebarView: View {
             scheduleInitialTOCSync(documentID: documentID, attemptsRemaining: attemptsRemaining - 1)
         }
 
-        pendingInitialTOCSyncWorkItem = workItem
+        scrollContext.pendingInitialTOCSyncWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.initialTOCSyncDelay, execute: workItem)
     }
 
@@ -563,15 +648,37 @@ struct SidebarView: View {
         timer.tolerance = 1.0 / 240.0
         RunLoop.main.add(timer, forMode: .common)
         scrollContext.displayTimer = timer
-        scrollContext.lastStepTime = CACurrentMediaTime()
+        let now = CACurrentMediaTime()
+        scrollContext.lastStepTime = now
+        scrollContext.animationStartTime = now
+        scrollContext.animationTickCount = 0
     }
 
     private func stopTOCFollowAnimation() {
         scrollContext.displayTimer?.invalidate()
         scrollContext.displayTimer = nil
         scrollContext.lastStepTime = nil
+        scrollContext.animationStartTime = nil
+        scrollContext.animationTickCount = 0
+        scrollContext.desiredTargetY = nil
         scrollContext.velocity = 0
         scrollContext.isProgrammaticScroll = false
+    }
+
+    private func finishTOCFollowAnimation(
+        at targetY: CGFloat,
+        in clipView: NSClipView,
+        scrollView: NSScrollView
+    ) {
+        let currentY = clipView.bounds.origin.y
+        if abs(targetY - currentY) > 0.001 {
+            scrollContext.isProgrammaticScroll = true
+            clipView.setBoundsOrigin(NSPoint(x: 0, y: targetY))
+            scrollView.reflectScrolledClipView(clipView)
+            scrollContext.isProgrammaticScroll = false
+        }
+        scrollContext.lastTargetY = targetY
+        stopTOCFollowAnimation()
     }
 
     private func stepTOCFollowAnimation() {
@@ -582,12 +689,20 @@ struct SidebarView: View {
         }
 
         let now = CACurrentMediaTime()
+        scrollContext.animationTickCount += 1
         let dt = min(1.0 / 30.0, max(1.0 / 240.0, now - (scrollContext.lastStepTime ?? now)))
         scrollContext.lastStepTime = now
 
         let clipView = scrollView.contentView
         let currentY = clipView.bounds.origin.y
         let displacement = targetY - currentY
+        let snapDistance = tocFollowScrollSnapDistance(for: scrollView)
+        let elapsed = now - (scrollContext.animationStartTime ?? now)
+
+        if abs(displacement) <= snapDistance {
+            finishTOCFollowAnimation(at: targetY, in: clipView, scrollView: scrollView)
+            return
+        }
 
         let acceleration = Self.tocFollowScrollStiffness * displacement - Self.tocFollowScrollDamping * scrollContext.velocity
         scrollContext.velocity += acceleration * dt
@@ -604,18 +719,27 @@ struct SidebarView: View {
         let maxOffset = max(0, contentHeight - viewportHeight)
         nextY = max(0, min(maxOffset, nextY))
 
+        let shouldSnap = SidebarScrollPhysics.shouldSnap(
+            currentY: currentY,
+            targetY: targetY,
+            nextY: nextY,
+            elapsed: elapsed,
+            tickCount: scrollContext.animationTickCount,
+            snapDistance: snapDistance,
+            maximumDuration: Self.tocFollowScrollMaximumDuration,
+            maximumTicks: Self.tocFollowScrollMaximumTicks
+        )
+
+        if shouldSnap {
+            finishTOCFollowAnimation(at: targetY, in: clipView, scrollView: scrollView)
+            return
+        }
+
         scrollContext.isProgrammaticScroll = true
         clipView.setBoundsOrigin(NSPoint(x: 0, y: nextY))
         scrollView.reflectScrolledClipView(clipView)
         scrollContext.isProgrammaticScroll = false
 
-        if abs(targetY - nextY) < Self.tocFollowScrollSettlingDistance,
-           abs(scrollContext.velocity) < Self.tocFollowScrollSettlingVelocity {
-            scrollContext.lastTargetY = targetY
-            scrollContext.desiredTargetY = nil
-            scrollContext.velocity = 0
-            stopTOCFollowAnimation()
-        }
     }
 
     private func installScrollObserverIfNeeded(for scrollView: NSScrollView) {
@@ -630,8 +754,8 @@ struct SidebarView: View {
             queue: .main
         ) { _ in
             guard !scrollContext.isProgrammaticScroll else { return }
-            pendingDocumentPinWorkItem?.cancel()
-            pendingInitialTOCSyncWorkItem?.cancel()
+            scrollContext.pendingDocumentPinWorkItem?.cancel()
+            scrollContext.pendingInitialTOCSyncWorkItem?.cancel()
             scrollContext.suppressTOCFollowUntil = 0
             scrollContext.beginManualScrolling()
             stopTOCFollowAnimation()
