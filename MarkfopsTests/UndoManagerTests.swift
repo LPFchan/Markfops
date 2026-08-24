@@ -195,10 +195,12 @@ final class UndoManagerTests: XCTestCase {
               let restoredScrollView = restoredTextView.enclosingScrollView else {
             return XCTFail("The restored editor did not create its scroll view")
         }
-        let visibleRect = restoredScrollView.contentView.documentVisibleRect
-        let restoredRatio = Double(
-            (visibleRect.minY + visibleRect.height / 2) / restoredTextView.bounds.height
+        let restoredRatio = waitForScrollRatio(
+            savedRatio,
+            in: restoredTextView,
+            scrollView: restoredScrollView
         )
+        let visibleRect = restoredScrollView.contentView.documentVisibleRect
 
         XCTAssertGreaterThan(visibleRect.minY, 0)
         XCTAssertEqual(restoredRatio, savedRatio, accuracy: 0.03)
@@ -307,6 +309,27 @@ final class UndoManagerTests: XCTestCase {
         view.layoutSubtreeIfNeeded()
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
         view.layoutSubtreeIfNeeded()
+    }
+
+    private func waitForScrollRatio(
+        _ expectedRatio: Double,
+        in textView: MarkdownNSTextView,
+        scrollView: NSScrollView,
+        timeout: TimeInterval = 2
+    ) -> Double {
+        let deadline = Date(timeIntervalSinceNow: timeout)
+        var ratio = 0.0
+
+        repeat {
+            textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+            scrollView.layoutSubtreeIfNeeded()
+            let visibleRect = scrollView.contentView.documentVisibleRect
+            ratio = Double((visibleRect.minY + visibleRect.height / 2) / textView.bounds.height)
+            if abs(ratio - expectedRatio) <= 0.03 { return ratio }
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        } while Date() < deadline
+
+        return ratio
     }
 
     private func findTextView(in view: NSView) -> MarkdownNSTextView? {
