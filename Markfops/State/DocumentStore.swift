@@ -25,7 +25,7 @@ final class DocumentStore {
     var activeID: UUID? {
         didSet {
             guard activeID != oldValue else { return }
-            activeDocument?.reloadFromDiskIfClean(restartWatching: true)
+            activeDocument?.reloadFromDiskIfChanged()
             activeDocument?.reconcileActiveHeadingWithCurrentContent()
             refreshWindowAppearance()
             scheduleRecoverySave()

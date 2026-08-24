@@ -4,12 +4,16 @@ enum HeadingParser {
 
     /// Returns the text of the first H1 in the document, or nil.
     static func firstH1Title(in text: String) -> String? {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        for line in lines {
+        var lineStart = text.startIndex
+        while lineStart < text.endIndex {
+            let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
+            let line = text[lineStart..<lineEnd]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.hasPrefix("# ") && !trimmed.hasPrefix("## ") {
                 return String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
             }
+            guard lineEnd < text.endIndex else { break }
+            lineStart = text.index(after: lineEnd)
         }
         return nil
     }

@@ -144,7 +144,7 @@ struct SidebarTabRowView: View {
                     letter: document.faviconLetter,
                     size: 22, fontSize: 12,
                     fileURL: document.fileURL,
-                    hasH1: document.headings.contains(where: { $0.level == 1 })
+                    hasH1: document.hasH1
                 )
                 .opacity(isFaviconHovered ? 0 : 1)
 
@@ -360,7 +360,7 @@ struct DocumentTabView: View {
             size: faviconSize,
             fontSize: faviconFontSize,
             fileURL: document.fileURL,
-            hasH1: document.headings.contains(where: { $0.level == 1 })
+            hasH1: document.hasH1
         )
     }
 

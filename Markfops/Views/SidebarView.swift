@@ -4,7 +4,6 @@ import AppKit
 import QuartzCore
 
 private let sidebarTOCContentSpace = "SidebarTOCContentSpace"
-private let sidebarScrollViewportSpace = "SidebarScrollViewportSpace"
 
 private struct TOCHeadingMidYKey: PreferenceKey {
     static var defaultValue: [String: CGFloat] = [:]
@@ -14,11 +13,39 @@ private struct TOCHeadingMidYKey: PreferenceKey {
     }
 }
 
-private struct SidebarDocumentHeaderMinYKey: PreferenceKey {
-    static var defaultValue: [UUID: CGFloat] = [:]
+struct SidebarTOCRow: Identifiable {
+    let heading: HeadingNode
+    let hasChildren: Bool
 
-    static func reduce(value: inout [UUID: CGFloat], nextValue: () -> [UUID: CGFloat]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    var id: String { heading.id }
+}
+
+enum SidebarTOCModel {
+    static func rows(
+        headings: [HeadingNode],
+        collapsedHeadingIDs: Set<String>
+    ) -> [SidebarTOCRow] {
+        let tocHeadings = headings.filter { $0.level > 1 }
+        var rows: [SidebarTOCRow] = []
+        rows.reserveCapacity(tocHeadings.count)
+        var hiddenBelowLevel: Int?
+
+        for (index, heading) in tocHeadings.enumerated() {
+            if let barrier = hiddenBelowLevel {
+                if heading.level > barrier { continue }
+                hiddenBelowLevel = nil
+            }
+
+            let hasChildren = index + 1 < tocHeadings.count
+                && tocHeadings[index + 1].level > heading.level
+            rows.append(SidebarTOCRow(heading: heading, hasChildren: hasChildren))
+
+            if collapsedHeadingIDs.contains(heading.id) {
+                hiddenBelowLevel = heading.level
+            }
+        }
+
+        return rows
     }
 }
 
@@ -34,6 +61,8 @@ final class SidebarScrollContext {
     var endLiveScrollObserver: NSObjectProtocol?
     var isRespectingManualScrollPosition = false
     var suppressTOCFollowUntil: CFTimeInterval = 0
+    var headingMidYByID: [String: CGFloat] = [:]
+    var documentHeaderMinYByID: [UUID: CGFloat] = [:]
 
     func beginManualScrolling() {
         isRespectingManualScrollPosition = true
@@ -111,15 +140,13 @@ struct SidebarView: View {
     /// Index before which the accent insertion line is shown during a tab reorder.
     @State private var dropInsertionIndex: Int? = nil
     @State private var pendingTOCFollowScroll: DispatchWorkItem? = nil
-    @State private var headingMidYByID: [String: CGFloat] = [:]
-    @State private var documentHeaderMinYByID: [UUID: CGFloat] = [:]
     @State private var scrollContext = SidebarScrollContext()
     @State private var pendingImmediateTOCScrollTarget: String? = nil
     @State private var pendingDocumentPinWorkItem: DispatchWorkItem? = nil
     @State private var pendingInitialTOCSyncWorkItem: DispatchWorkItem? = nil
 
     var body: some View {
-        ScrollViewReader { proxy in
+        ScrollViewReader { _ in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
                     ForEach(Array(store.documents.enumerated()), id: \.element.id) { i, document in
@@ -128,11 +155,17 @@ struct SidebarView: View {
                             let isVisible = (tocVisible[document.id] ?? false)
                                 && TabDragState.shared.draggingDocumentID != document.id
                             if isVisible && !document.headings.isEmpty {
-                                ForEach(visibleHeadings(for: document), id: \.id) { heading in
+                                ForEach(
+                                    SidebarTOCModel.rows(
+                                        headings: document.headings,
+                                        collapsedHeadingIDs: document.collapsedHeadingIDs
+                                    )
+                                ) { row in
+                                    let heading = row.heading
                                     TOCItemView(
                                         heading: heading,
                                         isHighlighted: document.activeHeadingID == heading.id,
-                                        isCollapsible: headingHasChildren(heading, in: document),
+                                        isCollapsible: row.hasChildren,
                                         isCollapsed: document.collapsedHeadingIDs.contains(heading.id),
                                         onTap: {
                                             pendingImmediateTOCScrollTarget = heading.id
@@ -185,24 +218,9 @@ struct SidebarView: View {
                     .frame(width: 0, height: 0)
                 }
             }
-            .coordinateSpace(name: sidebarScrollViewportSpace)
             .onPreferenceChange(TOCHeadingMidYKey.self) { values in
-                headingMidYByID = values
+                scrollContext.headingMidYByID = values
                 scheduleScrollToActiveHeading()
-            }
-            .onPreferenceChange(SidebarDocumentHeaderMinYKey.self) { values in
-                documentHeaderMinYByID = values
-                if let activeID = store.activeID,
-                   let headerMinY = values[activeID] {
-                    if scrollContext.suppressTOCFollowUntil > CACurrentMediaTime() {
-                        scrollDocumentHeaderToTop(documentID: activeID)
-                    }
-                    if headerMinY <= Self.sidebarContentTopPadding + Self.documentHeaderPinTolerance,
-                       scrollContext.allowsAutomaticFollowing(force: false),
-                       store.activeDocument?.activeHeadingID != nil {
-                        scheduleScrollToActiveHeading(force: true)
-                    }
-                }
             }
             .onChange(of: store.activeID) { oldID, newID in
                 pendingDocumentPinWorkItem?.cancel()
@@ -297,13 +315,13 @@ struct SidebarView: View {
             )
             .id(document.id)
             .padding(.horizontal, 6)
-            .background {
-                GeometryReader { geo in
-                    Color.clear.preference(
-                        key: SidebarDocumentHeaderMinYKey.self,
-                        value: [document.id: geo.frame(in: .named(sidebarScrollViewportSpace)).minY]
-                    )
-                }
+            .onGeometryChange(for: CGFloat?.self) { geometry in
+                guard store.activeID == document.id else { return nil }
+                return geometry.frame(in: .scrollView).minY
+            } action: { headerMinY in
+                guard let headerMinY else { return }
+                scrollContext.documentHeaderMinYByID[document.id] = headerMinY
+                handleActiveDocumentHeaderPosition(headerMinY, documentID: document.id)
             }
             .opacity(isAnyDragging && !isDragging ? 0.45 : 1.0)
             .scaleEffect(inDetachZone ? 1.04 : (isDragging ? 1.03 : (isAnyDragging ? 0.97 : 1.0)), anchor: .trailing)
@@ -348,29 +366,16 @@ struct SidebarView: View {
 
     // MARK: - TOC helpers
 
-    private func visibleHeadings(for document: Document) -> [HeadingNode] {
-        let headings = document.headings.filter { $0.level > 1 }
-        var result: [HeadingNode] = []
-        var hiddenBelowLevel: Int? = nil
-
-        for heading in headings {
-            if let barrier = hiddenBelowLevel {
-                if heading.level > barrier { continue }
-                hiddenBelowLevel = nil
-            }
-            result.append(heading)
-            if document.collapsedHeadingIDs.contains(heading.id) {
-                hiddenBelowLevel = heading.level
-            }
+    private func handleActiveDocumentHeaderPosition(_ headerMinY: CGFloat, documentID: UUID) {
+        guard store.activeID == documentID else { return }
+        if scrollContext.suppressTOCFollowUntil > CACurrentMediaTime() {
+            scrollDocumentHeaderToTop(documentID: documentID)
         }
-        return result
-    }
-
-    private func headingHasChildren(_ heading: HeadingNode, in document: Document) -> Bool {
-        let headings = document.headings.filter { $0.level > 1 }
-        guard let idx = headings.firstIndex(where: { $0.id == heading.id }),
-              idx + 1 < headings.count else { return false }
-        return headings[idx + 1].level > heading.level
+        if headerMinY <= Self.sidebarContentTopPadding + Self.documentHeaderPinTolerance,
+           scrollContext.allowsAutomaticFollowing(force: false),
+           store.activeDocument?.activeHeadingID != nil {
+            scheduleScrollToActiveHeading(force: true)
+        }
     }
 
     private func toggleCollapse(_ heading: HeadingNode, in document: Document) {
@@ -402,7 +407,7 @@ struct SidebarView: View {
             return
         }
 
-        if let headerMinY = documentHeaderMinYByID[document.id],
+        if let headerMinY = scrollContext.documentHeaderMinYByID[document.id],
            headerMinY > Self.sidebarContentTopPadding + Self.documentHeaderPinTolerance {
             scrollDocumentHeaderToTop(documentID: document.id)
             return
@@ -413,7 +418,7 @@ struct SidebarView: View {
             return
         }
 
-        guard let targetMidY = headingMidYByID[activeHeadingID] else { return }
+        guard let targetMidY = scrollContext.headingMidYByID[activeHeadingID] else { return }
 
         let viewportHeight = scrollView.contentView.bounds.height
         let contentHeight = scrollView.documentView?.bounds.height ?? 0
@@ -442,7 +447,7 @@ struct SidebarView: View {
 
     private func scrollDocumentHeaderToTop(documentID: UUID) {
         guard let scrollView = scrollContext.scrollView,
-              let headerMinY = documentHeaderMinYByID[documentID] else { return }
+              let headerMinY = scrollContext.documentHeaderMinYByID[documentID] else { return }
 
         let currentOffset = scrollView.contentView.bounds.minY
         let viewportHeight = scrollView.contentView.bounds.height
@@ -465,7 +470,7 @@ struct SidebarView: View {
             scrollDocumentHeaderToTop(documentID: documentID)
 
             guard attemptsRemaining > 1,
-                  let headerMinY = documentHeaderMinYByID[documentID],
+                  let headerMinY = scrollContext.documentHeaderMinYByID[documentID],
                   abs(headerMinY - Self.sidebarContentTopPadding) > 0.75 else { return }
 
             scheduleDocumentHeaderPin(documentID: documentID, attemptsRemaining: attemptsRemaining - 1)
@@ -488,7 +493,7 @@ struct SidebarView: View {
 
             guard attemptsRemaining > 1,
                   let activeHeadingID = document.activeHeadingID,
-                  headingMidYByID[activeHeadingID] == nil else { return }
+                  scrollContext.headingMidYByID[activeHeadingID] == nil else { return }
 
             scheduleInitialTOCSync(documentID: documentID, attemptsRemaining: attemptsRemaining - 1)
         }

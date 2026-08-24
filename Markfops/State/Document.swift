@@ -7,7 +7,11 @@ import QuartzCore
 final class Document: Identifiable {
     let id: UUID
     var fileURL: URL? {
-        didSet { notifyStateChange() }
+        didSet {
+            lastKnownFileSignature = fileURL.flatMap(Self.fileSignature(for:))
+            refreshPresentationMetadata()
+            notifyStateChange()
+        }
     }
     var rawText: String {
         didSet {
@@ -35,7 +39,17 @@ final class Document: Identifiable {
     /// Scroll position as a ratio [0,1] of the document height. @ObservationIgnored
     /// to avoid re-rendering the entire view hierarchy on every scroll event.
     @ObservationIgnored var scrollRatio: Double
-    var headings: [HeadingNode]
+    var headings: [HeadingNode] {
+        didSet {
+            cachedH1Title = headings.first(where: { $0.level == 1 })?.title
+            refreshPresentationMetadata()
+            notifyStateChange()
+        }
+    }
+    private(set) var displayTitle: String
+    private(set) var sidebarDisplayTitle: String
+    private(set) var faviconLetter: String
+    private(set) var hasH1: Bool
     var activeHeadingID: String?
     var isTOCExpanded: Bool
     /// IDs of TOC headings the user has collapsed (hides their descendant headings).
@@ -44,6 +58,8 @@ final class Document: Identifiable {
     @ObservationIgnored private var fileWatchSource: DispatchSourceFileSystemObject?
     @ObservationIgnored private var pendingFocusedHeading: HeadingNode?
     @ObservationIgnored private var pendingFocusedHeadingExpiry: CFTimeInterval = 0
+    @ObservationIgnored private var cachedH1Title: String?
+    @ObservationIgnored private var lastKnownFileSignature: FileSignature?
     @ObservationIgnored var onStateChange: ((Document) -> Void)?
     /// Undo history belongs to the document, rather than to whichever editor view is currently
     /// presenting it. This lets the history follow a document across tabs and windows.
@@ -53,6 +69,11 @@ final class Document: Identifiable {
     @ObservationIgnored let textStorage: NSTextStorage
 
     init(id: UUID = UUID(), fileURL: URL? = nil, rawText: String = "") {
+        let initialH1Title = HeadingParser.firstH1Title(in: rawText)
+        let presentationMetadata = Self.presentationMetadata(
+            h1Title: initialH1Title,
+            fileURL: fileURL
+        )
         self.id = id
         self.fileURL = fileURL
         self.rawText = rawText
@@ -65,8 +86,14 @@ final class Document: Identifiable {
         self.mode = .edit
         self.scrollRatio = 0
         self.headings = []
+        self.displayTitle = presentationMetadata.displayTitle
+        self.sidebarDisplayTitle = presentationMetadata.sidebarDisplayTitle
+        self.faviconLetter = presentationMetadata.faviconLetter
+        self.hasH1 = presentationMetadata.hasH1
         self.activeHeadingID = nil
         self.isTOCExpanded = true
+        self.cachedH1Title = initialH1Title
+        self.lastKnownFileSignature = fileURL.flatMap(Self.fileSignature(for:))
     }
 
     static func lineCount(for text: String) -> Int {
@@ -204,6 +231,23 @@ final class Document: Identifiable {
         source.setCancelHandler { Darwin.close(fd) }
         source.resume()
         fileWatchSource = source
+        lastKnownFileSignature = Self.fileSignature(for: url)
+    }
+
+    /// Checks inexpensive file metadata before reading a document during tab selection.
+    /// The watcher handles normal writes; this also recovers from atomic replacements.
+    func reloadFromDiskIfChanged() {
+        guard !isDirty, let url = fileURL else { return }
+        guard let currentSignature = Self.fileSignature(for: url) else {
+            reloadFromDiskIfClean(restartWatching: fileWatchSource == nil)
+            return
+        }
+
+        if currentSignature != lastKnownFileSignature {
+            reloadFromDiskIfClean(restartWatching: fileWatchSource == nil)
+        } else if fileWatchSource == nil {
+            startWatching()
+        }
     }
 
     /// Re-reads the backing file when the document has no unsaved edits.
@@ -222,6 +266,7 @@ final class Document: Identifiable {
             headings = HeadingParser.parseHeadings(in: text)
             reconcileActiveHeadingWithCurrentContent()
         }
+        lastKnownFileSignature = Self.fileSignature(for: url)
         if restartWatching { startWatching() }
     }
 
@@ -236,34 +281,55 @@ final class Document: Identifiable {
         onStateChange?(self)
     }
 
-    var displayTitle: String {
-        HeadingParser.firstH1Title(in: rawText)
+    private func refreshPresentationMetadata() {
+        let metadata = Self.presentationMetadata(h1Title: cachedH1Title, fileURL: fileURL)
+        displayTitle = metadata.displayTitle
+        sidebarDisplayTitle = metadata.sidebarDisplayTitle
+        faviconLetter = metadata.faviconLetter
+        hasH1 = metadata.hasH1
+    }
+
+    private static func presentationMetadata(
+        h1Title: String?,
+        fileURL: URL?
+    ) -> (displayTitle: String, sidebarDisplayTitle: String, faviconLetter: String, hasH1: Bool) {
+        let displayTitle = h1Title
             ?? fileURL?.deletingPathExtension().lastPathComponent
             ?? "Untitled"
+        var sidebarDisplayTitle = displayTitle
+        if let first = displayTitle.unicodeScalars.first,
+           first.properties.isEmoji,
+           first.value > 0x238C {
+            // dropFirst() drops one Swift Character (= full grapheme cluster, handles ZWJ emoji)
+            let rest = String(displayTitle.dropFirst())
+            sidebarDisplayTitle = rest.hasPrefix(" ") ? String(rest.dropFirst()) : rest
+        }
+        let faviconLetter = h1Title?.first
+            ?? fileURL?.deletingPathExtension().lastPathComponent.first
+        return (
+            displayTitle,
+            sidebarDisplayTitle,
+            faviconLetter.map { String($0).uppercased() } ?? "M",
+            h1Title != nil
+        )
     }
 
-    /// Like displayTitle but strips a leading emoji (and any space after it) so it
-    /// isn't shown twice when the emoji is already displayed in the favicon badge.
-    var sidebarDisplayTitle: String {
-        let title = displayTitle
-        guard let first = title.unicodeScalars.first,
-              first.properties.isEmoji,
-              first.value > 0x238C else { return title }
-        // dropFirst() drops one Swift Character (= full grapheme cluster, handles ZWJ emoji)
-        let rest = String(title.dropFirst())
-        return rest.hasPrefix(" ") ? String(rest.dropFirst()) : rest
+    private static func fileSignature(for url: URL) -> FileSignature? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+            return nil
+        }
+        return FileSignature(
+            modificationDate: attributes[.modificationDate] as? Date,
+            size: (attributes[.size] as? NSNumber)?.intValue,
+            systemFileNumber: (attributes[.systemFileNumber] as? NSNumber)?.uint64Value
+        )
     }
+}
 
-    var faviconLetter: String {
-        if let letter = HeadingParser.firstH1Letter(in: rawText) {
-            return letter
-        }
-        if let filename = fileURL?.deletingPathExtension().lastPathComponent,
-           let first = filename.first {
-            return String(first).uppercased()
-        }
-        return "M"
-    }
+private struct FileSignature: Equatable {
+    let modificationDate: Date?
+    let size: Int?
+    let systemFileNumber: UInt64?
 }
 
 extension Document: Hashable {

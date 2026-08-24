@@ -47,6 +47,98 @@ final class HeadingParserTests: XCTestCase {
         XCTAssertTrue(Document().isTOCExpanded)
     }
 
+    func testDocumentCachesSidebarPresentationMetadata() {
+        let document = Document(rawText: "# 🦊 Fox Notes\nBody")
+
+        XCTAssertEqual(document.displayTitle, "🦊 Fox Notes")
+        XCTAssertEqual(document.sidebarDisplayTitle, "Fox Notes")
+        XCTAssertEqual(document.faviconLetter, "🦊")
+        XCTAssertTrue(document.hasH1)
+
+        document.rawText = "# Revised Notes\nBody"
+        document.headings = HeadingParser.parseHeadings(in: document.rawText)
+
+        XCTAssertEqual(document.displayTitle, "Revised Notes")
+        XCTAssertEqual(document.sidebarDisplayTitle, "Revised Notes")
+        XCTAssertEqual(document.faviconLetter, "R")
+        XCTAssertTrue(document.hasH1)
+    }
+
+    func testSidebarMetadataAccessStaysConstantWithLargeDocuments() {
+        let body = String(repeating: "body text without headings\n", count: 4_000)
+        let documents = (0..<33).map { index in
+            Document(
+                fileURL: URL(fileURLWithPath: "/tmp/Document-\(index).md"),
+                rawText: body
+            )
+        }
+        var sink = 0
+
+        let start = CFAbsoluteTimeGetCurrent()
+        for _ in 0..<20 {
+            for document in documents {
+                sink += document.displayTitle.utf8.count
+                sink += document.sidebarDisplayTitle.utf8.count
+                sink += document.faviconLetter.utf8.count
+                sink += document.hasH1 ? 1 : 0
+            }
+        }
+        let elapsed = CFAbsoluteTimeGetCurrent() - start
+
+        XCTAssertGreaterThan(sink, 0)
+        XCTAssertLessThan(elapsed, 0.5)
+    }
+
+    func testSidebarTOCRowsComputeVisibilityAndChildrenInOnePass() {
+        let headings = HeadingParser.parseHeadings(in: """
+        # Document
+        ## First
+        ### First child
+        ## Second
+        ### Second child
+        """)
+        guard let first = headings.first(where: { $0.title == "First" }) else {
+            return XCTFail("The first TOC heading was not parsed")
+        }
+
+        let expandedRows = SidebarTOCModel.rows(
+            headings: headings,
+            collapsedHeadingIDs: []
+        )
+        XCTAssertEqual(expandedRows.map(\.heading.title), [
+            "First", "First child", "Second", "Second child",
+        ])
+        XCTAssertEqual(expandedRows.map(\.hasChildren), [true, false, true, false])
+
+        let collapsedRows = SidebarTOCModel.rows(
+            headings: headings,
+            collapsedHeadingIDs: [first.id]
+        )
+        XCTAssertEqual(collapsedRows.map(\.heading.title), [
+            "First", "Second", "Second child",
+        ])
+    }
+
+    func testDocumentReloadsOnlyAfterBackingFileChanges() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MarkfopsFileSignatureTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("Document.md")
+        try "# Original\nBody".write(to: url, atomically: true, encoding: .utf8)
+        let document = Document(fileURL: url, rawText: "# Original\nBody")
+        document.headings = HeadingParser.parseHeadings(in: document.rawText)
+
+        document.reloadFromDiskIfChanged()
+        XCTAssertEqual(document.rawText, "# Original\nBody")
+
+        try "# Replacement\nChanged body".write(to: url, atomically: true, encoding: .utf8)
+        document.reloadFromDiskIfChanged()
+
+        XCTAssertEqual(document.rawText, "# Replacement\nChanged body")
+        XCTAssertEqual(document.displayTitle, "Replacement")
+    }
+
     func testHeadingLineNumbers() {
         let text = "Intro\n# Title\nBody\n## Sub"
         let headings = HeadingParser.parseHeadings(in: text)
@@ -200,6 +292,7 @@ final class HeadingParserTests: XCTestCase {
         let document = session.store.newDocument()
 
         document.rawText = "# Updated"
+        document.headings = HeadingParser.parseHeadings(in: document.rawText)
         document.isDirty = true
 
         XCTAssertEqual(window.title, "Updated")
