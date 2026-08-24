@@ -4,7 +4,45 @@ import AppKit
 final class MarkdownSyntaxHighlighter: NSObject, NSTextStorageDelegate {
 
     var configuration: EditorConfiguration = .default
+    var isEnabled = true
+    private(set) var needsFullHighlight = true
     private var isHighlighting = false
+
+    private enum RuleColor {
+        case heading
+        case text
+        case purple
+        case orange
+        case gray
+        case teal
+        case red
+        case yellow
+    }
+
+    private struct Rule {
+        let regex: NSRegularExpression
+        let color: RuleColor
+    }
+
+    private static let rules: [Rule] = [
+        Rule(regex: try! NSRegularExpression(pattern: #"^#{1,6}\s.+"#, options: [.anchorsMatchLines]), color: .heading),
+        Rule(regex: try! NSRegularExpression(pattern: #"\*\*[^*\n]+\*\*|__[^_\n]+__"#), color: .text),
+        Rule(regex: try! NSRegularExpression(pattern: #"(?<!\*)\*(?!\*)([^*\n]+)(?<!\*)\*(?!\*)|(?<!_)_(?!_)([^_\n]+)(?<!_)_(?!_)"#), color: .purple),
+        Rule(regex: try! NSRegularExpression(pattern: #"`[^`\n]+`"#), color: .orange),
+        Rule(regex: try! NSRegularExpression(pattern: #"^```.*$"#, options: [.anchorsMatchLines]), color: .orange),
+        Rule(regex: try! NSRegularExpression(pattern: #"^>.*"#, options: [.anchorsMatchLines]), color: .gray),
+        Rule(regex: try! NSRegularExpression(pattern: #"!\[([^\]]*)\]\([^)]+\)"#), color: .teal),
+        Rule(regex: try! NSRegularExpression(pattern: #"\[([^\]]+)\]\([^)]+\)"#), color: .teal),
+        Rule(regex: try! NSRegularExpression(pattern: #"^[\-\*\+] "#, options: [.anchorsMatchLines]), color: .red),
+        Rule(regex: try! NSRegularExpression(pattern: #"^\d+\. "#, options: [.anchorsMatchLines]), color: .red),
+        Rule(regex: try! NSRegularExpression(pattern: #"^[\-\*] \[[ xX]\]"#, options: [.anchorsMatchLines]), color: .yellow),
+        Rule(regex: try! NSRegularExpression(pattern: #"^(\*{3,}|-{3,}|_{3,})\s*$"#, options: [.anchorsMatchLines]), color: .gray),
+    ]
+
+    private static let headingRule = try! NSRegularExpression(
+        pattern: #"^#{1,6}\s.+"#,
+        options: [.anchorsMatchLines]
+    )
 
     /// Updates the attributes that the highlighter owns. The caller can use the return value
     /// to avoid re-highlighting for incidental SwiftUI updates.
@@ -12,6 +50,9 @@ final class MarkdownSyntaxHighlighter: NSObject, NSTextStorageDelegate {
     func updateConfiguration(_ newConfiguration: EditorConfiguration) -> Bool {
         guard !configuration.isHighlightingEquivalent(to: newConfiguration) else { return false }
         configuration = newConfiguration
+        if !isEnabled {
+            needsFullHighlight = true
+        }
         return true
     }
 
@@ -21,16 +62,26 @@ final class MarkdownSyntaxHighlighter: NSObject, NSTextStorageDelegate {
         range editedRange: NSRange,
         changeInLength delta: Int
     ) {
-        guard editedMask.contains(.editedCharacters), !isHighlighting else { return }
+        guard editedMask.contains(.editedCharacters) else { return }
+        guard isEnabled else {
+            needsFullHighlight = true
+            return
+        }
+        guard !isHighlighting else { return }
         let fullRange = lineRange(in: textStorage.string, for: editedRange)
         highlight(textStorage: textStorage, in: fullRange)
     }
 
     /// Public entry point for full re-highlight (e.g. after programmatic text replacement).
     func highlightAll(in storage: NSTextStorage) {
+        guard isEnabled else { return }
         let fullRange = NSRange(location: 0, length: storage.length)
-        guard fullRange.length > 0 else { return }
+        guard fullRange.length > 0 else {
+            needsFullHighlight = false
+            return
+        }
         highlight(textStorage: storage, in: fullRange)
+        needsFullHighlight = false
     }
 
     private func lineRange(in string: String, for range: NSRange) -> NSRange {
@@ -45,9 +96,13 @@ final class MarkdownSyntaxHighlighter: NSObject, NSTextStorageDelegate {
     }
 
     private func highlight(textStorage: NSTextStorage, in range: NSRange) {
-        guard range.length > 0, NSMaxRange(range) <= textStorage.length else { return }
+        guard isEnabled, range.length > 0, NSMaxRange(range) <= textStorage.length else { return }
         isHighlighting = true
-        defer { isHighlighting = false }
+        textStorage.beginEditing()
+        defer {
+            textStorage.endEditing()
+            isHighlighting = false
+        }
 
         textStorage.addAttribute(.foregroundColor, value: configuration.textColor, range: range)
         textStorage.addAttribute(.font, value: configuration.font, range: range)
@@ -55,42 +110,31 @@ final class MarkdownSyntaxHighlighter: NSObject, NSTextStorageDelegate {
         paragraphStyle.lineHeightMultiple = configuration.lineHeightMultiple
         textStorage.addAttribute(.paragraphStyle, value: paragraphStyle, range: range)
 
-        struct Rule {
-            let pattern: String
-            let color: NSColor
-            var options: NSRegularExpression.Options = [.anchorsMatchLines]
-        }
-
-        let rules: [Rule] = [
-            Rule(pattern: #"^#{1,6}\s.+"#, color: .systemBlue),
-            Rule(pattern: #"\*\*[^*\n]+\*\*|__[^_\n]+__"#, color: configuration.textColor, options: []),
-            Rule(pattern: #"(?<!\*)\*(?!\*)([^*\n]+)(?<!\*)\*(?!\*)|(?<!_)_(?!_)([^_\n]+)(?<!_)_(?!_)"#, color: .systemPurple, options: []),
-            Rule(pattern: #"`[^`\n]+`"#, color: .systemOrange, options: []),
-            Rule(pattern: #"^```.*$"#, color: .systemOrange),
-            Rule(pattern: #"^>.*"#, color: .systemGray),
-            Rule(pattern: #"!\[([^\]]*)\]\([^)]+\)"#, color: .systemTeal, options: []),
-            Rule(pattern: #"\[([^\]]+)\]\([^)]+\)"#, color: .systemTeal, options: []),
-            Rule(pattern: #"^[\-\*\+] "#, color: .systemRed),
-            Rule(pattern: #"^\d+\. "#, color: .systemRed),
-            Rule(pattern: #"^[\-\*] \[[ xX]\]"#, color: .systemYellow),
-            Rule(pattern: #"^(\*{3,}|-{3,}|_{3,})\s*$"#, color: .systemGray),
-        ]
-
-        for rule in rules {
-            guard let regex = try? NSRegularExpression(pattern: rule.pattern, options: rule.options) else { continue }
-            for match in regex.matches(in: textStorage.string, range: range) {
+        for rule in Self.rules {
+            for match in rule.regex.matches(in: textStorage.string, range: range) {
                 guard NSMaxRange(match.range) <= textStorage.length else { continue }
-                textStorage.addAttribute(.foregroundColor, value: rule.color, range: match.range)
+                textStorage.addAttribute(.foregroundColor, value: color(for: rule.color), range: match.range)
             }
         }
 
         // Bold font weight for headings
-        if let headingRegex = try? NSRegularExpression(pattern: #"^#{1,6}\s.+"#, options: [.anchorsMatchLines]) {
-            for match in headingRegex.matches(in: textStorage.string, range: range) {
-                guard NSMaxRange(match.range) <= textStorage.length else { continue }
-                let boldFont = NSFont.monospacedSystemFont(ofSize: configuration.fontSize, weight: .bold)
-                textStorage.addAttribute(.font, value: boldFont, range: match.range)
-            }
+        for match in Self.headingRule.matches(in: textStorage.string, range: range) {
+            guard NSMaxRange(match.range) <= textStorage.length else { continue }
+            let boldFont = NSFont.monospacedSystemFont(ofSize: configuration.fontSize, weight: .bold)
+            textStorage.addAttribute(.font, value: boldFont, range: match.range)
+        }
+    }
+
+    private func color(for ruleColor: RuleColor) -> NSColor {
+        switch ruleColor {
+        case .heading: return .systemBlue
+        case .text: return configuration.textColor
+        case .purple: return .systemPurple
+        case .orange: return .systemOrange
+        case .gray: return .systemGray
+        case .teal: return .systemTeal
+        case .red: return .systemRed
+        case .yellow: return .systemYellow
         }
     }
 }

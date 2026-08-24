@@ -4,6 +4,10 @@ import libcmark_gfm
 /// Converts raw Markdown text to an HTML fragment using cmark-gfm.
 enum MarkdownRenderer {
 
+    private static let sourceLineAttributeRegex = try? NSRegularExpression(
+        pattern: #"data-markfops-source-line=\"(\d+)\""#
+    )
+
     static func renderHTML(from markdown: String) -> String {
         // Register GFM core extensions (tables, strikethrough, tasklists, autolinks)
         cmark_gfm_core_extensions_ensure_registered()
@@ -55,21 +59,42 @@ enum MarkdownRenderer {
         let matches = regex.matches(in: html, range: NSRange(html.startIndex..., in: html))
         guard !matches.isEmpty else { return html }
 
-        var updatedHTML = html
-        for match in matches.reversed() {
-            guard let fullRange = Range(match.range(at: 0), in: updatedHTML),
-                  let sourceLineRange = Range(match.range(at: 3), in: updatedHTML),
-                  let sourceLine = Int(updatedHTML[sourceLineRange]) else {
+        // Build the result once from the original UTF-16 ranges. Replacing each match in
+        // reverse repeatedly walks and copies the growing Swift String for long documents.
+        let source = html as NSString
+        var pieces: [String] = []
+        pieces.reserveCapacity(matches.count * 2 + 1)
+        var cursor = 0
+
+        for match in matches {
+            let fullRange = match.range(at: 0)
+            guard fullRange.location >= cursor,
+                  NSMaxRange(fullRange) <= source.length else {
                 continue
             }
 
-            let tag = String(updatedHTML[fullRange])
-            guard !tag.contains("data-markfops-source-line=") else { continue }
-            let replacement = String(tag.dropLast()) + " data-markfops-source-line=\"\(max(0, sourceLine - 1))\">"
-            updatedHTML.replaceSubrange(fullRange, with: replacement)
+            pieces.append(source.substring(with: NSRange(
+                location: cursor,
+                length: fullRange.location - cursor
+            )))
+
+            let tag = source.substring(with: fullRange)
+            if tag.contains("data-markfops-source-line=") {
+                pieces.append(tag)
+            } else {
+                guard let sourceLine = Int(source.substring(with: match.range(at: 3))) else {
+                    pieces.append(tag)
+                    cursor = NSMaxRange(fullRange)
+                    continue
+                }
+                pieces.append(String(tag.dropLast()))
+                pieces.append(" data-markfops-source-line=\"\(max(0, sourceLine - 1))\">")
+            }
+            cursor = NSMaxRange(fullRange)
         }
 
-        return updatedHTML
+        pieces.append(source.substring(from: cursor))
+        return pieces.joined()
     }
 
     private static func injectHeadingIDs(into html: String, using markdown: String) -> String {
@@ -116,9 +141,7 @@ enum MarkdownRenderer {
     }
 
     private static func sourceLine(from attributes: String) -> Int? {
-        guard let regex = try? NSRegularExpression(
-            pattern: #"data-markfops-source-line=\"(\d+)\""#
-        ),
+        guard let regex = sourceLineAttributeRegex,
         let match = regex.firstMatch(in: attributes, range: NSRange(attributes.startIndex..., in: attributes)),
         let range = Range(match.range(at: 1), in: attributes) else {
             return nil

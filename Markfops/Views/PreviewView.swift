@@ -55,11 +55,14 @@ final class PreviewBridge {
 
     func setPendingScrollRatio(_ ratio: Double) {
         _bufferedScrollRatio = ratio
-        coordinator?.pendingScrollRatio = ratio
+        guard let coordinator else { return }
+        _bufferedScrollRatio = nil
+        coordinator.pendingScrollRatio = ratio
 
         // If the page is already loaded (coordinator + webView exist), apply immediately
         // via JS rather than waiting for didFinish — which never fires when HTML is cached.
-        if let webView = coordinator?.webView {
+        guard coordinator.isPageReady, let webView = coordinator.webView else { return }
+        coordinator.pendingScrollRatio = nil
             let js = """
             (function() {
                 var h = document.documentElement.scrollHeight;
@@ -71,7 +74,6 @@ final class PreviewBridge {
             })();
             """
             webView.evaluateJavaScript(js)
-        }
     }
 }
 

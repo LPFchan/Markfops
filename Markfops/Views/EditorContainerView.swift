@@ -8,6 +8,9 @@ struct EditorContainerView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var htmlContent: String = ""
     @State private var bodyHTML: String = ""
+    @State private var renderedDocumentID: UUID?
+    @State private var renderedText: String?
+    @State private var renderedThemeKey: String?
     @State private var isDragTargeted = false
     @State private var bridge = PreviewBridge()
     @State private var editorBridge = EditorBridge()
@@ -23,38 +26,41 @@ struct EditorContainerView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            Group {
-                switch document.mode {
-                case .edit:
-                    EditorView(
-                        text: $document.rawText,
-                        document: document,
-                        configuration: configuration,
-                        scrollToLine: scrollToHeading?.lineNumber,
-                        editorBridge: editorBridge
-                    )
-                    .id(document.id)
-                    .padding(.top, findOverlayReservedTopInset)
-                    .focusedValue(\.editorBridge, editorBridge)
+            // Keep one AppKit editor and one WebKit preview alive for the active document.
+            // Toggling visibility avoids destroying their layout, undo, and page state.
+            EditorView(
+                text: $document.rawText,
+                document: document,
+                configuration: configuration,
+                scrollToLine: scrollToHeading?.lineNumber,
+                editorBridge: editorBridge,
+                isActive: document.mode == .edit
+            )
+            .id(document.id)
+            .padding(.top, findOverlayReservedTopInset)
+            .opacity(document.mode == .edit ? 1 : 0)
+            .allowsHitTesting(document.mode == .edit)
+            .accessibilityHidden(document.mode != .edit)
+            .focusedValue(\.editorBridge, editorBridge)
 
-                case .preview:
-                    PreviewView(
-                        pageHTML: htmlContent,
-                        bodyHTML: bodyHTML,
-                        themeKey: colorScheme == .dark ? "dark" : "light",
-                        bridge: bridge,
-                        onScrollChange: { ratio in
-                            document.scrollRatio = ratio
-                            document.syncActiveHeadingToScrollPosition()
-                        },
-                        onUserScroll: {
-                            document.registerUserContentScroll()
-                        }
-                    )
-                    .padding(.top, findOverlayReservedTopInset)
-                    .focusedValue(\.previewBridge, bridge)
+            PreviewView(
+                pageHTML: htmlContent,
+                bodyHTML: bodyHTML,
+                themeKey: colorScheme == .dark ? "dark" : "light",
+                bridge: bridge,
+                onScrollChange: { ratio in
+                    document.scrollRatio = ratio
+                    document.syncActiveHeadingToScrollPosition()
+                },
+                onUserScroll: {
+                    document.registerUserContentScroll()
                 }
-            }
+            )
+            .padding(.top, findOverlayReservedTopInset)
+            .opacity(document.mode == .preview ? 1 : 0)
+            .allowsHitTesting(document.mode == .preview)
+            .accessibilityHidden(document.mode != .preview)
+            .focusedValue(\.previewBridge, bridge)
 
             if findController.isVisible {
                 FindReplaceBar(controller: findController)
@@ -92,11 +98,20 @@ struct EditorContainerView: View {
                 let ratio = document.scrollRatio
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                     editorBridge.scrollToRatio(ratio)
+                    _ = editorBridge.focus()
                 }
             } else if newMode == .preview {
                 bridge.setPendingScrollRatio(document.scrollRatio)
                 refreshPreview(from: document.rawText)
+                DispatchQueue.main.async {
+                    _ = bridge.focus()
+                }
             }
+        }
+        .onChange(of: document.id) { _, _ in
+            guard document.mode == .preview else { return }
+            bridge.setPendingScrollRatio(document.scrollRatio)
+            refreshPreview(from: document.rawText)
         }
         .onChange(of: scrollToHeading) { _, heading in
             guard document.mode == .preview, let heading else { return }
@@ -110,6 +125,17 @@ struct EditorContainerView: View {
     }
 
     private func refreshPreview(from text: String) {
+        let themeKey = colorScheme == .dark ? "dark" : "light"
+        guard renderedDocumentID != document.id
+                || renderedText != text
+                || renderedThemeKey != themeKey
+                || bodyHTML.isEmpty else {
+            return
+        }
+
+        renderedDocumentID = document.id
+        renderedText = text
+        renderedThemeKey = themeKey
         let fragment = MarkdownRenderer.renderHTML(from: text)
         bodyHTML = fragment
         let page = HTMLTemplate.currentPage(body: fragment, colorScheme: colorScheme)

@@ -63,6 +63,53 @@ final class MarkdownSyntaxHighlighterTests: XCTestCase {
         XCTAssertNotNil(textView.textStorage?.attribute(.paragraphStyle, at: 0, effectiveRange: nil))
     }
 
+    func testUnchangedDisableEnableKeepsHighlightingValid() {
+        let (_, highlighter) = makeTextView(text: "# Heading")
+
+        XCTAssertFalse(highlighter.needsFullHighlight)
+        highlighter.isEnabled = false
+        highlighter.isEnabled = true
+
+        XCTAssertFalse(highlighter.needsFullHighlight)
+    }
+
+    func testHiddenMutationBecomesStaleAndActivationClearsIt() {
+        let (textView, highlighter) = makeTextView(text: "Body")
+        highlighter.isEnabled = false
+        textView.textStorage?.replaceCharacters(
+            in: NSRange(location: 0, length: ("Body" as NSString).length),
+            with: "# Heading"
+        )
+
+        XCTAssertTrue(highlighter.needsFullHighlight)
+        highlighter.isEnabled = true
+        highlighter.highlightAll(in: textView.textStorage!)
+
+        XCTAssertFalse(highlighter.needsFullHighlight)
+        XCTAssertTrue(
+            (textView.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)?.isEqual(NSColor.systemBlue) == true
+        )
+    }
+
+    func testDisabledHighlightingSkipsProgrammaticChanges() {
+        let storage = NSTextStorage()
+        let highlighter = MarkdownSyntaxHighlighter()
+        highlighter.isEnabled = false
+        storage.delegate = highlighter
+        storage.replaceCharacters(in: NSRange(location: 0, length: 0), with: "# Heading")
+
+        highlighter.highlightAll(in: storage)
+
+        XCTAssertNil(storage.attribute(.foregroundColor, at: 0, effectiveRange: nil))
+        XCTAssertTrue(highlighter.needsFullHighlight)
+        highlighter.isEnabled = true
+        highlighter.highlightAll(in: storage)
+        XCTAssertFalse(highlighter.needsFullHighlight)
+        XCTAssertTrue(
+            (storage.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)?.isEqual(NSColor.systemBlue) == true
+        )
+    }
+
     private func makeTextView(text: String) -> (MarkdownNSTextView, MarkdownSyntaxHighlighter) {
         let textView = MarkdownNSTextView()
         let highlighter = MarkdownSyntaxHighlighter()

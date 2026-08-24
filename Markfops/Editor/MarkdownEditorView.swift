@@ -345,6 +345,7 @@ struct EditorView: NSViewRepresentable {
     var configuration: EditorConfiguration
     var scrollToLine: Int?
     var editorBridge: EditorBridge?
+    var isActive = true
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
@@ -380,10 +381,13 @@ struct EditorView: NSViewRepresentable {
             height: .greatestFiniteMagnitude
         )
         textView.configuration = configuration
-        textView.string = text
+        if textView.textStorage?.string != text {
+            textView.string = text
+        }
 
         // Wire syntax highlighter
         context.coordinator.highlighter.updateConfiguration(configuration)
+        context.coordinator.highlighter.isEnabled = isActive
         textView.textStorage?.delegate = context.coordinator.highlighter
         context.coordinator.textView = textView
         context.coordinator.attach(scrollView: scrollView)
@@ -392,7 +396,7 @@ struct EditorView: NSViewRepresentable {
         scrollView.documentView = textView
 
         // Initial highlight
-        if let storage = textView.textStorage, !text.isEmpty {
+        if isActive, let storage = textView.textStorage, !text.isEmpty {
             context.coordinator.highlighter.highlightAll(in: storage)
         }
 
@@ -424,18 +428,21 @@ struct EditorView: NSViewRepresentable {
         } else {
             context.coordinator.document = document
         }
+        context.coordinator.highlighter.isEnabled = isActive
         let highlightingConfigurationChanged = context.coordinator.highlighter.updateConfiguration(configuration)
         textView.configuration = configuration
 
         if textView.string != text {
             let sel = textView.selectedRange()
+            context.coordinator.highlighter.isEnabled = false
             textView.setPlainTextWithoutUndo(text)
-            if let storage = textView.textStorage, !text.isEmpty {
+            context.coordinator.highlighter.isEnabled = isActive
+            if isActive, let storage = textView.textStorage, !text.isEmpty {
                 context.coordinator.highlighter.highlightAll(in: storage)
             }
             let safe = NSRange(location: min(sel.location, textView.string.count), length: 0)
             textView.setSelectedRange(safe)
-        } else if highlightingConfigurationChanged,
+        } else if isActive && (context.coordinator.highlighter.needsFullHighlight || highlightingConfigurationChanged),
                   let storage = textView.textStorage,
                   storage.length > 0 {
             context.coordinator.highlighter.highlightAll(in: storage)
