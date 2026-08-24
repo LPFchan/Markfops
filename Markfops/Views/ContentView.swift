@@ -22,9 +22,23 @@ struct ContentView: View {
         return config
     }
 
+    private var transitionAwareColumnVisibility: Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: { columnVisibility },
+            set: { newVisibility in
+                guard newVisibility != columnVisibility else { return }
+                beginSidebarTransition()
+                columnVisibility = newVisibility
+            }
+        )
+    }
+
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            SidebarView(onTOCTap: handleTOCTap, columnVisibility: $columnVisibility)
+        NavigationSplitView(columnVisibility: transitionAwareColumnVisibility) {
+            SidebarView(
+                onTOCTap: handleTOCTap,
+                columnVisibility: transitionAwareColumnVisibility
+            )
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
             Group {
@@ -63,7 +77,7 @@ struct ContentView: View {
             }
             .modifier(DetailToolbarDefaultTitleRemoval(isCompact: columnVisibility == .detailOnly))
         }
-        .focusedValue(\.sidebarVisibility, $columnVisibility)
+        .focusedValue(\.sidebarVisibility, transitionAwareColumnVisibility)
         // The native title owns the draggable file proxy while the sidebar is visible.
         .navigationTitle(
             columnVisibility == .detailOnly || !isToolbarContentVisible
@@ -98,9 +112,6 @@ struct ContentView: View {
             let doc = store.activeDocument
             documentWindow?.isDocumentEdited = doc?.isDirty ?? false
             refreshProxyIcon()
-        }
-        .onChange(of: columnVisibility) { _, _ in
-            beginSidebarTransition()
         }
     }
 
