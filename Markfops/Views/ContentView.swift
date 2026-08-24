@@ -13,8 +13,6 @@ struct ContentView: View {
     @State private var isToolbarContentVisible = true
     @State private var sidebarTransitionGeneration = 0
 
-    private static let sidebarTransitionDuration: TimeInterval = 0.22
-
     private var editorConfig: EditorConfiguration {
         var config = EditorConfiguration.default
         config.fontSize = fontSize
@@ -22,24 +20,11 @@ struct ContentView: View {
         return config
     }
 
-    private var transitionAwareColumnVisibility: Binding<NavigationSplitViewVisibility> {
-        Binding(
-            get: { columnVisibility },
-            set: { newVisibility, transaction in
-                guard newVisibility != columnVisibility else { return }
-                beginSidebarTransition()
-                withTransaction(transaction) {
-                    columnVisibility = newVisibility
-                }
-            }
-        )
-    }
-
     var body: some View {
-        NavigationSplitView(columnVisibility: transitionAwareColumnVisibility) {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(
                 onTOCTap: handleTOCTap,
-                columnVisibility: transitionAwareColumnVisibility
+                columnVisibility: $columnVisibility
             )
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
@@ -79,7 +64,7 @@ struct ContentView: View {
             }
             .modifier(DetailToolbarDefaultTitleRemoval(isCompact: columnVisibility == .detailOnly))
         }
-        .focusedValue(\.sidebarVisibility, transitionAwareColumnVisibility)
+        .focusedValue(\.sidebarVisibility, $columnVisibility)
         // The native title owns the draggable file proxy while the sidebar is visible.
         .navigationTitle(
             columnVisibility == .detailOnly || !isToolbarContentVisible
@@ -97,6 +82,13 @@ struct ContentView: View {
                     .keyboardShortcut("0", modifiers: .command)
             }
             .opacity(0)
+        }
+        .background {
+            SidebarTransitionObserver(
+                isCompact: columnVisibility == .detailOnly,
+                onTransitionBegan: beginSidebarTransition,
+                onTransitionSettled: finishSidebarTransition
+            )
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleWindowDrop(providers: providers)
@@ -143,7 +135,6 @@ struct ContentView: View {
 
     private func beginSidebarTransition() {
         sidebarTransitionGeneration &+= 1
-        let generation = sidebarTransitionGeneration
 
         var transaction = Transaction()
         transaction.animation = nil
@@ -151,17 +142,19 @@ struct ContentView: View {
             isToolbarContentVisible = false
             isSidebarTransitioning = true
         }
+    }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.sidebarTransitionDuration) {
+    private func finishSidebarTransition() {
+        let generation = sidebarTransitionGeneration
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            isSidebarTransitioning = false
+        }
+        DispatchQueue.main.async {
             guard generation == sidebarTransitionGeneration else { return }
-            withTransaction(transaction) {
-                isSidebarTransitioning = false
-            }
-            DispatchQueue.main.async {
-                guard generation == sidebarTransitionGeneration else { return }
-                withAnimation(.easeIn(duration: 0.10)) {
-                    isToolbarContentVisible = true
-                }
+            withAnimation(.easeIn(duration: 0.10)) {
+                isToolbarContentVisible = true
             }
         }
     }
@@ -189,6 +182,237 @@ struct ContentView: View {
             }
         }
         return true
+    }
+}
+
+/// Watches the AppKit split view without participating in its visibility binding.
+///
+/// The native sidebar button animates `NSSplitViewItem` directly. Observing that resize lets the
+/// toolbar mask appear before AppKit presents the first transition frame while leaving the native
+/// `NavigationSplitView` binding untouched.
+private struct SidebarTransitionObserver: NSViewRepresentable {
+    let isCompact: Bool
+    let onTransitionBegan: () -> Void
+    let onTransitionSettled: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> ProbeView {
+        let view = ProbeView()
+        view.coordinator = context.coordinator
+        context.coordinator.update(
+            isCompact: isCompact,
+            onTransitionBegan: onTransitionBegan,
+            onTransitionSettled: onTransitionSettled
+        )
+        return view
+    }
+
+    func updateNSView(_ nsView: ProbeView, context: Context) {
+        context.coordinator.update(
+            isCompact: isCompact,
+            onTransitionBegan: onTransitionBegan,
+            onTransitionSettled: onTransitionSettled
+        )
+        context.coordinator.attachIfNeeded(from: nsView)
+    }
+
+    static func dismantleNSView(_ nsView: ProbeView, coordinator: Coordinator) {
+        coordinator.detach()
+    }
+
+    final class ProbeView: NSView {
+        weak var coordinator: Coordinator?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            coordinator?.attachIfNeeded(from: self)
+        }
+
+        override func viewDidMoveToSuperview() {
+            super.viewDidMoveToSuperview()
+            coordinator?.attachIfNeeded(from: self)
+        }
+    }
+
+    final class Coordinator {
+        private static let settleDelay: TimeInterval = 0.12
+        private static let safetyDelay: TimeInterval = 0.70
+
+        private weak var splitView: NSSplitView?
+        private var resizeObserver: NSObjectProtocol?
+        private var settleWorkItem: DispatchWorkItem?
+        private var safetyWorkItem: DispatchWorkItem?
+        private var attachWorkItem: DispatchWorkItem?
+        private var isTransitionActive = false
+        private var isCompact = false
+        private var sidebarWasCollapsed = false
+        private var lastSidebarWidth: CGFloat?
+        private var onTransitionBegan: () -> Void = {}
+        private var onTransitionSettled: () -> Void = {}
+
+        deinit {
+            detach()
+        }
+
+        func update(
+            isCompact: Bool,
+            onTransitionBegan: @escaping () -> Void,
+            onTransitionSettled: @escaping () -> Void
+        ) {
+            self.isCompact = isCompact
+            self.onTransitionBegan = onTransitionBegan
+            self.onTransitionSettled = onTransitionSettled
+        }
+
+        func attachIfNeeded(from probe: NSView) {
+            guard probe.window != nil else {
+                detach()
+                return
+            }
+            guard let candidate = nearestSplitView(from: probe) else {
+                scheduleAttachRetry(from: probe)
+                return
+            }
+            guard candidate !== splitView else { return }
+
+            detach()
+            splitView = candidate
+            sidebarWasCollapsed = sidebarItem(in: candidate)?.isCollapsed ?? isCompact
+            lastSidebarWidth = sidebarWidth(in: candidate)
+            resizeObserver = NotificationCenter.default.addObserver(
+                forName: NSSplitView.didResizeSubviewsNotification,
+                object: candidate,
+                queue: .main
+            ) { [weak self] _ in
+                self?.splitViewDidResize()
+            }
+        }
+
+        func detach() {
+            if let resizeObserver {
+                NotificationCenter.default.removeObserver(resizeObserver)
+            }
+            resizeObserver = nil
+            splitView = nil
+            attachWorkItem?.cancel()
+            attachWorkItem = nil
+            settleWorkItem?.cancel()
+            settleWorkItem = nil
+            safetyWorkItem?.cancel()
+            safetyWorkItem = nil
+            isTransitionActive = false
+            lastSidebarWidth = nil
+        }
+
+        private func splitViewDidResize() {
+            guard let splitView else { return }
+
+            let sidebarIsCollapsed = sidebarItem(in: splitView)?.isCollapsed ?? isCompact
+            let width = sidebarWidth(in: splitView)
+            let wasAtCollapsedWidth = (lastSidebarWidth ?? width) <= 1
+            let isAtCollapsedWidth = width <= 1
+            let belongsToCollapseTransition = isTransitionActive
+                || isCompact
+                || sidebarIsCollapsed
+                || sidebarWasCollapsed
+                || wasAtCollapsedWidth
+                || isAtCollapsedWidth
+
+            sidebarWasCollapsed = sidebarIsCollapsed
+            lastSidebarWidth = width
+
+            guard belongsToCollapseTransition else { return }
+            beginIfNeeded()
+            scheduleSettle()
+        }
+
+        private func beginIfNeeded() {
+            guard !isTransitionActive else { return }
+            isTransitionActive = true
+            onTransitionBegan()
+
+            safetyWorkItem?.cancel()
+            let safety = DispatchWorkItem { [weak self] in
+                self?.finishIfNeeded()
+            }
+            safetyWorkItem = safety
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.safetyDelay, execute: safety)
+        }
+
+        private func scheduleSettle() {
+            settleWorkItem?.cancel()
+            let settle = DispatchWorkItem { [weak self] in
+                self?.finishIfNeeded()
+            }
+            settleWorkItem = settle
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.settleDelay, execute: settle)
+        }
+
+        private func finishIfNeeded() {
+            guard isTransitionActive else { return }
+            isTransitionActive = false
+            settleWorkItem?.cancel()
+            settleWorkItem = nil
+            safetyWorkItem?.cancel()
+            safetyWorkItem = nil
+            onTransitionSettled()
+        }
+
+        private func scheduleAttachRetry(from probe: NSView) {
+            guard attachWorkItem == nil else { return }
+            let retry = DispatchWorkItem { [weak self, weak probe] in
+                self?.attachWorkItem = nil
+                guard let self, let probe else { return }
+                self.attachIfNeeded(from: probe)
+            }
+            attachWorkItem = retry
+            DispatchQueue.main.async(execute: retry)
+        }
+
+        private func nearestSplitView(from probe: NSView) -> NSSplitView? {
+            var ancestor = probe.superview
+            while let view = ancestor {
+                if let splitView = view as? NSSplitView {
+                    return splitView
+                }
+                ancestor = view.superview
+            }
+
+            guard let root = probe.window?.contentView else { return nil }
+            return largestSplitView(in: root)
+        }
+
+        private func largestSplitView(in view: NSView) -> NSSplitView? {
+            let descendants = view.subviews.flatMap { child -> [NSSplitView] in
+                var matches = largestSplitView(in: child).map { [$0] } ?? []
+                if let splitView = child as? NSSplitView {
+                    matches.append(splitView)
+                }
+                return matches
+            }
+            return descendants.max {
+                $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height
+            }
+        }
+
+        private func sidebarItem(in splitView: NSSplitView) -> NSSplitViewItem? {
+            var responder: NSResponder? = splitView
+            while let current = responder {
+                if let controller = current as? NSSplitViewController,
+                   controller.splitView === splitView {
+                    return controller.splitViewItems.first
+                }
+                responder = current.nextResponder
+            }
+            return nil
+        }
+
+        private func sidebarWidth(in splitView: NSSplitView) -> CGFloat {
+            splitView.subviews.min(by: { $0.frame.minX < $1.frame.minX })?.frame.width ?? 0
+        }
     }
 }
 
