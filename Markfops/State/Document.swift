@@ -39,6 +39,9 @@ final class Document: Identifiable {
     /// Scroll position as a ratio [0,1] of the document height. @ObservationIgnored
     /// to avoid re-rendering the entire view hierarchy on every scroll event.
     @ObservationIgnored var scrollRatio: Double
+    /// Advances once when the user starts driving the content scroller. Sidebar following
+    /// observes this separately from heading identity so a long section can reattach too.
+    private(set) var userContentScrollGeneration: Int
     var headings: [HeadingNode] {
         didSet {
             cachedH1Title = headings.first(where: { $0.level == 1 })?.title
@@ -86,6 +89,7 @@ final class Document: Identifiable {
         self.isDirty = false
         self.mode = .edit
         self.scrollRatio = 0
+        self.userContentScrollGeneration = 0
         self.headings = []
         self.displayTitle = presentationMetadata.displayTitle
         self.sidebarDisplayTitle = presentationMetadata.sidebarDisplayTitle
@@ -126,6 +130,10 @@ final class Document: Identifiable {
         }
 
         return max(0, lowerBound - 1)
+    }
+
+    func registerUserContentScroll() {
+        userContentScrollGeneration &+= 1
     }
 
     /// Drops edits that predate a newly adopted source baseline, such as an external reload or

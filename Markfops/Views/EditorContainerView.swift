@@ -46,6 +46,9 @@ struct EditorContainerView: View {
                         onScrollChange: { ratio in
                             document.scrollRatio = ratio
                             document.syncActiveHeadingToScrollPosition()
+                        },
+                        onUserScroll: {
+                            document.registerUserContentScroll()
                         }
                     )
                     .padding(.top, findOverlayReservedTopInset)

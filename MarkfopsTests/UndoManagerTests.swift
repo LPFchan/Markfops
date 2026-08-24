@@ -277,6 +277,91 @@ final class UndoManagerTests: XCTestCase {
         XCTAssertTrue(context.allowsAutomaticFollowing(force: false))
     }
 
+    func testEditorUserScrollReattachesOncePerGestureWithoutHeadingChange() {
+        let text = "## One long section\n" + Array(repeating: "Body", count: 200).joined(separator: "\n")
+        let document = Document(rawText: text)
+        document.headings = HeadingParser.parseHeadings(in: text)
+        document.syncActiveHeading(toSourceLine: 1)
+        let originalHeadingID = document.activeHeadingID
+
+        let editor = makeEditor(for: document)
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 600, height: 300))
+        editor.textView.frame = NSRect(x: 0, y: 0, width: 600, height: 3_000)
+        scrollView.documentView = editor.textView
+        editor.coordinator.attach(scrollView: scrollView)
+
+        let liveScroll = Notification(name: NSScrollView.didLiveScrollNotification, object: scrollView)
+        editor.coordinator.scrollViewDidLiveScroll(liveScroll)
+        editor.coordinator.scrollViewDidLiveScroll(liveScroll)
+
+        XCTAssertEqual(document.activeHeadingID, originalHeadingID)
+        XCTAssertEqual(document.userContentScrollGeneration, 1)
+
+        editor.coordinator.scrollViewDidEndLiveScroll(
+            Notification(name: NSScrollView.didEndLiveScrollNotification, object: scrollView)
+        )
+        editor.coordinator.scrollViewDidLiveScroll(liveScroll)
+
+        XCTAssertEqual(document.userContentScrollGeneration, 2)
+    }
+
+    func testProgrammaticEditorScrollingDoesNotRegisterUserGesture() {
+        let document = Document(rawText: longDocument(prefix: "Restore"))
+        document.headings = HeadingParser.parseHeadings(in: document.rawText)
+        let editor = makeEditor(for: document)
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 600, height: 300))
+        editor.textView.frame = NSRect(x: 0, y: 0, width: 600, height: 3_000)
+        scrollView.documentView = editor.textView
+        editor.coordinator.attach(scrollView: scrollView)
+
+        editor.coordinator.scrollToRatio(0.5)
+
+        XCTAssertEqual(document.userContentScrollGeneration, 0)
+    }
+
+    func testPreviewScrollReportCarriesUserGestureSeparatelyFromRatio() {
+        let userReport = PreviewScrollReport(messageBody: [
+            "ratio": 0.42,
+            "userGesture": 7
+        ])
+        let programmaticReport = PreviewScrollReport(messageBody: [
+            "ratio": 0.75,
+            "userGesture": 0
+        ])
+        let legacyReport = PreviewScrollReport(messageBody: 0.25)
+
+        XCTAssertEqual(userReport?.ratio, 0.42)
+        XCTAssertEqual(userReport?.userGesture, 7)
+        XCTAssertEqual(programmaticReport?.ratio, 0.75)
+        XCTAssertEqual(programmaticReport?.userGesture, 0)
+        XCTAssertEqual(legacyReport?.ratio, 0.25)
+        XCTAssertNil(legacyReport?.userGesture)
+    }
+
+    func testUserScrollGestureStateStartsOnlyOnceUntilEnded() {
+        var gesture = UserScrollGestureState()
+
+        XCTAssertTrue(gesture.begin())
+        XCTAssertFalse(gesture.begin())
+        gesture.end()
+        XCTAssertTrue(gesture.begin())
+    }
+
+    func testSidebarReinstallsScrollObserversWhenItsScrollViewChanges() {
+        let context = SidebarScrollContext()
+        let first = NSScrollView()
+        let replacement = NSScrollView()
+
+        XCTAssertTrue(context.needsScrollObserverInstallation(for: first))
+
+        context.observedScrollView = first
+        context.liveScrollObserver = NSObject()
+        context.endLiveScrollObserver = NSObject()
+
+        XCTAssertFalse(context.needsScrollObserverInstallation(for: first))
+        XCTAssertTrue(context.needsScrollObserverInstallation(for: replacement))
+    }
+
     private struct EditorFixture {
         let textView: MarkdownNSTextView
         let coordinator: TextViewCoordinator

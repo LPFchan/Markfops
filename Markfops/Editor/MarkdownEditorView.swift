@@ -405,6 +405,12 @@ struct EditorView: NSViewRepresentable {
             name: NSScrollView.didLiveScrollNotification,
             object: scrollView
         )
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(TextViewCoordinator.scrollViewDidEndLiveScroll(_:)),
+            name: NSScrollView.didEndLiveScrollNotification,
+            object: scrollView
+        )
 
         return scrollView
     }

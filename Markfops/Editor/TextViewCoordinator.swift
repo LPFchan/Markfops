@@ -1,6 +1,20 @@
 import AppKit
 import SwiftUI
 
+struct UserScrollGestureState {
+    private(set) var isActive = false
+
+    mutating func begin() -> Bool {
+        guard !isActive else { return false }
+        isActive = true
+        return true
+    }
+
+    mutating func end() {
+        isActive = false
+    }
+}
+
 final class TextViewCoordinator: NSObject, NSTextViewDelegate {
     var document: Document
     var textView: MarkdownNSTextView?
@@ -13,6 +27,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
     private var scrollAnimationDuration: CFTimeInterval = 0
     private var scrollAnimationStartTime: CFTimeInterval?
     private var scrollAnimationLastStep: CFTimeInterval?
+    private var userScrollGesture = UserScrollGestureState()
 
     private static let headingScrollSettlingDistance: CGFloat = 0.2
 
@@ -26,6 +41,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
 
     func attach(scrollView: NSScrollView) {
         observedScrollView = scrollView
+        userScrollGesture.end()
     }
 
     func undoManager(for view: NSTextView) -> UndoManager? {
@@ -37,6 +53,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         guard textView.textStorage === document.textStorage else { return false }
         headingDebounceItem?.cancel()
         stopScrollAnimation()
+        userScrollGesture.end()
         self.document = document
         self.textView = textView
         return true
@@ -54,6 +71,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         }
         textView = nil
         observedScrollView = nil
+        userScrollGesture.end()
     }
 
     @discardableResult
@@ -190,6 +208,9 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
     @objc func scrollViewDidLiveScroll(_ notification: Notification) {
         guard let scrollView = notification.object as? NSScrollView,
               let docView = scrollView.documentView else { return }
+        if userScrollGesture.begin() {
+            document.registerUserContentScroll()
+        }
         let visibleRect = scrollView.contentView.documentVisibleRect
         let totalHeight = docView.bounds.height
         guard totalHeight > 0 else { document.scrollRatio = 0; return }
@@ -198,6 +219,11 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         let centerY = visibleRect.minY + visibleRect.height / 2
         document.scrollRatio = max(0, min(1, Double(centerY / totalHeight)))
         syncActiveHeadingToVisibleContent(in: scrollView)
+    }
+
+    @objc func scrollViewDidEndLiveScroll(_ notification: Notification) {
+        guard notification.object as? NSScrollView === observedScrollView else { return }
+        userScrollGesture.end()
     }
 
     func scrollToRatio(_ ratio: Double) {

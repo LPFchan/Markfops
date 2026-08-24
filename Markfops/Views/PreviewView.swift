@@ -65,12 +65,30 @@ final class PreviewBridge {
                 var h = document.documentElement.scrollHeight;
                 if (h > 0) {
                     var targetY = \(ratio) * h - window.innerHeight / 2;
+                    window.__markfopsProgrammaticScrollUntil = performance.now() + 180;
                     window.scrollTo(0, Math.max(0, Math.round(targetY)));
                 }
             })();
             """
             webView.evaluateJavaScript(js)
         }
+    }
+}
+
+struct PreviewScrollReport {
+    let ratio: Double
+    let userGesture: Int?
+
+    init?(messageBody: Any) {
+        if let ratio = messageBody as? Double {
+            self.ratio = ratio
+            self.userGesture = nil
+            return
+        }
+        guard let payload = messageBody as? [String: Any],
+              let ratio = payload["ratio"] as? Double else { return nil }
+        self.ratio = ratio
+        self.userGesture = (payload["userGesture"] as? NSNumber)?.intValue
     }
 }
 
@@ -83,6 +101,7 @@ struct PreviewView: NSViewRepresentable {
     let themeKey: String
     let bridge: PreviewBridge
     var onScrollChange: ((Double) -> Void)?
+    var onUserScroll: (() -> Void)?
 
     func makeNSView(context: Context) -> WKWebView {
         let userContent = WKUserContentController()
@@ -97,6 +116,7 @@ struct PreviewView: NSViewRepresentable {
 
         context.coordinator.webView = webView
         context.coordinator.onScrollChange = onScrollChange
+        context.coordinator.onUserScroll = onUserScroll
         // Setting coordinator triggers didSet, which forwards any buffered scroll ratio.
         bridge.coordinator = context.coordinator
 
@@ -105,6 +125,7 @@ struct PreviewView: NSViewRepresentable {
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.onScrollChange = onScrollChange
+        context.coordinator.onUserScroll = onUserScroll
 
         guard !pageHTML.isEmpty, !bodyHTML.isEmpty else { return }
 
@@ -123,6 +144,12 @@ struct PreviewView: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
+    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "scrollChanged")
+        webView.navigationDelegate = nil
+        coordinator.teardown()
+    }
+
     // MARK: - Coordinator
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
@@ -132,10 +159,16 @@ struct PreviewView: NSViewRepresentable {
         var isPageReady = false
         var isEditingInView = false
         var onScrollChange: ((Double) -> Void)?
+        var onUserScroll: (() -> Void)?
         /// Ratio [0,1] to scroll to once the next page load finishes.
         var pendingScrollRatio: Double?
         var pendingHeading: HeadingNode?
         var pendingMorphSourceLine: Int?
+        private var lastReportedUserScrollGesture = 0
+
+        func teardown() {
+            webView = nil
+        }
 
         @discardableResult
         func focusWebView() -> Bool {
@@ -251,8 +284,14 @@ struct PreviewView: NSViewRepresentable {
             _ userContentController: WKUserContentController,
             didReceive message: WKScriptMessage
         ) {
-            if message.name == "scrollChanged", let ratio = message.body as? Double {
-                onScrollChange?(ratio)
+            if message.name == "scrollChanged",
+               let report = PreviewScrollReport(messageBody: message.body) {
+                onScrollChange?(report.ratio)
+                if let gesture = report.userGesture,
+                   gesture > lastReportedUserScrollGesture {
+                    lastReportedUserScrollGesture = gesture
+                    onUserScroll?()
+                }
             }
         }
 
@@ -326,6 +365,7 @@ struct PreviewView: NSViewRepresentable {
                             var range = selection.getRangeAt(0);
                             var rect = range.getBoundingClientRect();
                             var targetY = Math.max(0, rect.top + window.scrollY - window.innerHeight * 0.25);
+                            window.__markfopsProgrammaticScrollUntil = performance.now() + 1000;
                             window.scrollTo({ top: targetY, behavior: 'smooth' });
                         }
                         return true;
@@ -418,6 +458,7 @@ struct PreviewView: NSViewRepresentable {
                         var totalAfter = document.documentElement.scrollHeight;
                         if (totalAfter > 0) {
                             var targetY = ratio * totalAfter - window.innerHeight / 2;
+                            window.__markfopsProgrammaticScrollUntil = performance.now() + 180;
                             window.scrollTo(0, Math.max(0, Math.round(targetY)));
                         }
 
@@ -433,6 +474,42 @@ struct PreviewView: NSViewRepresentable {
                 // Report scroll position (throttled) so Swift can sync back to editor.
                 // Reports center-of-viewport ratio: (scrollY + innerHeight/2) / scrollHeight
                 var scrollThrottle;
+                var userScrollGesture = 0;
+                var userScrollIsActive = false;
+                var userScrollIntentUntil = 0;
+                var userScrollIdleTimer;
+
+                function noteUserScrollIntent() {
+                    var now = performance.now();
+                    userScrollIntentUntil = now + 300;
+                    if (!userScrollIsActive) {
+                        userScrollIsActive = true;
+                        userScrollGesture += 1;
+                    }
+                    clearTimeout(userScrollIdleTimer);
+                    userScrollIdleTimer = setTimeout(function() {
+                        userScrollIsActive = false;
+                    }, 180);
+                }
+
+                window.addEventListener('wheel', noteUserScrollIntent, { passive: true });
+                window.addEventListener('touchmove', noteUserScrollIntent, { passive: true });
+                window.addEventListener('keydown', function(event) {
+                    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) {
+                        noteUserScrollIntent();
+                    }
+                });
+                window.addEventListener('pointerdown', function(event) {
+                    if (event.clientX >= document.documentElement.clientWidth - 20) {
+                        noteUserScrollIntent();
+                    }
+                }, { passive: true });
+                window.addEventListener('pointermove', function(event) {
+                    if (event.buttons !== 0 && event.clientX >= document.documentElement.clientWidth - 20) {
+                        noteUserScrollIntent();
+                    }
+                }, { passive: true });
+
                 window.addEventListener('scroll', function() {
                     if (scrollThrottle) return;
                     scrollThrottle = setTimeout(function() {
@@ -440,7 +517,15 @@ struct PreviewView: NSViewRepresentable {
                         var total = document.documentElement.scrollHeight;
                         if (total > 0) {
                             var ratio = (window.scrollY + window.innerHeight / 2) / total;
-                            window.webkit.messageHandlers.scrollChanged.postMessage(ratio);
+                            var now = performance.now();
+                            var isProgrammatic = now <= (window.__markfopsProgrammaticScrollUntil || 0);
+                            var gesture = !isProgrammatic && now <= userScrollIntentUntil
+                                ? userScrollGesture
+                                : 0;
+                            window.webkit.messageHandlers.scrollChanged.postMessage({
+                                ratio: ratio,
+                                userGesture: gesture
+                            });
                         }
                     }, 100);
                 }, { passive: true });
@@ -448,6 +533,7 @@ struct PreviewView: NSViewRepresentable {
             """
             webView.evaluateJavaScript(js)
             isPageReady = true
+            lastReportedUserScrollGesture = 0
 
             // Apply deferred scroll ratio now that the page is ready.
             // ratio = center-of-viewport / scrollHeight, so restore: scrollTo(ratio*h - innerHeight/2)
@@ -457,6 +543,7 @@ struct PreviewView: NSViewRepresentable {
                 (function() {
                     var h = document.documentElement.scrollHeight;
                     var targetY = \(ratio) * h - window.innerHeight / 2;
+                    window.__markfopsProgrammaticScrollUntil = performance.now() + 180;
                     window.scrollTo(0, Math.max(0, Math.round(targetY)));
                 })();
                 """
@@ -495,6 +582,7 @@ struct PreviewView: NSViewRepresentable {
                     var elapsed = timestamp - startTime;
                     var progress = Math.min(1, elapsed / duration);
                     var eased = easeOutCubic(progress);
+                    window.__markfopsProgrammaticScrollUntil = performance.now() + 180;
                     window.scrollTo(0, Math.round(startY + distance * eased));
                     if (progress < 1) {
                         window.requestAnimationFrame(step);

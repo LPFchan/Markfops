@@ -61,6 +61,7 @@ enum SidebarDocumentModel {
 
 final class SidebarScrollContext {
     weak var scrollView: NSScrollView?
+    weak var observedScrollView: NSScrollView?
     var lastTargetY: CGFloat?
     var desiredTargetY: CGFloat?
     var displayTimer: Timer?
@@ -86,6 +87,12 @@ final class SidebarScrollContext {
 
     func allowsAutomaticFollowing(force: Bool) -> Bool {
         force || !isRespectingManualScrollPosition
+    }
+
+    func needsScrollObserverInstallation(for candidate: NSScrollView) -> Bool {
+        observedScrollView !== candidate
+            || liveScrollObserver == nil
+            || endLiveScrollObserver == nil
     }
 }
 
@@ -216,8 +223,12 @@ struct SidebarView: View {
                 if shouldForce {
                     pendingImmediateTOCScrollTarget = nil
                 }
-                scrollContext.resumeAutomaticFollowing()
                 scheduleScrollToActiveHeading(force: shouldForce)
+            }
+            .onChange(of: store.activeDocument?.userContentScrollGeneration) { _, _ in
+                scrollContext.resumeAutomaticFollowing()
+                scrollContext.lastTargetY = nil
+                scheduleScrollToActiveHeading()
             }
         }
         .frame(minWidth: 180, idealWidth: 220, maxWidth: 320)
@@ -592,8 +603,10 @@ struct SidebarView: View {
     }
 
     private func installScrollObserverIfNeeded(for scrollView: NSScrollView) {
-        guard scrollContext.liveScrollObserver == nil,
-              scrollContext.endLiveScrollObserver == nil else { return }
+        guard scrollContext.needsScrollObserverInstallation(for: scrollView) else { return }
+
+        removeScrollObserver()
+        scrollContext.observedScrollView = scrollView
 
         scrollContext.liveScrollObserver = NotificationCenter.default.addObserver(
             forName: NSScrollView.didLiveScrollNotification,
@@ -628,6 +641,7 @@ struct SidebarView: View {
             NotificationCenter.default.removeObserver(observer)
             scrollContext.endLiveScrollObserver = nil
         }
+        scrollContext.observedScrollView = nil
     }
 
 }
