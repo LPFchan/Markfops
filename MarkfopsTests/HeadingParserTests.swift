@@ -283,6 +283,16 @@ final class HeadingParserTests: XCTestCase {
         XCTAssertEqual(coordinator.lastActiveWindowID, second.id)
     }
 
+    func testConcurrentSceneBootstrapDoesNotReuseTabCatalog() {
+        let coordinator = makeTestCoordinator()
+
+        let firstID = coordinator.bootstrapWindowID()
+        let secondID = coordinator.bootstrapWindowID()
+
+        XCTAssertNotEqual(firstID, secondID)
+        XCTAssertNotIdentical(coordinator.store(for: firstID), coordinator.store(for: secondID))
+    }
+
     func testActiveDocumentChangesRefreshItsWindowAppearance() {
         let coordinator = makeTestCoordinator()
         let session = coordinator.session(for: UUID())!

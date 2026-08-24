@@ -459,13 +459,14 @@ final class DocumentWindowSession {
 final class DocumentCoordinator: NSObject, NSWindowDelegate {
     static let documentWindowIdentifierPrefix = "Markfops.DocumentWindow."
 
-    private(set) var sessions: [UUID: DocumentWindowSession] = [:]
-    private(set) var lastActiveWindowID: UUID?
+    @ObservationIgnored private(set) var sessions: [UUID: DocumentWindowSession] = [:]
+    @ObservationIgnored private(set) var lastActiveWindowID: UUID?
 
     @ObservationIgnored private let recoveryStore: RecoveryStore
     @ObservationIgnored private var didLoadRecovery = false
     @ObservationIgnored private var pendingURLs: [URL] = []
     @ObservationIgnored private var pendingPresentationIDs: [UUID] = []
+    @ObservationIgnored private var reservedSceneIDs: Set<UUID> = []
     @ObservationIgnored private var openWindowRequest: ((UUID) -> Void)?
     @ObservationIgnored private var closingWindowIDs: Set<UUID> = []
     @ObservationIgnored private var notificationTokens: [NSObjectProtocol] = []
@@ -504,12 +505,19 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
         session(for: id)!.store
     }
 
-    /// Returns the first restored session for a value-less initial WindowGroup scene, or creates
-    /// a fresh session for a normal launch.
+    /// Claims one restored session for a value-less initial WindowGroup scene, or creates a fresh
+    /// session for a normal launch. A claim happens before AppKit supplies the NSWindow, preventing
+    /// simultaneous external-open scenes from binding to the same tab catalog.
     func bootstrapWindowID() -> UUID {
-        if let id = sessions.keys.first(where: { sessions[$0]?.window == nil }) { return id }
+        if let id = sessions.keys.first(where: {
+            sessions[$0]?.window == nil && !reservedSceneIDs.contains($0)
+        }) {
+            reservedSceneIDs.insert(id)
+            return id
+        }
         let id = UUID()
         _ = session(for: id)
+        reservedSceneIDs.insert(id)
         return id
     }
 
@@ -521,6 +529,7 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
 
     func registerWindow(id: UUID, window: NSWindow) {
         guard let session = session(for: id) else { return }
+        reservedSceneIDs.remove(id)
         let isNewWindowRegistration = session.window !== window
         session.window = window
         session.store.managedWindow = window

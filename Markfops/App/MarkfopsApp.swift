@@ -21,21 +21,25 @@ private struct DocumentWindowScene: View {
     @Binding var windowID: UUID?
     let coordinator: DocumentCoordinator
     @Environment(\.openWindow) private var openWindow
-    @State private var resolvedID: UUID
+    @StateObject private var identity: DocumentWindowIdentity
 
     init(windowID: Binding<UUID?>, coordinator: DocumentCoordinator) {
         _windowID = windowID
         self.coordinator = coordinator
-        _resolvedID = State(initialValue: windowID.wrappedValue ?? coordinator.bootstrapWindowID())
+        _identity = StateObject(wrappedValue: DocumentWindowIdentity(
+            windowID: windowID.wrappedValue,
+            coordinator: coordinator
+        ))
     }
 
-    private var id: UUID { windowID ?? resolvedID }
+    private var id: UUID { identity.id }
 
     var body: some View {
         let store = coordinator.store(for: id)
         ContentView()
             .environment(store)
             .focusedSceneValue(\.documentStore, store)
+            .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
             .background {
                 DocumentWindowAccessor { window in
                     coordinator.registerWindow(id: id, window: window)
@@ -44,12 +48,20 @@ private struct DocumentWindowScene: View {
                 .frame(width: 0, height: 0)
             }
             .task {
-                if windowID == nil { windowID = resolvedID }
+                if windowID == nil { windowID = identity.id }
                 coordinator.install(openWindow: { requestedID in
                     openWindow(id: "document", value: requestedID)
                 })
             }
             .frame(minHeight: 500)
+    }
+}
+
+private final class DocumentWindowIdentity: ObservableObject {
+    let id: UUID
+
+    init(windowID: UUID?, coordinator: DocumentCoordinator) {
+        id = windowID ?? coordinator.bootstrapWindowID()
     }
 }
 
