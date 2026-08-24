@@ -23,13 +23,19 @@ final class DocumentWatcherTests: XCTestCase {
 
     func testShortTabRowsCenterWithinTheToolbarViewport() {
         XCTAssertEqual(
-            TabPillSizing.minimumCenteredContentWidth(toolbarWidth: 900),
+            TabPillSizing.minimumCenteredContentWidth(toolbarWidth: 900, documentCount: 2),
             848
         )
         XCTAssertEqual(
-            TabPillSizing.minimumCenteredContentWidth(toolbarWidth: 40),
+            TabPillSizing.minimumCenteredContentWidth(toolbarWidth: 40, documentCount: 2),
             0
         )
+        XCTAssertEqual(
+            TabPillSizing.minimumCenteredContentWidth(toolbarWidth: 900, documentCount: 1),
+            0
+        )
+        XCTAssertEqual(TabPillSizing.soloTabViewportWidth(documentCount: 1), 220)
+        XCTAssertNil(TabPillSizing.soloTabViewportWidth(documentCount: 2))
     }
 
     func testRelativeTabCloseScopesKeepTheExpectedDocuments() {

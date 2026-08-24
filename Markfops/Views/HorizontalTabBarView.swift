@@ -11,6 +11,9 @@ private struct PillBarWidthKey: PreferenceKey {
 enum TabPillSizing {
     static let iconOnlyThreshold: CGFloat = 56
     static let collapsedActiveWidth: CGFloat = 112
+    static let maximumPillWidth: CGFloat = 200
+    static let pillSpacing: CGFloat = 4
+    static let trailingDropZoneWidth: CGFloat = 8
     static let toolbarButtonAndPaddingWidth: CGFloat = 44
     static let scrollContentLeadingPadding: CGFloat = 8
 
@@ -19,8 +22,14 @@ enum TabPillSizing {
         return max(baseWidth, collapsedActiveWidth)
     }
 
-    static func minimumCenteredContentWidth(toolbarWidth: CGFloat) -> CGFloat {
-        max(0, toolbarWidth - toolbarButtonAndPaddingWidth - scrollContentLeadingPadding)
+    static func minimumCenteredContentWidth(toolbarWidth: CGFloat, documentCount: Int) -> CGFloat {
+        guard documentCount != 1 else { return 0 }
+        return max(0, toolbarWidth - toolbarButtonAndPaddingWidth - scrollContentLeadingPadding)
+    }
+
+    static func soloTabViewportWidth(documentCount: Int) -> CGFloat? {
+        guard documentCount == 1 else { return nil }
+        return maximumPillWidth + pillSpacing + trailingDropZoneWidth + scrollContentLeadingPadding
     }
 }
 
@@ -49,26 +58,30 @@ struct TabPillRowView: View {
     private var uniformPillWidth: CGFloat {
         let buttonW = TabPillSizing.toolbarButtonAndPaddingWidth
         let leadPad = TabPillSizing.scrollContentLeadingPadding
-        let spacing: CGFloat = 4
+        let spacing = TabPillSizing.pillSpacing
         let count = max(1, CGFloat(store.documents.count))
         let forAllPills = widthForLayout - buttonW - leadPad - spacing * (count - 1)
         // Down to ~26pt: inactive tabs become favicon-only. The active tab keeps enough room
         // for its title and close affordance (see `TabPillSizing.resolvedWidth`).
-        return max(26, min(200, forAllPills / count))
+        return max(26, min(TabPillSizing.maximumPillWidth, forAllPills / count))
+    }
+
+    private var soloTabViewportWidth: CGFloat? {
+        TabPillSizing.soloTabViewportWidth(documentCount: store.documents.count)
     }
 
     var body: some View {
         HStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 4) {
+                    LazyHStack(spacing: TabPillSizing.pillSpacing) {
                         ForEach(Array(store.documents.enumerated()), id: \.element.id) { i, document in
                             pillCell(document: document, index: i)
                         }
 
                         // Invisible drop zone after the last pill (rightmost gap).
                         Color.clear
-                            .frame(width: 8, height: 32)
+                            .frame(width: TabPillSizing.trailingDropZoneWidth, height: 32)
                             .onDrop(of: [TabDragState.documentDragType],
                                     delegate: TrailingDropDelegate(
                                         store: store,
@@ -90,15 +103,21 @@ struct TabPillRowView: View {
                     // wider than this minimum, LazyHStack keeps its normal scrollable width.
                     .frame(
                         minWidth: TabPillSizing.minimumCenteredContentWidth(
-                            toolbarWidth: widthForLayout
+                            toolbarWidth: widthForLayout,
+                            documentCount: store.documents.count
                         ),
                         alignment: .center
                     )
                     .padding(.leading, TabPillSizing.scrollContentLeadingPadding)
                     .padding(.vertical, 5)
                 }
-                // Fill the HStack width so the strip does not inherit the scroll content's ideal width.
-                .frame(maxWidth: .infinity)
+                // A solo tab uses its natural viewport width so the tab and adjacent + button are
+                // centered as one unit. Larger tab sets retain the full scrollable toolbar width.
+                .frame(
+                    minWidth: soloTabViewportWidth,
+                    idealWidth: soloTabViewportWidth,
+                    maxWidth: soloTabViewportWidth ?? .infinity
+                )
                 // Gradient fade on both edges to show there's more to scroll.
                 .mask(alignment: .center) {
                     LinearGradient(
@@ -137,7 +156,7 @@ struct TabPillRowView: View {
             .padding(.trailing, 8)
             .help("New Tab  ⌘T")
         }
-        .frame(minWidth: 0)
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .center)
         .fixedSize(horizontal: false, vertical: true)
         .frame(height: toolbarSlotWidth != nil ? ToolbarMetrics.compactPillRowHeight : nil)
         // Measure width when not driven by the toolbar slot (standalone bar).
