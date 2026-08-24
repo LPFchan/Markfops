@@ -56,6 +56,7 @@ final class Document: Identifiable {
     var collapsedHeadingIDs: Set<String> = []
 
     @ObservationIgnored private var fileWatchSource: DispatchSourceFileSystemObject?
+    @ObservationIgnored var isWatchingFile: Bool { fileWatchSource != nil }
     @ObservationIgnored private var pendingFocusedHeading: HeadingNode?
     @ObservationIgnored private var pendingFocusedHeadingExpiry: CFTimeInterval = 0
     @ObservationIgnored private var cachedH1Title: String?
@@ -234,8 +235,8 @@ final class Document: Identifiable {
         lastKnownFileSignature = Self.fileSignature(for: url)
     }
 
-    /// Checks inexpensive file metadata before reading a document during tab selection.
-    /// The watcher handles normal writes; this also recovers from atomic replacements.
+    /// Checks inexpensive file metadata before reading a document during tab selection, then
+    /// starts the active document's watcher. Background documents are checked when selected.
     func reloadFromDiskIfChanged() {
         guard !isDirty, let url = fileURL else { return }
         guard let currentSignature = Self.fileSignature(for: url) else {

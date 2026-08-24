@@ -208,9 +208,10 @@ private struct WelcomeView: View {
                     panel.allowedContentTypes = [.init(filenameExtension: "md")!, .init(filenameExtension: "markdown")!]
                     panel.allowsMultipleSelection = true
                     if panel.runModal() == .OK {
-                        for url in panel.urls {
-                            store.coordinator?.open(url: url, preferredWindowID: store.windowID)
-                        }
+                        store.coordinator?.open(
+                            urls: panel.urls,
+                            preferredWindowID: store.windowID
+                        )
                     }
                 }
                 .buttonStyle(.bordered)

@@ -304,11 +304,7 @@ struct MarkfopsCommands: Commands {
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK else { return }
-        for url in panel.urls {
-            store?.coordinator?.open(
-                url: url, preferredWindowID: store?.windowID
-            )
-        }
+        store?.coordinator?.open(urls: panel.urls, preferredWindowID: store?.windowID)
     }
 }
 

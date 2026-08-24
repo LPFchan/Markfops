@@ -25,6 +25,9 @@ final class DocumentStore {
     var activeID: UUID? {
         didSet {
             guard activeID != oldValue else { return }
+            if let oldValue {
+                documents.first(where: { $0.id == oldValue })?.stopWatching()
+            }
             activeDocument?.reloadFromDiskIfChanged()
             activeDocument?.reconcileActiveHeadingWithCurrentContent()
             refreshWindowAppearance()
@@ -49,9 +52,9 @@ final class DocumentStore {
     }
 
     @discardableResult
-    func open(url: URL) -> Document {
+    func open(url: URL, activate: Bool = true) -> Document {
         if let existing = documents.first(where: { $0.fileURL == url }) {
-            activeID = existing.id
+            if activate { activeID = existing.id }
             return existing
         }
         let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
@@ -59,8 +62,7 @@ final class DocumentStore {
         observe(doc)
         doc.headings = HeadingParser.parseHeadings(in: text)
         documents.append(doc)
-        activeID = doc.id
-        doc.startWatching()
+        if activate { activeID = doc.id }
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
         return doc
     }
@@ -68,8 +70,8 @@ final class DocumentStore {
     /// Opens a URL in this store without consulting another window. The coordinator is the
     /// only app-level caller, so global uniqueness remains centralized there.
     @discardableResult
-    func openLocally(url: URL) -> Document {
-        open(url: url)
+    func openLocally(url: URL, activate: Bool = true) -> Document {
+        open(url: url, activate: activate)
     }
 
     func save(_ document: Document) throws {
@@ -81,7 +83,7 @@ final class DocumentStore {
         document.savedText = document.rawText
         document.isDirty = false
         updateProxyIcon(for: document)
-        document.startWatching()
+        refreshWatcher(for: document)
     }
 
     func saveAs(_ document: Document) throws {
@@ -96,7 +98,7 @@ final class DocumentStore {
         document.isDirty = false
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
         updateProxyIcon(for: document)
-        document.startWatching()
+        refreshWatcher(for: document)
     }
 
     // MARK: - Duplicate
@@ -127,7 +129,7 @@ final class DocumentStore {
             document.isDirty = false
             NSDocumentController.shared.noteNewRecentDocumentURL(newURL)
             updateProxyIcon(for: document)
-            document.startWatching()
+            refreshWatcher(for: document)
         } catch {
             presentError(error)
         }
@@ -152,7 +154,7 @@ final class DocumentStore {
             document.isDirty = false
             NSDocumentController.shared.noteNewRecentDocumentURL(newURL)
             updateProxyIcon(for: document)
-            document.startWatching()
+            refreshWatcher(for: document)
         } catch {
             presentError(error)
         }
@@ -183,7 +185,7 @@ final class DocumentStore {
         document.isDirty = false
         NSDocumentController.shared.noteNewRecentDocumentURL(newURL)
         updateProxyIcon(for: document)
-        document.startWatching()
+        refreshWatcher(for: document)
     }
 
     // MARK: - Revert to Saved
@@ -254,12 +256,13 @@ final class DocumentStore {
         scheduleRecoverySave()
     }
 
-    /// Removes a document for a move/detach. A transfer is not a close: preserve the watcher,
-    /// editor state, and recovery observation until the destination adopts the object.
+    /// Removes a document for a move/detach. The destination restarts the watcher when it adopts
+    /// the document as its active tab; editor state and recovery observation stay with the object.
     @discardableResult
     func removeForTransfer(id: UUID) -> Document? {
         guard let idx = documents.firstIndex(where: { $0.id == id }) else { return nil }
         let document = documents.remove(at: idx)
+        document.stopWatching()
         if activeID == id {
             activeID = documents.isEmpty ? nil : documents[min(idx, documents.count - 1)].id
         }
@@ -414,6 +417,14 @@ final class DocumentStore {
         }
     }
 
+    private func refreshWatcher(for document: Document) {
+        if activeID == document.id {
+            document.startWatching()
+        } else {
+            document.stopWatching()
+        }
+    }
+
     private func scheduleRecoverySave() {
         guard !isRestoringRecovery else { return }
         guard coordinator != nil else { return }
@@ -559,7 +570,29 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
     }
 
     func open(urls: [URL], preferredWindowID: UUID? = nil) {
-        urls.forEach { _ = open(url: $0, preferredWindowID: preferredWindowID) }
+        guard !urls.isEmpty else { return }
+        let normalizedURLs = urls.map(Self.normalizedFileURL)
+        guard let target = preferredSession(preferredWindowID) else {
+            pendingURLs.append(contentsOf: normalizedURLs)
+            presentPendingScenes()
+            return
+        }
+
+        var finalSelection: (sessionID: UUID, documentID: UUID)?
+        for url in normalizedURLs {
+            if let owner = owner(of: url) {
+                finalSelection = (owner.id, owner.document.id)
+            } else {
+                let document = target.store.openLocally(url: url, activate: false)
+                finalSelection = (target.id, document.id)
+            }
+        }
+        if let finalSelection {
+            focus(
+                sessionID: finalSelection.sessionID,
+                documentID: finalSelection.documentID
+            )
+        }
     }
 
     private func preferredSession(_ preferredID: UUID?) -> DocumentWindowSession? {
@@ -701,7 +734,7 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
         guard !pendingURLs.isEmpty, preferredSession(nil) != nil else { return }
         let urls = pendingURLs
         pendingURLs.removeAll()
-        urls.forEach { _ = open(url: $0) }
+        open(urls: urls)
     }
 
     // MARK: - Closing
@@ -843,7 +876,6 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
             document.isTOCExpanded = usesLegacyTOCDefault ? true : snapshot.isTOCExpanded
             document.collapsedHeadingIDs = snapshot.collapsedHeadingIDs
             document.headings = HeadingParser.parseHeadings(in: rawText)
-            document.startWatching()
             return document
         }
         guard let rawText = snapshot.rawText, !rawText.isEmpty || snapshot.isDirty else { return nil }
