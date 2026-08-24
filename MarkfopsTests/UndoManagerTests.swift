@@ -305,6 +305,30 @@ final class UndoManagerTests: XCTestCase {
         XCTAssertEqual(document.userContentScrollGeneration, 2)
     }
 
+    func testEditorUserScrollReattachesAfterIdleWhenEndNotificationIsMissing() {
+        let document = Document(rawText: longDocument(prefix: "Idle fallback"))
+        let editor = makeEditor(for: document)
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 600, height: 300))
+        editor.textView.frame = NSRect(x: 0, y: 0, width: 600, height: 3_000)
+        scrollView.documentView = editor.textView
+        editor.coordinator.attach(scrollView: scrollView)
+
+        let liveScroll = Notification(name: NSScrollView.didLiveScrollNotification, object: scrollView)
+        editor.coordinator.scrollViewDidLiveScroll(liveScroll)
+        XCTAssertEqual(document.userContentScrollGeneration, 1)
+
+        let idleReset = expectation(description: "missing end-live-scroll notification falls back to idle")
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + TextViewCoordinator.userScrollIdleResetDelay + 0.05
+        ) {
+            idleReset.fulfill()
+        }
+        wait(for: [idleReset], timeout: 1)
+
+        editor.coordinator.scrollViewDidLiveScroll(liveScroll)
+        XCTAssertEqual(document.userContentScrollGeneration, 2)
+    }
+
     func testProgrammaticEditorScrollingDoesNotRegisterUserGesture() {
         let document = Document(rawText: longDocument(prefix: "Restore"))
         document.headings = HeadingParser.parseHeadings(in: document.rawText)

@@ -163,7 +163,7 @@ struct SidebarView: View {
     @State private var pendingInitialTOCSyncWorkItem: DispatchWorkItem? = nil
 
     var body: some View {
-        ScrollViewReader { _ in
+        ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
                     ForEach(Array(store.documents.enumerated()), id: \.element.id) { i, document in
@@ -226,9 +226,7 @@ struct SidebarView: View {
                 scheduleScrollToActiveHeading(force: shouldForce)
             }
             .onChange(of: store.activeDocument?.userContentScrollGeneration) { _, _ in
-                scrollContext.resumeAutomaticFollowing()
-                scrollContext.lastTargetY = nil
-                scheduleScrollToActiveHeading()
+                resumeAutomaticFollowing(using: proxy)
             }
         }
         .frame(minWidth: 180, idealWidth: 220, maxWidth: 320)
@@ -430,6 +428,24 @@ struct SidebarView: View {
         pendingTOCFollowScroll = workItem
         let delay = force ? 0 : Self.tocFollowScrollLeadDelay
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    private func resumeAutomaticFollowing(using proxy: ScrollViewProxy) {
+        scrollContext.resumeAutomaticFollowing()
+        scrollContext.lastTargetY = nil
+
+        guard let activeHeadingID = store.activeDocument?.activeHeadingID,
+              scrollContext.headingMidYByID[activeHeadingID] == nil else {
+            scheduleScrollToActiveHeading()
+            return
+        }
+
+        withAnimation(.spring(duration: 0.22)) {
+            proxy.scrollTo(activeHeadingID, anchor: .center)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
+            scheduleScrollToActiveHeading()
+        }
     }
 
     private func scrollToActiveHeading(force: Bool = false) {

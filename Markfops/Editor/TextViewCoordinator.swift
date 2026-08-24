@@ -28,8 +28,11 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
     private var scrollAnimationStartTime: CFTimeInterval?
     private var scrollAnimationLastStep: CFTimeInterval?
     private var userScrollGesture = UserScrollGestureState()
+    private var userScrollIdleResetItem: DispatchWorkItem?
+    private var userScrollIdleResetGeneration = 0
 
     private static let headingScrollSettlingDistance: CGFloat = 0.2
+    static let userScrollIdleResetDelay: TimeInterval = 0.25
 
     init(document: Document) {
         self.document = document
@@ -41,6 +44,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
 
     func attach(scrollView: NSScrollView) {
         observedScrollView = scrollView
+        cancelUserScrollIdleReset()
         userScrollGesture.end()
     }
 
@@ -53,6 +57,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         guard textView.textStorage === document.textStorage else { return false }
         headingDebounceItem?.cancel()
         stopScrollAnimation()
+        cancelUserScrollIdleReset()
         userScrollGesture.end()
         self.document = document
         self.textView = textView
@@ -63,6 +68,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         headingDebounceItem?.cancel()
         headingDebounceItem = nil
         stopScrollAnimation()
+        cancelUserScrollIdleReset()
         NotificationCenter.default.removeObserver(self)
         if let textView,
            let layoutManager = textView.layoutManager,
@@ -211,6 +217,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         if userScrollGesture.begin() {
             document.registerUserContentScroll()
         }
+        scheduleUserScrollIdleReset()
         let visibleRect = scrollView.contentView.documentVisibleRect
         let totalHeight = docView.bounds.height
         guard totalHeight > 0 else { document.scrollRatio = 0; return }
@@ -223,7 +230,30 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
 
     @objc func scrollViewDidEndLiveScroll(_ notification: Notification) {
         guard notification.object as? NSScrollView === observedScrollView else { return }
+        cancelUserScrollIdleReset()
         userScrollGesture.end()
+    }
+
+    private func scheduleUserScrollIdleReset() {
+        cancelUserScrollIdleReset()
+        let generation = userScrollIdleResetGeneration
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self,
+                  self.userScrollIdleResetGeneration == generation else { return }
+            self.userScrollGesture.end()
+            self.userScrollIdleResetItem = nil
+        }
+        userScrollIdleResetItem = workItem
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + Self.userScrollIdleResetDelay,
+            execute: workItem
+        )
+    }
+
+    private func cancelUserScrollIdleReset() {
+        userScrollIdleResetGeneration &+= 1
+        userScrollIdleResetItem?.cancel()
+        userScrollIdleResetItem = nil
     }
 
     func scrollToRatio(_ ratio: Double) {
