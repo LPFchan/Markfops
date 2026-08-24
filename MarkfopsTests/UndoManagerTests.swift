@@ -344,6 +344,24 @@ final class UndoManagerTests: XCTestCase {
         XCTAssertEqual(editor.coordinator.currentScrollRatio() ?? -1, 0.5, accuracy: 0.01)
     }
 
+    func testEditorCanCenterARequestedSourceLine() {
+        let text = (0..<240).map { "Line \($0)" }.joined(separator: "\n")
+        let document = Document(rawText: text)
+        let editor = makeEditor(for: document)
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 600, height: 300))
+        editor.textView.frame = NSRect(x: 0, y: 0, width: 600, height: 5_000)
+        editor.textView.textContainer?.containerSize = NSSize(
+            width: 560,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        scrollView.documentView = editor.textView
+        editor.coordinator.attach(scrollView: scrollView)
+        editor.textView.layoutManager?.ensureLayout(for: editor.textView.textContainer!)
+
+        XCTAssertTrue(editor.coordinator.scrollToSourceLineCentered(150))
+        XCTAssertEqual(editor.coordinator.currentSourceLineAtViewportCenter(), 150)
+    }
+
     func testHiddenEditorScrollDoesNotOverwriteActiveSurfaceRatio() {
         let document = Document(rawText: longDocument(prefix: "Hidden"))
         document.scrollRatio = 0.73
@@ -371,6 +389,35 @@ final class UndoManagerTests: XCTestCase {
         bridge.setPendingScrollRatio(0.42, applyImmediately: false)
 
         XCTAssertEqual(coordinator.pendingScrollRatio ?? -1, 0.42, accuracy: 0.001)
+    }
+
+    func testPreviewViewportRestoreKeepsSourceLineWhileContentUpdates() {
+        let bridge = PreviewBridge()
+        let coordinator = PreviewView.Coordinator()
+        coordinator.isPageReady = true
+        bridge.coordinator = coordinator
+
+        bridge.setPendingViewportRestore(
+            sourceLine: 84,
+            ratio: 0.42,
+            applyImmediately: false
+        )
+
+        XCTAssertEqual(coordinator.pendingViewportSourceLine, 84)
+        XCTAssertEqual(coordinator.pendingScrollRatio ?? -1, 0.42, accuracy: 0.001)
+    }
+
+    func testPreviewViewportAnchorDecodesSourceLineAndFallbackRatio() {
+        let anchor = PreviewViewportAnchor(messageBody: [
+            "sourceLine": NSNumber(value: 84),
+            "ratio": NSNumber(value: 0.42)
+        ])
+
+        XCTAssertEqual(anchor, PreviewViewportAnchor(
+            messageBody: ["sourceLine": NSNumber(value: 84), "ratio": NSNumber(value: 0.42)]
+        ))
+        XCTAssertEqual(anchor?.sourceLine, 84)
+        XCTAssertEqual(anchor?.ratio ?? -1, 0.42, accuracy: 0.001)
     }
 
     func testPreviewScrollReportCarriesUserGestureSeparatelyFromRatio() {

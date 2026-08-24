@@ -121,8 +121,17 @@ enum MarkdownHeadingFormatter {
 final class EditorBridge {
     weak var coordinator: TextViewCoordinator?
 
+    func currentSourceLineAtViewportCenter() -> Int? {
+        coordinator?.currentSourceLineAtViewportCenter()
+    }
+
     func currentScrollRatio() -> Double? {
         coordinator?.currentScrollRatio()
+    }
+
+    @discardableResult
+    func scrollToSourceLineCentered(_ sourceLine: Int) -> Bool {
+        coordinator?.scrollToSourceLineCentered(sourceLine) ?? false
     }
 
     func scrollToRatio(_ ratio: Double) {

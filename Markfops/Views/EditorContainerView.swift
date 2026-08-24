@@ -98,22 +98,29 @@ struct EditorContainerView: View {
             if oldMode == .preview && newMode == .edit {
                 let fallbackRatio = document.scrollRatio
                 let documentID = document.id
-                bridge.currentScrollRatio { liveRatio in
+                bridge.currentViewportAnchor { anchor in
                     DispatchQueue.main.async {
                         guard document.id == documentID, document.mode == .edit else { return }
-                        let ratio = liveRatio ?? fallbackRatio
+                        let ratio = anchor?.ratio ?? fallbackRatio
                         document.scrollRatio = ratio
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                             guard document.id == documentID, document.mode == .edit else { return }
-                            editorBridge.scrollToRatio(ratio)
+                            if anchor.map({ editorBridge.scrollToSourceLineCentered($0.sourceLine) }) != true {
+                                editorBridge.scrollToRatio(ratio)
+                            }
                             _ = editorBridge.focus()
                         }
                     }
                 }
             } else if newMode == .preview {
                 let ratio = editorBridge.currentScrollRatio() ?? document.scrollRatio
+                let sourceLine = editorBridge.currentSourceLineAtViewportCenter()
                 document.scrollRatio = ratio
-                refreshPreviewPreservingScroll(from: document.rawText, ratio: ratio)
+                refreshPreviewPreservingScroll(
+                    from: document.rawText,
+                    sourceLine: sourceLine,
+                    ratio: ratio
+                )
                 let documentID = document.id
                 DispatchQueue.main.async {
                     guard document.id == documentID, document.mode == .preview else { return }
@@ -136,9 +143,17 @@ struct EditorContainerView: View {
         }
     }
 
-    private func refreshPreviewPreservingScroll(from text: String, ratio: Double) {
+    private func refreshPreviewPreservingScroll(
+        from text: String,
+        sourceLine: Int? = nil,
+        ratio: Double
+    ) {
         let contentChanged = refreshPreview(from: text)
-        bridge.setPendingScrollRatio(ratio, applyImmediately: !contentChanged)
+        bridge.setPendingViewportRestore(
+            sourceLine: sourceLine,
+            ratio: ratio,
+            applyImmediately: !contentChanged
+        )
     }
 
     @discardableResult

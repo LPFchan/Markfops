@@ -11,7 +11,8 @@ final class PreviewBridge {
     weak var coordinator: PreviewView.Coordinator? {
         didSet {
             if let request = _bufferedScrollRequest, let coord = coordinator {
-                coord.setPendingScrollRatio(
+                coord.setPendingViewportRestore(
+                    sourceLine: request.sourceLine,
                     request.ratio,
                     applyImmediately: request.applyImmediately
                 )
@@ -25,7 +26,9 @@ final class PreviewBridge {
     }
     /// Holds a scroll ratio when setPendingScrollRatio is called before the
     /// coordinator exists (i.e. before makeNSView runs for this mode switch).
-    private var _bufferedScrollRequest: (ratio: Double, applyImmediately: Bool)?
+    private var _bufferedScrollRequest: (
+        sourceLine: Int?, ratio: Double, applyImmediately: Bool
+    )?
     private var _bufferedHeading: HeadingNode?
 
     func extractText(completion: @escaping (String) -> Void) {
@@ -60,13 +63,46 @@ final class PreviewBridge {
         coordinator?.currentScrollRatio(completion: completion) ?? completion(nil)
     }
 
+    func currentViewportAnchor(completion: @escaping (PreviewViewportAnchor?) -> Void) {
+        coordinator?.currentViewportAnchor(completion: completion) ?? completion(nil)
+    }
+
     func setPendingScrollRatio(_ ratio: Double, applyImmediately: Bool = true) {
+        setPendingViewportRestore(
+            sourceLine: nil,
+            ratio: ratio,
+            applyImmediately: applyImmediately
+        )
+    }
+
+    func setPendingViewportRestore(
+        sourceLine: Int?,
+        ratio: Double,
+        applyImmediately: Bool = true
+    ) {
         guard let coordinator else {
-            _bufferedScrollRequest = (ratio, applyImmediately)
+            _bufferedScrollRequest = (sourceLine, ratio, applyImmediately)
             return
         }
         _bufferedScrollRequest = nil
-        coordinator.setPendingScrollRatio(ratio, applyImmediately: applyImmediately)
+        coordinator.setPendingViewportRestore(
+            sourceLine: sourceLine,
+            ratio,
+            applyImmediately: applyImmediately
+        )
+    }
+}
+
+struct PreviewViewportAnchor: Equatable {
+    let sourceLine: Int
+    let ratio: Double
+
+    init?(messageBody: Any) {
+        guard let payload = messageBody as? [String: Any],
+              let sourceLine = payload["sourceLine"] as? NSNumber,
+              let ratio = payload["ratio"] as? NSNumber else { return nil }
+        self.sourceLine = sourceLine.intValue
+        self.ratio = ratio.doubleValue
     }
 }
 
@@ -157,6 +193,7 @@ struct PreviewView: NSViewRepresentable {
         var onUserScroll: (() -> Void)?
         /// Ratio [0,1] to scroll to once the next page load finishes.
         var pendingScrollRatio: Double?
+        var pendingViewportSourceLine: Int?
         var pendingHeading: HeadingNode?
         var pendingMorphSourceLine: Int?
         private var lastReportedUserScrollGesture = 0
@@ -273,27 +310,61 @@ struct PreviewView: NSViewRepresentable {
             }
         }
 
-        func setPendingScrollRatio(_ ratio: Double, applyImmediately: Bool) {
-            pendingScrollRatio = max(0, min(1, ratio))
-            if applyImmediately {
-                applyPendingScrollRatioIfReady()
+        func currentViewportAnchor(completion: @escaping (PreviewViewportAnchor?) -> Void) {
+            guard isPageReady, let webView else {
+                completion(nil)
+                return
+            }
+            let js = """
+            (function() {
+                if (!window.__markfopsPreview) return null;
+                return window.__markfopsPreview.viewportAnchor();
+            })();
+            """
+            webView.evaluateJavaScript(js) { result, _ in
+                completion(PreviewViewportAnchor(messageBody: result as Any))
             }
         }
 
-        private func applyPendingScrollRatioIfReady() {
+        func setPendingScrollRatio(_ ratio: Double, applyImmediately: Bool) {
+            setPendingViewportRestore(
+                sourceLine: nil,
+                ratio,
+                applyImmediately: applyImmediately
+            )
+        }
+
+        func setPendingViewportRestore(
+            sourceLine: Int?,
+            _ ratio: Double,
+            applyImmediately: Bool
+        ) {
+            pendingViewportSourceLine = sourceLine
+            pendingScrollRatio = max(0, min(1, ratio))
+            if applyImmediately {
+                applyPendingViewportRestoreIfReady()
+            }
+        }
+
+        private func applyPendingViewportRestoreIfReady() {
             guard isPageReady,
                   !isBodyUpdateInFlight,
                   let webView,
                   let ratio = pendingScrollRatio else { return }
+            let sourceLine = pendingViewportSourceLine.map(String.init) ?? "null"
+            pendingViewportSourceLine = nil
             pendingScrollRatio = nil
             let js = """
             (function() {
-                var h = document.documentElement.scrollHeight;
-                if (h > 0) {
-                    var targetY = \(ratio) * h - window.innerHeight / 2;
-                    window.__markfopsProgrammaticScrollUntil = performance.now() + 180;
-                    window.scrollTo(0, Math.max(0, Math.round(targetY)));
+                if (window.__markfopsPreview) {
+                    window.__markfopsPreview.restoreViewport(\(sourceLine), \(ratio));
+                    return;
                 }
+                var h = document.documentElement.scrollHeight;
+                if (h <= 0) return;
+                var targetY = \(ratio) * h - window.innerHeight / 2;
+                window.__markfopsProgrammaticScrollUntil = performance.now() + 180;
+                window.scrollTo(0, Math.max(0, Math.round(targetY)));
             })();
             """
             webView.evaluateJavaScript(js)
@@ -304,14 +375,22 @@ struct PreviewView: NSViewRepresentable {
                   let encodedHTML = Self.javaScriptStringLiteral(html) else { return }
 
             let sourceLine = pendingMorphSourceLine.map(String.init) ?? "null"
+            let requestedViewportSourceLine = pendingViewportSourceLine
+            let viewportSourceLine = requestedViewportSourceLine.map(String.init) ?? "null"
             let requestedScrollRatio = pendingScrollRatio
             let requestedRatio = requestedScrollRatio.map { String($0) } ?? "null"
+            pendingViewportSourceLine = nil
             pendingScrollRatio = nil
             isBodyUpdateInFlight = true
             let js = """
             (function() {
                 if (!window.__markfopsPreview) return false;
-                return window.__markfopsPreview.applyHTML(\(encodedHTML), \(sourceLine), \(requestedRatio));
+                return window.__markfopsPreview.applyHTML(
+                    \(encodedHTML),
+                    \(sourceLine),
+                    \(viewportSourceLine),
+                    \(requestedRatio)
+                );
             })();
             """
 
@@ -321,9 +400,10 @@ struct PreviewView: NSViewRepresentable {
                 if error == nil {
                     self.pendingMorphSourceLine = nil
                 } else if self.pendingScrollRatio == nil {
+                    self.pendingViewportSourceLine = requestedViewportSourceLine
                     self.pendingScrollRatio = requestedScrollRatio
                 }
-                self.applyPendingScrollRatioIfReady()
+                self.applyPendingViewportRestoreIfReady()
             }
         }
 
@@ -493,8 +573,135 @@ struct PreviewView: NSViewRepresentable {
                     }, 320);
                 }
 
+                function sourceRange(node) {
+                    var start = Number(node.getAttribute('data-markfops-source-line'));
+                    if (!Number.isFinite(start)) return null;
+                    var end = start;
+                    var sourcePosition = node.getAttribute('data-sourcepos') || '';
+                    var match = sourcePosition.match(/^(\\d+):\\d+-(\\d+):\\d+$/);
+                    if (match) {
+                        start = Math.max(0, Number(match[1]) - 1);
+                        end = Math.max(start, Number(match[2]) - 1);
+                    }
+                    return { start: start, end: end };
+                }
+
+                var sourceBlocks = [];
+                function rebuildSourceBlocks() {
+                    sourceBlocks = Array.from(
+                        article.querySelectorAll('[data-markfops-source-line]')
+                    ).map(function(node) {
+                        return { node: node, range: sourceRange(node) };
+                    }).filter(function(block) {
+                        return block.range !== null;
+                    });
+                }
+
+                function closestSourceNode(node) {
+                    while (node && node !== article) {
+                        if (node.nodeType === Node.ELEMENT_NODE
+                            && node.hasAttribute('data-markfops-source-line')) {
+                            return node;
+                        }
+                        node = node.parentNode;
+                    }
+                    return null;
+                }
+
+                function blockAtViewportCenter() {
+                    var centerY = window.innerHeight / 2;
+                    var articleRect = article.getBoundingClientRect();
+                    var centerX = Math.max(
+                        articleRect.left + 1,
+                        Math.min(articleRect.right - 1, window.innerWidth / 2)
+                    );
+                    var directNode = closestSourceNode(document.elementFromPoint(centerX, centerY));
+                    if (directNode) {
+                        return { node: directNode, rect: directNode.getBoundingClientRect() };
+                    }
+
+                    var best = null;
+                    var bestDistance = Number.POSITIVE_INFINITY;
+                    sourceBlocks.forEach(function(block) {
+                        var rect = block.node.getBoundingClientRect();
+                        if (rect.height <= 0) return;
+                        var distance = centerY < rect.top
+                            ? rect.top - centerY
+                            : centerY > rect.bottom
+                                ? centerY - rect.bottom
+                                : 0;
+                        if (distance < bestDistance) {
+                            best = { node: block.node, rect: rect };
+                            bestDistance = distance;
+                        }
+                    });
+                    return best;
+                }
+
+                function viewportAnchor() {
+                    var total = document.documentElement.scrollHeight;
+                    if (total <= 0) return null;
+                    var block = blockAtViewportCenter();
+                    if (!block) return null;
+                    var range = sourceRange(block.node);
+                    if (!range) return null;
+                    var fraction = Math.max(0, Math.min(1,
+                        (window.innerHeight / 2 - block.rect.top) / Math.max(1, block.rect.height)
+                    ));
+                    var sourceLine = Math.round(range.start + fraction * (range.end - range.start));
+                    return {
+                        sourceLine: sourceLine,
+                        ratio: (window.scrollY + window.innerHeight / 2) / total
+                    };
+                }
+
+                function restoreViewport(sourceLine, fallbackRatio) {
+                    var targetDocumentY = null;
+                    if (typeof sourceLine === 'number' && !Number.isNaN(sourceLine)) {
+                        var best = null;
+                        var bestDistance = Number.POSITIVE_INFINITY;
+                        sourceBlocks.forEach(function(block) {
+                            var distance = sourceLine < block.range.start
+                                ? block.range.start - sourceLine
+                                : sourceLine > block.range.end
+                                    ? sourceLine - block.range.end
+                                    : 0;
+                            var isMoreSpecific = best !== null
+                                && distance === bestDistance
+                                && (block.range.end - block.range.start)
+                                    < (best.range.end - best.range.start);
+                            if (distance < bestDistance || isMoreSpecific) {
+                                best = block;
+                                bestDistance = distance;
+                            }
+                        });
+                        if (best) {
+                            var rect = best.node.getBoundingClientRect();
+                            var fraction = best.range.end > best.range.start
+                                ? Math.max(0, Math.min(1,
+                                    (sourceLine - best.range.start) / (best.range.end - best.range.start)
+                                ))
+                                : 0.5;
+                            targetDocumentY = rect.top + window.scrollY + rect.height * fraction;
+                        }
+                    }
+
+                    var total = document.documentElement.scrollHeight;
+                    if (targetDocumentY === null && total > 0) {
+                        targetDocumentY = fallbackRatio * total;
+                    }
+                    if (targetDocumentY === null) return false;
+                    window.__markfopsProgrammaticScrollUntil = performance.now() + 180;
+                    window.scrollTo(0, Math.max(0, Math.round(targetDocumentY - window.innerHeight / 2)));
+                    return true;
+                }
+
+                rebuildSourceBlocks();
+
                 window.__markfopsPreview = {
-                    applyHTML: function(nextHTML, sourceLine, requestedRatio) {
+                    viewportAnchor: viewportAnchor,
+                    restoreViewport: restoreViewport,
+                    applyHTML: function(nextHTML, sourceLine, viewportSourceLine, requestedRatio) {
                         var previousStyles = snapshotBlockStyles();
                         var totalBefore = document.documentElement.scrollHeight;
                         var ratio = typeof requestedRatio === 'number' && !Number.isNaN(requestedRatio)
@@ -504,13 +711,9 @@ struct PreviewView: NSViewRepresentable {
                                 : 0;
 
                         article.innerHTML = nextHTML;
+                        rebuildSourceBlocks();
 
-                        var totalAfter = document.documentElement.scrollHeight;
-                        if (totalAfter > 0) {
-                            var targetY = ratio * totalAfter - window.innerHeight / 2;
-                            window.__markfopsProgrammaticScrollUntil = performance.now() + 180;
-                            window.scrollTo(0, Math.max(0, Math.round(targetY)));
-                        }
+                        restoreViewport(viewportSourceLine, ratio);
 
                         if (typeof sourceLine === 'number' && !Number.isNaN(sourceLine)) {
                             var target = article.querySelector('[data-markfops-source-line="' + sourceLine + '"]');
@@ -587,7 +790,7 @@ struct PreviewView: NSViewRepresentable {
 
             // Apply deferred scroll ratio now that the page is ready.
             // ratio = center-of-viewport / scrollHeight, so restore: scrollTo(ratio*h - innerHeight/2)
-            applyPendingScrollRatioIfReady()
+            applyPendingViewportRestoreIfReady()
 
             if let heading = pendingHeading {
                 pendingHeading = nil

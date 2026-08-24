@@ -264,6 +264,18 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         return currentScrollRatio(in: scrollView, documentView: textView)
     }
 
+    func currentSourceLineAtViewportCenter() -> Int? {
+        guard let textView,
+              let scrollView = textView.enclosingScrollView else { return nil }
+        let visibleRect = scrollView.contentView.documentVisibleRect
+        let probePoint = NSPoint(
+            x: textView.textContainerOrigin.x + 1,
+            y: visibleRect.midY
+        )
+        let characterOffset = textView.characterIndexForInsertion(at: probePoint)
+        return document.sourceLine(containingUTF16Offset: characterOffset)
+    }
+
     private func currentScrollRatio(
         in scrollView: NSScrollView,
         documentView: NSView
@@ -289,6 +301,43 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         tv.scroll(NSPoint(x: 0, y: targetY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
         syncActiveHeadingToVisibleContent(in: scrollView)
+    }
+
+    @discardableResult
+    func scrollToSourceLineCentered(_ sourceLine: Int) -> Bool {
+        guard let textView,
+              let scrollView = textView.enclosingScrollView,
+              let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer,
+              let lineRange = Self.sourceRange(forLine: sourceLine, in: textView.string) else {
+            return false
+        }
+
+        stopScrollAnimation()
+        layoutManager.ensureLayout(for: textContainer)
+        scrollView.layoutSubtreeIfNeeded()
+
+        let characterRange: NSRange
+        if lineRange.length > 0 {
+            characterRange = lineRange
+        } else {
+            characterRange = NSRange(location: lineRange.location, length: 0)
+        }
+        let glyphRange = layoutManager.glyphRange(
+            forCharacterRange: characterRange,
+            actualCharacterRange: nil
+        )
+        var lineRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+        lineRect.origin.x += textView.textContainerOrigin.x
+        lineRect.origin.y += textView.textContainerOrigin.y
+
+        let visibleHeight = scrollView.contentView.bounds.height
+        let scrollableHeight = max(0, textView.bounds.height - visibleHeight)
+        let targetY = max(0, min(scrollableHeight, lineRect.midY - visibleHeight / 2))
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        syncActiveHeadingToVisibleContent(in: scrollView)
+        return true
     }
 
     func scheduleScrollRestoration(to ratio: Double, attemptsRemaining: Int = 3) {
@@ -434,18 +483,11 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
     }
 
     private func syncActiveHeadingToVisibleContent(in scrollView: NSScrollView) {
-        guard let textView else {
+        guard textView != nil else {
             document.syncActiveHeadingToScrollPosition()
             return
         }
-
-        let visibleRect = scrollView.contentView.documentVisibleRect
-        let probePoint = NSPoint(
-            x: textView.textContainerOrigin.x + 1,
-            y: visibleRect.midY
-        )
-        let characterOffset = textView.characterIndexForInsertion(at: probePoint)
-        let sourceLine = document.sourceLine(containingUTF16Offset: characterOffset)
+        guard let sourceLine = currentSourceLineAtViewportCenter() else { return }
         document.syncActiveHeading(toSourceLine: sourceLine)
     }
 
