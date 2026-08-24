@@ -119,6 +119,37 @@ final class HeadingParserTests: XCTestCase {
         ])
     }
 
+    func testSidebarKeepsEveryExpandedDocumentAsATOCSection() {
+        let expandedStates = [true, false, true, true, false]
+        let visibleCount = expandedStates.reduce(into: 0) { count, isExpanded in
+            if SidebarDocumentModel.showsTableOfContents(
+                isExpanded: isExpanded,
+                hasHeadings: true,
+                isDragging: false
+            ) {
+                count += 1
+            }
+        }
+
+        XCTAssertEqual(visibleCount, 3)
+        XCTAssertFalse(SidebarDocumentModel.showsTableOfContents(
+            isExpanded: true,
+            hasHeadings: true,
+            isDragging: true
+        ))
+    }
+
+    @MainActor
+    func testMarkdownFileIconsShareOneWorkspaceLookup() {
+        let cache = DocumentFileIconCache()
+        let icons = (0..<200).map { index in
+            cache.icon(for: URL(fileURLWithPath: "/tmp/Document-\(index).md"))
+        }
+
+        XCTAssertEqual(cache.workspaceLookupCount, 1)
+        XCTAssertTrue(icons.dropFirst().allSatisfy { $0 === icons[0] })
+    }
+
     func testDocumentReloadsOnlyAfterBackingFileChanges() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("MarkfopsFileSignatureTests-\(UUID().uuidString)")

@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 /// Colored square badge showing the first letter of the document title.
 /// When the document has no H1 heading, shows the system Finder icon for the
-/// file (or the generic plain-text icon for unsaved documents) loaded asynchronously.
+/// file type (or the generic plain-text icon for unsaved documents).
 struct FaviconBadge: View {
     let letter: String
     var size: CGFloat = 24
@@ -12,12 +12,10 @@ struct FaviconBadge: View {
     var fileURL: URL? = nil
     var hasH1: Bool = true
 
-    @State private var cachedIcon: NSImage? = nil
-
     var body: some View {
         Group {
-            if !hasH1, let icon = cachedIcon {
-                Image(nsImage: icon)
+            if !hasH1 {
+                Image(nsImage: DocumentFileIconCache.shared.icon(for: fileURL))
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: size, height: size)
@@ -32,21 +30,27 @@ struct FaviconBadge: View {
                 }
             }
         }
-        .task(id: "\(hasH1)-\(fileURL?.path ?? "")") {
-            guard !hasH1 else { cachedIcon = nil; return }
-            cachedIcon = await loadIcon(for: fileURL)
-        }
     }
+}
 
-    private func loadIcon(for url: URL?) async -> NSImage {
-        await Task.detached(priority: .utility) {
-            if let url {
-                return NSWorkspace.shared.icon(forFile: url.path)
-            }
-            if let type = UTType(filenameExtension: "md") {
-                return NSWorkspace.shared.icon(for: type)
-            }
-            return NSWorkspace.shared.icon(for: .plainText)
-        }.value
+/// File-type icons are shared across rows. Markfops opens Markdown documents, so hundreds of
+/// distinct file URLs should still resolve through one NSWorkspace lookup and appear immediately.
+@MainActor
+final class DocumentFileIconCache {
+    static let shared = DocumentFileIconCache()
+
+    private var iconsByType: [String: NSImage] = [:]
+    private(set) var workspaceLookupCount = 0
+
+    func icon(for url: URL?) -> NSImage {
+        let fileExtension = url?.pathExtension.lowercased()
+        let key = fileExtension.flatMap { $0.isEmpty ? nil : $0 } ?? "public.plain-text"
+        if let icon = iconsByType[key] { return icon }
+
+        let type = fileExtension.flatMap { UTType(filenameExtension: $0) } ?? .plainText
+        let icon = NSWorkspace.shared.icon(for: type)
+        iconsByType[key] = icon
+        workspaceLookupCount += 1
+        return icon
     }
 }

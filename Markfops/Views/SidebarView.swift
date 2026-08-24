@@ -49,6 +49,16 @@ enum SidebarTOCModel {
     }
 }
 
+enum SidebarDocumentModel {
+    static func showsTableOfContents(
+        isExpanded: Bool,
+        hasHeadings: Bool,
+        isDragging: Bool
+    ) -> Bool {
+        isExpanded && hasHeadings && !isDragging
+    }
+}
+
 final class SidebarScrollContext {
     weak var scrollView: NSScrollView?
     var lastTargetY: CGFloat?
@@ -150,56 +160,7 @@ struct SidebarView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
                     ForEach(Array(store.documents.enumerated()), id: \.element.id) { i, document in
-                        Section {
-                            // Collapse TOC while this pill is being dragged
-                            let isVisible = (tocVisible[document.id] ?? false)
-                                && TabDragState.shared.draggingDocumentID != document.id
-                            if isVisible && !document.headings.isEmpty {
-                                ForEach(
-                                    SidebarTOCModel.rows(
-                                        headings: document.headings,
-                                        collapsedHeadingIDs: document.collapsedHeadingIDs
-                                    )
-                                ) { row in
-                                    let heading = row.heading
-                                    TOCItemView(
-                                        heading: heading,
-                                        isHighlighted: document.activeHeadingID == heading.id,
-                                        isCollapsible: row.hasChildren,
-                                        isCollapsed: document.collapsedHeadingIDs.contains(heading.id),
-                                        onTap: {
-                                            pendingImmediateTOCScrollTarget = heading.id
-                                            if store.activeID != document.id {
-                                                store.activeID = document.id
-                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                                    onTOCTap(heading)
-                                                }
-                                            } else {
-                                                onTOCTap(heading)
-                                            }
-                                        },
-                                        onToggleCollapse: {
-                                            withAnimation(.spring(duration: 0.22)) {
-                                                toggleCollapse(heading, in: document)
-                                            }
-                                        }
-                                    )
-                                    .id(heading.id)
-                                    .padding(.horizontal, 6)
-                                    .background {
-                                        GeometryReader { geo in
-                                            Color.clear.preference(
-                                                key: TOCHeadingMidYKey.self,
-                                                value: [heading.id: geo.frame(in: .named(sidebarTOCContentSpace)).midY]
-                                            )
-                                        }
-                                    }
-                                }
-                                .padding(.bottom, 4)
-                            }
-                        } header: {
-                            sectionHeader(document: document, index: i)
-                        }  // Section
+                        documentEntry(document: document, index: i)
                     }  // ForEach
                 }  // LazyVStack
                 .padding(.vertical, 4)
@@ -274,8 +235,10 @@ struct SidebarView: View {
             }
         }
         .onAppear {
-            for doc in store.documents {
-                tocVisible[doc.id] = doc.isTOCExpanded && doc.id == store.activeID
+            if let activeDocument = store.activeDocument, activeDocument.isTOCExpanded {
+                tocVisible = [activeDocument.id: true]
+            } else {
+                tocVisible = [:]
             }
         }
         .onDisappear {
@@ -286,6 +249,68 @@ struct SidebarView: View {
     }
 
     // MARK: - Section header (extracted to help Swift type-checker)
+
+    @ViewBuilder
+    private func documentEntry(document: Document, index: Int) -> some View {
+        if SidebarDocumentModel.showsTableOfContents(
+            isExpanded: tocVisible[document.id] ?? false,
+            hasHeadings: !document.headings.isEmpty,
+            isDragging: TabDragState.shared.draggingDocumentID == document.id
+        ) {
+            Section {
+                tableOfContents(for: document)
+            } header: {
+                sectionHeader(document: document, index: index)
+            }
+        } else {
+            sectionHeader(document: document, index: index)
+        }
+    }
+
+    @ViewBuilder
+    private func tableOfContents(for document: Document) -> some View {
+        ForEach(
+            SidebarTOCModel.rows(
+                headings: document.headings,
+                collapsedHeadingIDs: document.collapsedHeadingIDs
+            )
+        ) { row in
+            let heading = row.heading
+            TOCItemView(
+                heading: heading,
+                isHighlighted: document.activeHeadingID == heading.id,
+                isCollapsible: row.hasChildren,
+                isCollapsed: document.collapsedHeadingIDs.contains(heading.id),
+                onTap: {
+                    pendingImmediateTOCScrollTarget = heading.id
+                    if store.activeID != document.id {
+                        store.activeID = document.id
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            onTOCTap(heading)
+                        }
+                    } else {
+                        onTOCTap(heading)
+                    }
+                },
+                onToggleCollapse: {
+                    withAnimation(.spring(duration: 0.22)) {
+                        toggleCollapse(heading, in: document)
+                    }
+                }
+            )
+            .id(heading.id)
+            .padding(.horizontal, 6)
+            .background {
+                GeometryReader { geo in
+                    Color.clear.preference(
+                        key: TOCHeadingMidYKey.self,
+                        value: [heading.id: geo.frame(in: .named(sidebarTOCContentSpace)).midY]
+                    )
+                }
+            }
+        }
+        .padding(.bottom, 4)
+    }
 
     @ViewBuilder
     private func sectionHeader(document: Document, index: Int) -> some View {

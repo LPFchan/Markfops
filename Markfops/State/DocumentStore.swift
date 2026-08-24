@@ -52,7 +52,7 @@ final class DocumentStore {
     }
 
     @discardableResult
-    func open(url: URL, activate: Bool = true) -> Document {
+    func open(url: URL, activate: Bool = true, recordRecent: Bool = true) -> Document {
         if let existing = documents.first(where: { $0.fileURL == url }) {
             if activate { activeID = existing.id }
             return existing
@@ -63,15 +63,17 @@ final class DocumentStore {
         doc.headings = HeadingParser.parseHeadings(in: text)
         documents.append(doc)
         if activate { activeID = doc.id }
-        NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        if recordRecent {
+            NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        }
         return doc
     }
 
     /// Opens a URL in this store without consulting another window. The coordinator is the
     /// only app-level caller, so global uniqueness remains centralized there.
     @discardableResult
-    func openLocally(url: URL, activate: Bool = true) -> Document {
-        open(url: url, activate: activate)
+    func openLocally(url: URL, activate: Bool = true, recordRecent: Bool = true) -> Document {
+        open(url: url, activate: activate, recordRecent: recordRecent)
     }
 
     func save(_ document: Document) throws {
@@ -592,9 +594,16 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
             if let owner = owner(of: url) {
                 finalSelection = (owner.id, owner.document.id)
             } else {
-                let document = target.store.openLocally(url: url, activate: false)
+                let document = target.store.openLocally(
+                    url: url,
+                    activate: false,
+                    recordRecent: false
+                )
                 finalSelection = (target.id, document.id)
             }
+        }
+        if let finalURL = normalizedURLs.last {
+            NSDocumentController.shared.noteNewRecentDocumentURL(finalURL)
         }
         if let finalSelection {
             focus(

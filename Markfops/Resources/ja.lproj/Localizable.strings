@@ -33,9 +33,7 @@
 
 /* Welcome screen */
 "Markfops" = "Markfops";
-"Lightweight Markdown editor for macOS" = "macOS向けの軽量 Markdown エディタ";
 "Open…" = "開く…";
-"Drop a .md file anywhere to open it" = ".md ファイルをどこにでもドロップして開く";
 
 /* Settings */
 "Updates" = "アップデート";

@@ -68,8 +68,6 @@
 
 /* Welcome screen */
 "Markfops" = "Markfops";
-"Lightweight Markdown editor for macOS" = "macOS용 경량 마크다운 편집기";
-"Drop a .md file anywhere to open it" = ".md 파일을 어디든 드래그하여 열어보세요";
 
 /* Settings */
 "Updates" = "업데이트";

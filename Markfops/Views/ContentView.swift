@@ -195,9 +195,6 @@ private struct WelcomeView: View {
             Text("Markfops")
                 .font(.largeTitle.bold())
 
-            Text("Lightweight Markdown editor for macOS")
-                .foregroundColor(.secondary)
-
             HStack(spacing: 12) {
                 Button("New Document") { store.newDocument() }
                     .keyboardShortcut("n", modifiers: .command)
@@ -216,10 +213,6 @@ private struct WelcomeView: View {
                 }
                 .buttonStyle(.bordered)
             }
-
-            Text("Drop a .md file anywhere to open it")
-                .font(.caption)
-                .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(NSColor.textBackgroundColor))
