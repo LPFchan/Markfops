@@ -5,6 +5,31 @@ import XCTest
 @testable import Markfops
 
 final class UndoManagerTests: XCTestCase {
+    func testHeadingNavigationUsesUTF16RangeForUnicodeText() {
+        let heading = "## GPIO (XIAO ESP32-S3) 🔌"
+        let text = "# Ninebot 🛴\n한국어 설명 🦊\r\n\(heading)\nBody"
+        let expectedRange = (text as NSString).range(of: heading)
+        let document = Document(rawText: text)
+        let editor = makeEditor(for: document)
+
+        editor.coordinator.scrollToLine(2)
+
+        XCTAssertEqual(editor.textView.selectedRange().location, expectedRange.location)
+        var highlightedRange = NSRange(location: NSNotFound, length: 0)
+        XCTAssertNotNil(
+            editor.textView.layoutManager?.temporaryAttribute(
+                .backgroundColor,
+                atCharacterIndex: expectedRange.location,
+                effectiveRange: &highlightedRange
+            )
+        )
+        XCTAssertEqual(highlightedRange, expectedRange)
+        XCTAssertEqual(
+            (text as NSString).substring(with: highlightedRange),
+            heading
+        )
+    }
+
     func testTextViewUsesDocumentUndoManagerAndSupportsUndoRedo() {
         let document = Document(rawText: "Hello")
         let editor = makeEditor(for: document)

@@ -239,14 +239,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
 
     func scrollToLine(_ lineNumber: Int) {
         guard let tv = textView else { return }
-        let lines = tv.string.components(separatedBy: "\n")
-        guard lineNumber < lines.count else { return }
-
-        var charOffset = 0
-        for i in 0..<lineNumber {
-            charOffset += lines[i].count + 1
-        }
-        let lineRange = NSRange(location: charOffset, length: lines[lineNumber].count)
+        guard let lineRange = Self.sourceRange(forLine: lineNumber, in: tv.string) else { return }
 
         // Scroll so the heading sits at the top of the visible area
         if let layoutManager = tv.layoutManager,
@@ -261,7 +254,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
             animateScroll(in: scrollView, to: targetY)
         }
 
-        tv.setSelectedRange(NSRange(location: charOffset, length: 0))
+        tv.setSelectedRange(NSRange(location: lineRange.location, length: 0))
         // Animated highlight: hold yellow for 0.6 s then fade out over 1.4 s
         guard let lm = tv.layoutManager else { return }
         let hlColor = NSColor.systemYellow
@@ -281,6 +274,35 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
                 }
             }
         }
+    }
+
+    static func sourceRange(forLine lineNumber: Int, in text: String) -> NSRange? {
+        guard lineNumber >= 0 else { return nil }
+
+        let source = text as NSString
+        var lineStart = 0
+
+        for _ in 0..<lineNumber {
+            guard lineStart < source.length else { return nil }
+            let remainingRange = NSRange(
+                location: lineStart,
+                length: source.length - lineStart
+            )
+            let newlineRange = source.range(of: "\n", options: [], range: remainingRange)
+            guard newlineRange.location != NSNotFound else { return nil }
+            lineStart = NSMaxRange(newlineRange)
+        }
+
+        guard lineStart < source.length else { return nil }
+        let remainingRange = NSRange(location: lineStart, length: source.length - lineStart)
+        let newlineRange = source.range(of: "\n", options: [], range: remainingRange)
+        var lineEnd = newlineRange.location == NSNotFound ? source.length : newlineRange.location
+
+        if lineEnd > lineStart, source.character(at: lineEnd - 1) == 0x0D {
+            lineEnd -= 1
+        }
+
+        return NSRange(location: lineStart, length: lineEnd - lineStart)
     }
 
     private func animateScroll(in scrollView: NSScrollView, to targetY: CGFloat) {
