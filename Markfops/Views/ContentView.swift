@@ -143,12 +143,15 @@ struct ContentView: View {
 private struct CompactToolbarPrincipalItem: View {
     let isCompact: Bool
     @Environment(DocumentStore.self) private var store
-    @State private var windowWidth: CGFloat = 720
 
-    private var compactIdealWidth: CGFloat {
-        // Leave room for traffic lights, the sidebar toggle, and the mode controls while letting
-        // the tab viewport consume the rest of a wide title bar.
-        max(300, windowWidth - 300)
+    private static let reservedChromeWidth: CGFloat = 244
+    private static let minimumIdealWidth: CGFloat = 180
+
+    /// Read synchronously when SwiftUI negotiates the toolbar item. Sidebar transitions leave the
+    /// window width unchanged, so the value stays fixed for the entire split-view animation.
+    private var idealWidth: CGFloat {
+        let windowWidth = store.managedWindow?.contentView?.bounds.width ?? 720
+        return max(Self.minimumIdealWidth, windowWidth - Self.reservedChromeWidth)
     }
 
     var body: some View {
@@ -163,22 +166,11 @@ private struct CompactToolbarPrincipalItem: View {
         .accessibilityHidden(!isCompact)
         .frame(
             minWidth: isCompact ? 120 : 0,
-            idealWidth: isCompact ? compactIdealWidth : 0,
+            idealWidth: isCompact ? idealWidth : 0,
             maxWidth: isCompact ? .infinity : 0
         )
         .frame(height: ToolbarMetrics.compactPillRowHeight)
         .layoutPriority(-1)
-        .onAppear { refreshWindowWidth() }
-        .onChange(of: isCompact) { _, _ in refreshWindowWidth() }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResizeNotification)) { note in
-            guard let window = note.object as? NSWindow, window === store.managedWindow else { return }
-            windowWidth = window.contentView?.bounds.width ?? window.frame.width
-        }
-    }
-
-    private func refreshWindowWidth() {
-        guard let window = store.managedWindow else { return }
-        windowWidth = window.contentView?.bounds.width ?? window.frame.width
     }
 }
 

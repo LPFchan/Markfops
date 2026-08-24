@@ -204,8 +204,9 @@ struct TabPillRowView: View {
         // No offset, no shadow, no zIndex boost — prevents the "two things moving" clutter.
         .opacity(isDragging ? 0.3 : (isAnyDragging ? 0.45 : 1.0))
         .scaleEffect(isDragging ? 0.92 : (isAnyDragging ? 0.96 : 1.0), anchor: .center)
-        // Animate pill width changes as tabs open/close.
-        .animation(.spring(duration: 0.28), value: uniformPillWidth)
+        // Animate deliberate tab-set changes. Viewport changes follow AppKit's toolbar layout
+        // directly so rendered pill frames cannot lag behind their allocated positions.
+        .animation(.spring(duration: 0.28), value: store.documents.count)
         .animation(.spring(duration: 0.22), value: isDragging)
         .animation(.spring(duration: 0.18), value: inDetachZone)
         .animation(.spring(duration: 0.15), value: isAnyDragging)
