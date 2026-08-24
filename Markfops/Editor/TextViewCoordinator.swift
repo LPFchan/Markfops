@@ -197,7 +197,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         // same content stays centered when switching between edit and preview modes.
         let centerY = visibleRect.minY + visibleRect.height / 2
         document.scrollRatio = max(0, min(1, Double(centerY / totalHeight)))
-        document.syncActiveHeadingToScrollPosition()
+        syncActiveHeadingToVisibleContent(in: scrollView)
     }
 
     func scrollToRatio(_ ratio: Double) {
@@ -213,7 +213,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         let targetY = max(0, min(scrollableHeight, centerY - visibleHeight / 2))
         tv.scroll(NSPoint(x: 0, y: targetY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
-        document.syncActiveHeadingToScrollPosition()
+        syncActiveHeadingToVisibleContent(in: scrollView)
     }
 
     func scheduleScrollRestoration(to ratio: Double, attemptsRemaining: Int = 3) {
@@ -326,14 +326,30 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
 
         clipView.scroll(to: NSPoint(x: 0, y: nextY))
         scrollView.reflectScrolledClipView(clipView)
-        document.syncActiveHeadingToScrollPosition()
+        syncActiveHeadingToVisibleContent(in: scrollView)
 
         if progress >= 1 || abs(targetY - nextY) < Self.headingScrollSettlingDistance {
             clipView.scroll(to: NSPoint(x: 0, y: targetY))
             scrollView.reflectScrolledClipView(clipView)
-            document.syncActiveHeadingToScrollPosition()
+            syncActiveHeadingToVisibleContent(in: scrollView)
             stopScrollAnimation()
         }
+    }
+
+    private func syncActiveHeadingToVisibleContent(in scrollView: NSScrollView) {
+        guard let textView else {
+            document.syncActiveHeadingToScrollPosition()
+            return
+        }
+
+        let visibleRect = scrollView.contentView.documentVisibleRect
+        let probePoint = NSPoint(
+            x: textView.textContainerOrigin.x + 1,
+            y: visibleRect.midY
+        )
+        let characterOffset = textView.characterIndexForInsertion(at: probePoint)
+        let sourceLine = document.sourceLine(containingUTF16Offset: characterOffset)
+        document.syncActiveHeading(toSourceLine: sourceLine)
     }
 
     private func stopScrollAnimation() {

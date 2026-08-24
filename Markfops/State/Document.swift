@@ -23,6 +23,7 @@ final class Document: Identifiable {
         }
     }
     @ObservationIgnored private(set) var lineCount: Int
+    @ObservationIgnored private var lineStartOffsets: [Int]
     var isDirty: Bool {
         didSet { notifyStateChange() }
     }
@@ -56,7 +57,9 @@ final class Document: Identifiable {
         self.fileURL = fileURL
         self.rawText = rawText
         self.textStorage = NSTextStorage(string: rawText)
-        self.lineCount = Self.lineCount(for: rawText)
+        let textMetrics = Self.textMetrics(for: rawText)
+        self.lineCount = textMetrics.lineCount
+        self.lineStartOffsets = textMetrics.lineStartOffsets
         self.savedText = rawText
         self.isDirty = false
         self.mode = .edit
@@ -67,9 +70,7 @@ final class Document: Identifiable {
     }
 
     static func lineCount(for text: String) -> Int {
-        max(1, text.reduce(into: 1) { count, ch in
-            if ch == "\n" { count += 1 }
-        })
+        textMetrics(for: text).lineCount
     }
 
     var tocHeadings: [HeadingNode] {
@@ -77,7 +78,26 @@ final class Document: Identifiable {
     }
 
     func updateTextMetrics() {
-        lineCount = Self.lineCount(for: rawText)
+        let textMetrics = Self.textMetrics(for: rawText)
+        lineCount = textMetrics.lineCount
+        lineStartOffsets = textMetrics.lineStartOffsets
+    }
+
+    func sourceLine(containingUTF16Offset offset: Int) -> Int {
+        let boundedOffset = max(0, min(offset, (rawText as NSString).length))
+        var lowerBound = 0
+        var upperBound = lineStartOffsets.count
+
+        while lowerBound < upperBound {
+            let middle = lowerBound + (upperBound - lowerBound) / 2
+            if lineStartOffsets[middle] <= boundedOffset {
+                lowerBound = middle + 1
+            } else {
+                upperBound = middle
+            }
+        }
+
+        return max(0, lowerBound - 1)
     }
 
     /// Drops edits that predate a newly adopted source baseline, such as an external reload or
@@ -109,12 +129,16 @@ final class Document: Identifiable {
     }
 
     func syncActiveHeadingToScrollPosition() {
+        let probeLine = Int((Double(max(lineCount - 1, 0)) * scrollRatio).rounded())
+        syncActiveHeading(toSourceLine: probeLine)
+    }
+
+    func syncActiveHeading(toSourceLine probeLine: Int) {
         guard !tocHeadings.isEmpty else {
             clearPendingFocusedHeading()
             setActiveHeadingID(nil)
             return
         }
-        let probeLine = Int((Double(max(lineCount - 1, 0)) * scrollRatio).rounded())
 
         if let pendingFocusedHeading {
             let now = CACurrentMediaTime()
@@ -128,6 +152,22 @@ final class Document: Identifiable {
 
         let newID = tocHeadings.last(where: { $0.lineNumber <= probeLine })?.id
         setActiveHeadingID(newID)
+    }
+
+    private static func textMetrics(for text: String) -> (lineCount: Int, lineStartOffsets: [Int]) {
+        let utf16 = text.utf16
+        var offsets = [0]
+        offsets.reserveCapacity(max(1, text.count / 40))
+
+        var offset = 0
+        for codeUnit in utf16 {
+            offset += 1
+            if codeUnit == 0x0A {
+                offsets.append(offset)
+            }
+        }
+
+        return (offsets.count, offsets)
     }
 
     private func clearPendingFocusedHeading() {

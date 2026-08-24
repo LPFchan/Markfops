@@ -179,6 +179,60 @@ final class UndoManagerTests: XCTestCase {
         XCTAssertEqual(restoredRatio, savedRatio, accuracy: 0.03)
     }
 
+    func testWrappedEditorContentTracksHeadingAtViewportCenter() {
+        let linesBeforeTarget = (0..<80).map { "Short line \($0)" }.joined(separator: "\n")
+        let longWrappedLine = Array(repeating: "wrapped content", count: 2_000).joined(separator: " ")
+        let text = "## First\n\(linesBeforeTarget)\n## Target\n\(longWrappedLine)"
+        let document = Document(rawText: text)
+        document.headings = HeadingParser.parseHeadings(in: text)
+        guard let targetHeading = document.tocHeadings.last else {
+            return XCTFail("The target heading was not parsed")
+        }
+
+        let selection = HostedDocumentSelection(document: document)
+        let hostingView = NSHostingView(rootView: HostedDocumentContent(selection: selection))
+        hostingView.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+        let window = NSWindow(
+            contentRect: hostingView.frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hostingView
+        defer { window.orderOut(nil) }
+
+        settle(hostingView)
+        guard let textView = findTextView(in: hostingView),
+              let scrollView = textView.enclosingScrollView,
+              let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer else {
+            return XCTFail("The hosted editor did not create its scrollable text view")
+        }
+        layoutManager.ensureLayout(for: textContainer)
+        settle(hostingView)
+
+        let targetCharacterRange = (text as NSString).range(of: "## Target")
+        let targetGlyphRange = layoutManager.glyphRange(
+            forCharacterRange: targetCharacterRange,
+            actualCharacterRange: nil
+        )
+        let targetRect = layoutManager.boundingRect(forGlyphRange: targetGlyphRange, in: textContainer)
+        let targetY = targetRect.minY + textView.textContainerOrigin.y
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+
+        NotificationCenter.default.post(
+            name: NSScrollView.didLiveScrollNotification,
+            object: scrollView
+        )
+
+        let ratioEstimatedLine = Int(
+            (Double(max(document.lineCount - 1, 0)) * document.scrollRatio).rounded()
+        )
+        XCTAssertLessThan(ratioEstimatedLine, targetHeading.lineNumber)
+        XCTAssertEqual(document.activeHeadingID, targetHeading.id)
+    }
+
     func testManualSidebarScrollSuspendsAutomaticFollowingUntilResumed() {
         let context = SidebarScrollContext()
         context.lastTargetY = 120
