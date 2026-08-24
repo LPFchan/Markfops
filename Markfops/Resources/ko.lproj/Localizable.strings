@@ -26,6 +26,13 @@
 "Close Tab" = "탭 닫기";
 "Close Window" = "창 닫기";
 
+/* Compact tab context menu */
+"Close" = "닫기";
+"Close Other Tabs" = "다른 탭 닫기";
+"Close Tabs to the Left" = "왼쪽 탭 닫기";
+"Close Tabs to the Right" = "오른쪽 탭 닫기";
+"Move Tab to New Window" = "탭을 새 윈도우로 이동";
+
 /* Context menu / tab — same strings as File menu where applicable; explicit \u{2026} keys match Swift sources */
 "Save As\u{2026}" = "다른 이름으로 저장…";
 "Rename\u{2026}" = "이름 바꾸기…";

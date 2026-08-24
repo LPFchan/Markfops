@@ -19,6 +19,13 @@
 "Save As…" = "別名で保存…";
 "Close Tab" = "タブを閉じる";
 
+/* Compact tab context menu */
+"Close" = "閉じる";
+"Close Other Tabs" = "他のタブを閉じる";
+"Close Tabs to the Left" = "左側のタブを閉じる";
+"Close Tabs to the Right" = "右側のタブを閉じる";
+"Move Tab to New Window" = "タブを新しいウインドウに移動";
+
 /* View menu */
 "View" = "表示";
 "Toggle Edit / Preview" = "編集/プレビュー切り替え";

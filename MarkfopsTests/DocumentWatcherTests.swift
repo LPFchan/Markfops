@@ -2,6 +2,23 @@ import XCTest
 @testable import Markfops
 
 final class DocumentWatcherTests: XCTestCase {
+    func testRelativeTabCloseScopesKeepTheExpectedDocuments() {
+        let leftStore = DocumentStore()
+        let leftDocuments = (0..<5).map { _ in leftStore.newDocument() }
+        leftStore.closeTabs(relativeTo: leftDocuments[2].id, scope: .left)
+        XCTAssertEqual(leftStore.documents.map(\.id), Array(leftDocuments[2...]).map(\.id))
+
+        let rightStore = DocumentStore()
+        let rightDocuments = (0..<5).map { _ in rightStore.newDocument() }
+        rightStore.closeTabs(relativeTo: rightDocuments[2].id, scope: .right)
+        XCTAssertEqual(rightStore.documents.map(\.id), Array(rightDocuments[...2]).map(\.id))
+
+        let othersStore = DocumentStore()
+        let otherDocuments = (0..<5).map { _ in othersStore.newDocument() }
+        othersStore.closeTabs(relativeTo: otherDocuments[2].id, scope: .others)
+        XCTAssertEqual(othersStore.documents.map(\.id), [otherDocuments[2].id])
+    }
+
     func testOnlyActiveDocumentWatchesAndInactiveChangesReloadOnSelection() throws {
         let directory = try makeTemporaryDirectory()
         let firstURL = directory.appendingPathComponent("First.md")

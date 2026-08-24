@@ -15,7 +15,92 @@ private struct TabBackground: NSViewRepresentable {
     }
 }
 
-// MARK: - Shared context menu (identical between sidebar and compact)
+/// NSToolbar claims secondary clicks before a SwiftUI context-menu gesture can see them. Keep one
+/// lightweight monitor for the currently hovered tab so compact mode can replace only that click;
+/// every other toolbar click still uses normal AppKit behavior.
+@MainActor
+final class CompactTabContextMenuController: NSObject {
+    struct Configuration {
+        let documentID: UUID
+        let canCloseOthers: Bool
+        let canCloseLeft: Bool
+        let canCloseRight: Bool
+        let onClose: () -> Void
+        let onCloseOthers: () -> Void
+        let onCloseLeft: () -> Void
+        let onCloseRight: () -> Void
+        let onMoveToNewWindow: () -> Void
+    }
+
+    static let shared = CompactTabContextMenuController()
+
+    static func start() {
+        _ = shared
+    }
+
+    private var hovered: Configuration?
+    private var presented: Configuration?
+    private var eventMonitor: Any?
+
+    private override init() {
+        super.init()
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in
+            guard let self, let hovered = self.hovered else { return event }
+            let menu = self.makeMenu(for: hovered)
+            let anchor = event.window?.contentView ?? NSApp.keyWindow?.contentView
+            guard let anchor else { return event }
+            self.presented = hovered
+            NSMenu.popUpContextMenu(menu, with: event, for: anchor)
+            self.presented = nil
+            return nil
+        }
+    }
+
+    deinit {
+        if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
+    }
+
+    func setHovered(_ configuration: Configuration) {
+        hovered = configuration
+    }
+
+    func clearHovered(documentID: UUID) {
+        guard hovered?.documentID == documentID else { return }
+        hovered = nil
+    }
+
+    private func makeMenu(for configuration: Configuration) -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        menu.addItem(menuItem("Close", action: #selector(closeTab)))
+        menu.addItem(.separator())
+        menu.addItem(menuItem("Close Other Tabs", action: #selector(closeOtherTabs), enabled: configuration.canCloseOthers))
+        menu.addItem(menuItem("Close Tabs to the Left", action: #selector(closeTabsToLeft), enabled: configuration.canCloseLeft))
+        menu.addItem(menuItem("Close Tabs to the Right", action: #selector(closeTabsToRight), enabled: configuration.canCloseRight))
+        menu.addItem(.separator())
+        menu.addItem(menuItem("Move Tab to New Window", action: #selector(moveToNewWindow)))
+        return menu
+    }
+
+    private func menuItem(_ title: String, action: Selector, enabled: Bool = true) -> NSMenuItem {
+        let item = NSMenuItem(
+            title: NSLocalizedString(title, comment: "Compact tab context menu"),
+            action: action,
+            keyEquivalent: ""
+        )
+        item.target = self
+        item.isEnabled = enabled
+        return item
+    }
+
+    @objc private func closeTab() { presented?.onClose() }
+    @objc private func closeOtherTabs() { presented?.onCloseOthers() }
+    @objc private func closeTabsToLeft() { presented?.onCloseLeft() }
+    @objc private func closeTabsToRight() { presented?.onCloseRight() }
+    @objc private func moveToNewWindow() { presented?.onMoveToNewWindow() }
+}
+
+// MARK: - Sidebar document context menu
 
 struct DocumentContextMenu: View {
     @Environment(DocumentStore.self) private var store
@@ -347,6 +432,24 @@ struct DocumentTabView: View {
         return 10
     }
 
+    private var tabIndex: Int? {
+        store.documents.firstIndex(where: { $0.id == document.id })
+    }
+
+    private var contextMenuConfiguration: CompactTabContextMenuController.Configuration {
+        .init(
+            documentID: document.id,
+            canCloseOthers: store.documents.count > 1,
+            canCloseLeft: (tabIndex ?? 0) > 0,
+            canCloseRight: tabIndex.map { $0 < store.documents.count - 1 } ?? false,
+            onClose: onClose,
+            onCloseOthers: { store.closeTabs(relativeTo: document.id, scope: .others) },
+            onCloseLeft: { store.closeTabs(relativeTo: document.id, scope: .left) },
+            onCloseRight: { store.closeTabs(relativeTo: document.id, scope: .right) },
+            onMoveToNewWindow: { store.detachToNewWindow(document) }
+        )
+    }
+
     @State private var isHovered      = false
     @State private var isCloseHovered = false
     @State private var isRenaming     = false
@@ -431,6 +534,7 @@ struct DocumentTabView: View {
         .background(TabBackground())
         // Rename: only schedule when already the active doc.
         .onTapGesture {
+            CompactTabContextMenuController.shared.setHovered(contextMenuConfiguration)
             if isActive {
                 if !isIconOnly { scheduleRename() }
             } else {
@@ -440,6 +544,11 @@ struct DocumentTabView: View {
         }
         .onHover { hovered in
             isHovered = hovered
+            if hovered {
+                CompactTabContextMenuController.shared.setHovered(contextMenuConfiguration)
+            } else {
+                CompactTabContextMenuController.shared.clearHovered(documentID: document.id)
+            }
             if !hovered || isIconOnly { renameTask?.cancel() }
         }
         // Cancel rename when this pill becomes inactive (user clicked another tab).
@@ -450,7 +559,6 @@ struct DocumentTabView: View {
             }
         }
         .accessibilityLabel(document.sidebarDisplayTitle)
-        .contextMenu { DocumentContextMenu(document: document, onClose: onClose) }
     }
 
     // MARK: - Rename

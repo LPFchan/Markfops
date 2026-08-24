@@ -2,6 +2,12 @@ import AppKit
 import Darwin
 import Observation
 
+enum TabCloseScope {
+    case others
+    case left
+    case right
+}
+
 @Observable
 final class DocumentStore {
     let windowID: UUID
@@ -226,8 +232,33 @@ final class DocumentStore {
     // MARK: - Close
 
     func close(id: UUID) {
-        guard let doc = documents.first(where: { $0.id == id }) else { return }
-        guard doc.isDirty else { removeDocument(id: id); return }
+        close(id: id) { _ in }
+    }
+
+    func closeTabs(relativeTo id: UUID, scope: TabCloseScope) {
+        guard let index = documents.firstIndex(where: { $0.id == id }) else { return }
+        let ids: [UUID]
+        switch scope {
+        case .others:
+            ids = documents.filter { $0.id != id }.map(\.id)
+        case .left:
+            ids = documents[..<index].map(\.id)
+        case .right:
+            ids = documents[(index + 1)...].map(\.id)
+        }
+        closeTabs(ids[...])
+    }
+
+    private func close(id: UUID, completion: @escaping (Bool) -> Void) {
+        guard let doc = documents.first(where: { $0.id == id }) else {
+            completion(true)
+            return
+        }
+        guard doc.isDirty else {
+            removeDocument(id: id)
+            completion(true)
+            return
+        }
 
         let alert = NSAlert()
         alert.messageText = String(format: NSLocalizedString("Save changes to \"%@\"?", comment: "Alert title when closing a tab with unsaved changes"), doc.displayTitle)
@@ -240,9 +271,20 @@ final class DocumentStore {
             switch response {
             case .alertFirstButtonReturn: try? self.save(doc)
             case .alertSecondButtonReturn: break
-            default: return  // Cancel — don't close
+            default:
+                completion(false)
+                return
             }
             self.removeDocument(id: id)
+            completion(true)
+        }
+    }
+
+    private func closeTabs(_ ids: ArraySlice<UUID>) {
+        guard let id = ids.first else { return }
+        close(id: id) { [weak self] didClose in
+            guard didClose else { return }
+            self?.closeTabs(ids.dropFirst())
         }
     }
 
