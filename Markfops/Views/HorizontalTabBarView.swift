@@ -11,10 +11,16 @@ private struct PillBarWidthKey: PreferenceKey {
 enum TabPillSizing {
     static let iconOnlyThreshold: CGFloat = 56
     static let collapsedActiveWidth: CGFloat = 112
+    static let toolbarButtonAndPaddingWidth: CGFloat = 44
+    static let scrollContentLeadingPadding: CGFloat = 8
 
     static func resolvedWidth(baseWidth: CGFloat, isActive: Bool) -> CGFloat {
         guard isActive, baseWidth < iconOnlyThreshold else { return baseWidth }
         return max(baseWidth, collapsedActiveWidth)
+    }
+
+    static func minimumCenteredContentWidth(toolbarWidth: CGFloat) -> CGFloat {
+        max(0, toolbarWidth - toolbarButtonAndPaddingWidth - scrollContentLeadingPadding)
     }
 }
 
@@ -41,8 +47,8 @@ struct TabPillRowView: View {
     // narrow, pills shrink (and scroll) instead of the system toolbar overflowing the sidebar or
     // mode controls into the >> menu.
     private var uniformPillWidth: CGFloat {
-        let buttonW: CGFloat = 36 + 8   // + button + its trailing padding
-        let leadPad: CGFloat = 8        // .padding(.leading, 8) on the scroll content
+        let buttonW = TabPillSizing.toolbarButtonAndPaddingWidth
+        let leadPad = TabPillSizing.scrollContentLeadingPadding
         let spacing: CGFloat = 4
         let count = max(1, CGFloat(store.documents.count))
         let forAllPills = widthForLayout - buttonW - leadPad - spacing * (count - 1)
@@ -80,7 +86,15 @@ struct TabPillRowView: View {
                     // Width and neighbor positions must share one animation transaction. Animating
                     // each pill independently lets its rendered frame overlap the row's stale layout.
                     .animation(.spring(duration: 0.22), value: store.activeID)
-                    .padding(.leading, 8)
+                    // Center short tab sets in the available viewport. Once the intrinsic row is
+                    // wider than this minimum, LazyHStack keeps its normal scrollable width.
+                    .frame(
+                        minWidth: TabPillSizing.minimumCenteredContentWidth(
+                            toolbarWidth: widthForLayout
+                        ),
+                        alignment: .center
+                    )
+                    .padding(.leading, TabPillSizing.scrollContentLeadingPadding)
                     .padding(.vertical, 5)
                 }
                 // Fill the HStack width so the strip does not inherit the scroll content's ideal width.

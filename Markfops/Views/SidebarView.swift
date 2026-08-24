@@ -289,17 +289,15 @@ struct SidebarView: View {
         }
         .frame(minWidth: 180, idealWidth: 220, maxWidth: 320)
         .toolbar {
-            // Keep this toolbar item mounted while the sidebar animates. Conditionally removing it
-            // makes AppKit rebuild and retile the entire toolbar in the middle of the transition.
-            ToolbarItemGroup(placement: .automatic) {
-                Spacer()
-                Button(action: { store.newDocument() }) {
-                    Image(systemName: "plus")
+            // Compact mode owns its own + button; do not leave the sidebar item in toolbar overflow.
+            if columnVisibility != .detailOnly {
+                ToolbarItemGroup(placement: .automatic) {
+                    Spacer()
+                    Button(action: { store.newDocument() }) {
+                        Image(systemName: "plus")
+                    }
+                    .help("New Document  ⌘N")
                 }
-                .help("New Document  ⌘N")
-                .opacity(columnVisibility == .detailOnly ? 0 : 1)
-                .disabled(columnVisibility == .detailOnly)
-                .accessibilityHidden(columnVisibility == .detailOnly)
             }
         }
         .onAppear {

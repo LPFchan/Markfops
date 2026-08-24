@@ -31,45 +31,29 @@ struct ContentView: View {
                         scrollToHeading: scrollToHeading
                     )
                     .toolbar {
-                        if #available(macOS 15.0, *) {
-                            ToolbarItem(placement: .principal) {
-                                DetailToolbarPrincipalItem(
-                                    isCompact: columnVisibility == .detailOnly,
-                                    title: document.displayTitle
-                                )
-                            }
-                        } else if columnVisibility == .detailOnly {
-                            ToolbarItem(placement: .principal) {
-                                DetailToolbarPrincipalItem(isCompact: true, title: document.displayTitle)
-                            }
+                        ToolbarItem(placement: .principal) {
+                            CompactToolbarPrincipalItem(
+                                isCompact: columnVisibility == .detailOnly
+                            )
                         }
                         ModeToggleToolbarItem(mode: $doc.mode)
                     }
                 } else {
                     WelcomeView()
                         .toolbar {
-                            if #available(macOS 15.0, *) {
-                                ToolbarItem(placement: .principal) {
-                                    DetailToolbarPrincipalItem(
-                                        isCompact: columnVisibility == .detailOnly,
-                                        title: "Markfops"
-                                    )
-                                }
-                            } else if columnVisibility == .detailOnly {
-                                ToolbarItem(placement: .principal) {
-                                    DetailToolbarPrincipalItem(isCompact: true, title: "Markfops")
-                                }
+                            ToolbarItem(placement: .principal) {
+                                CompactToolbarPrincipalItem(
+                                    isCompact: columnVisibility == .detailOnly
+                                )
                             }
                         }
                 }
             }
-            // A single custom principal item owns both the title and compact tabs. Keeping the
-            // toolbar topology stable avoids an expensive AppKit retile on every sidebar toggle.
-            .modifier(DetailToolbarDefaultTitleRemoval())
+            .modifier(DetailToolbarDefaultTitleRemoval(isCompact: columnVisibility == .detailOnly))
         }
         .focusedValue(\.sidebarVisibility, $columnVisibility)
-        // Keep the semantic window title even though the system toolbar title item is replaced.
-        .navigationTitle(navigationTitle)
+        // The native title owns the draggable file proxy while the sidebar is visible.
+        .navigationTitle(columnVisibility == .detailOnly ? "" : (store.activeDocument?.displayTitle ?? "Markfops"))
         // Hidden Cmd+1-9 / Cmd+0 shortcuts for tab selection — not in Commands so they don't create menu items
         .background {
             VStack {
@@ -125,14 +109,6 @@ struct ContentView: View {
         store.managedWindow
     }
 
-    private var navigationTitle: String {
-        let title = store.activeDocument?.displayTitle ?? "Markfops"
-        if #available(macOS 15.0, *) {
-            return title
-        }
-        return columnVisibility == .detailOnly ? "" : title
-    }
-
     private func handleTOCTap(_ heading: HeadingNode) {
         store.activeDocument?.focusHeading(heading)
         scrollToHeading = heading
@@ -159,55 +135,65 @@ struct ContentView: View {
     }
 }
 
-/// Stable principal toolbar host shared by sidebar and compact layouts.
+/// Persistent compact tab host.
 ///
-/// The tab row remains mounted while the sidebar is visible. Destroying and recreating it for every
-/// toggle makes SwiftUI rebuild the tab accessibility/layout graph and forces `NSToolbarView` to
-/// retile during the 220 ms split-view animation. Opacity and hit-testing changes preserve the same
-/// toolbar items and hosting view across both states.
-private struct DetailToolbarPrincipalItem: View {
+/// Its toolbar item and tab graph remain mounted at zero width behind the native window title while
+/// the sidebar is visible. Compact mode expands the same host, avoiding the expensive reconstruction
+/// without replacing AppKit's draggable document title and proxy icon.
+private struct CompactToolbarPrincipalItem: View {
     let isCompact: Bool
-    let title: String
+    @Environment(DocumentStore.self) private var store
+    @State private var windowWidth: CGFloat = 720
+
+    private var compactIdealWidth: CGFloat {
+        // Leave room for traffic lights, the sidebar toggle, and the mode controls while letting
+        // the tab viewport consume the rest of a wide title bar.
+        max(300, windowWidth - 300)
+    }
 
     var body: some View {
         GeometryReader { geo in
             let w = max(1, geo.size.width)
-            ZStack {
-                Text(title)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: w)
-                    .opacity(isCompact ? 0 : 1)
-                    .accessibilityHidden(isCompact)
-
-                TabPillRowView(toolbarSlotWidth: w)
-                    .frame(width: w, alignment: .center)
-                    .clipped()
-                    .opacity(isCompact ? 1 : 0)
-                    .allowsHitTesting(isCompact)
-                    .accessibilityHidden(!isCompact)
-            }
+            TabPillRowView(toolbarSlotWidth: w)
+                .frame(width: w, alignment: .center)
+                .clipped()
         }
-        // The sidebar leaves a much narrower detail-title region. Bounding the title host keeps
-        // the mode control out of NSToolbar's overflow menu, while compact mode still receives the
-        // flexible space needed by the scrollable tab strip.
+        .opacity(isCompact ? 1 : 0)
+        .allowsHitTesting(isCompact)
+        .accessibilityHidden(!isCompact)
         .frame(
-            minWidth: isCompact ? 120 : 80,
-            idealWidth: isCompact ? 300 : 160,
-            maxWidth: isCompact ? .infinity : 240
+            minWidth: isCompact ? 120 : 0,
+            idealWidth: isCompact ? compactIdealWidth : 0,
+            maxWidth: isCompact ? .infinity : 0
         )
         .frame(height: ToolbarMetrics.compactPillRowHeight)
         .layoutPriority(-1)
+        .onAppear { refreshWindowWidth() }
+        .onChange(of: isCompact) { _, _ in refreshWindowWidth() }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResizeNotification)) { note in
+            guard let window = note.object as? NSWindow, window === store.managedWindow else { return }
+            windowWidth = window.contentView?.bounds.width ?? window.frame.width
+        }
+    }
+
+    private func refreshWindowWidth() {
+        guard let window = store.managedWindow else { return }
+        windowWidth = window.contentView?.bounds.width ?? window.frame.width
     }
 }
 
-/// Removes the system title toolbar item because the stable principal host renders the title.
+/// Removes the native title only while compact tabs serve as the window label.
 /// `ToolbarDefaultItemKind.title` is macOS 15+; older systems keep prior toolbar behavior.
 private struct DetailToolbarDefaultTitleRemoval: ViewModifier {
+    let isCompact: Bool
+
     func body(content: Content) -> some View {
-        if #available(macOS 15.0, *) {
-            content.toolbar(removing: .title)
+        if isCompact {
+            if #available(macOS 15.0, *) {
+                content.toolbar(removing: .title)
+            } else {
+                content
+            }
         } else {
             content
         }

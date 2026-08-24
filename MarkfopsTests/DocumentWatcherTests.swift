@@ -21,6 +21,17 @@ final class DocumentWatcherTests: XCTestCase {
         )
     }
 
+    func testShortTabRowsCenterWithinTheToolbarViewport() {
+        XCTAssertEqual(
+            TabPillSizing.minimumCenteredContentWidth(toolbarWidth: 900),
+            848
+        )
+        XCTAssertEqual(
+            TabPillSizing.minimumCenteredContentWidth(toolbarWidth: 40),
+            0
+        )
+    }
+
     func testRelativeTabCloseScopesKeepTheExpectedDocuments() {
         let leftStore = DocumentStore()
         let leftDocuments = (0..<5).map { _ in leftStore.newDocument() }
