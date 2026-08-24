@@ -32,10 +32,8 @@ final class DocumentWatcherTests: XCTestCase {
         )
         XCTAssertEqual(
             TabPillSizing.minimumCenteredContentWidth(toolbarWidth: 900, documentCount: 1),
-            0
+            892
         )
-        XCTAssertEqual(TabPillSizing.soloTabViewportWidth(documentCount: 1), 220)
-        XCTAssertNil(TabPillSizing.soloTabViewportWidth(documentCount: 2))
     }
 
     func testRelativeTabCloseScopesKeepTheExpectedDocuments() {

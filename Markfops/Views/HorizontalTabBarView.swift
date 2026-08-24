@@ -23,13 +23,10 @@ enum TabPillSizing {
     }
 
     static func minimumCenteredContentWidth(toolbarWidth: CGFloat, documentCount: Int) -> CGFloat {
-        guard documentCount != 1 else { return 0 }
-        return max(0, toolbarWidth - toolbarButtonAndPaddingWidth - scrollContentLeadingPadding)
-    }
-
-    static func soloTabViewportWidth(documentCount: Int) -> CGFloat? {
-        guard documentCount == 1 else { return nil }
-        return maximumPillWidth + pillSpacing + trailingDropZoneWidth + scrollContentLeadingPadding
+        let reservedWidth = documentCount == 1
+            ? scrollContentLeadingPadding
+            : toolbarButtonAndPaddingWidth + scrollContentLeadingPadding
+        return max(0, toolbarWidth - reservedWidth)
     }
 }
 
@@ -66,8 +63,8 @@ struct TabPillRowView: View {
         return max(26, min(TabPillSizing.maximumPillWidth, forAllPills / count))
     }
 
-    private var soloTabViewportWidth: CGFloat? {
-        TabPillSizing.soloTabViewportWidth(documentCount: store.documents.count)
+    private var embedsNewTabButton: Bool {
+        store.documents.count == 1
     }
 
     var body: some View {
@@ -95,6 +92,10 @@ struct TabPillRowView: View {
                         if dropInsertionIndex == store.documents.count {
                             insertionIndicator
                         }
+
+                        if embedsNewTabButton {
+                            newTabButton(trailingPadding: 0)
+                        }
                     }
                     // Width and neighbor positions must share one animation transaction. Animating
                     // each pill independently lets its rendered frame overlap the row's stale layout.
@@ -108,16 +109,13 @@ struct TabPillRowView: View {
                         ),
                         alignment: .center
                     )
-                    .padding(.leading, TabPillSizing.scrollContentLeadingPadding)
+                    .padding(.leading, embedsNewTabButton ? 4 : TabPillSizing.scrollContentLeadingPadding)
+                    .padding(.trailing, embedsNewTabButton ? 4 : 0)
                     .padding(.vertical, 5)
                 }
-                // A solo tab uses its natural viewport width so the tab and adjacent + button are
-                // centered as one unit. Larger tab sets retain the full scrollable toolbar width.
-                .frame(
-                    minWidth: soloTabViewportWidth,
-                    idealWidth: soloTabViewportWidth,
-                    maxWidth: soloTabViewportWidth ?? .infinity
-                )
+                // Fill the HStack width so the toolbar keeps one stable outer geometry while the
+                // sidebar animates. A solo tab centers its + button inside this same viewport.
+                .frame(maxWidth: .infinity)
                 // Gradient fade on both edges to show there's more to scroll.
                 .mask(alignment: .center) {
                     LinearGradient(
@@ -141,22 +139,12 @@ struct TabPillRowView: View {
                 }
             }
 
-            // + button lives outside the scroll view so it's always visible.
-            Button(action: { store.newDocument() }) {
-                Image(systemName: "plus")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                    .frame(width: 28, height: 28)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7)
-                            .fill(Color(NSColor.quaternaryLabelColor).opacity(0.5))
-                    )
+            if !embedsNewTabButton {
+                // Large tab sets keep the + button outside the scroll view so it remains visible.
+                newTabButton(trailingPadding: 8)
             }
-            .buttonStyle(.plain)
-            .padding(.trailing, 8)
-            .help("New Tab  ⌘T")
         }
-        .frame(minWidth: 0, maxWidth: .infinity, alignment: .center)
+        .frame(minWidth: 0)
         .fixedSize(horizontal: false, vertical: true)
         .frame(height: toolbarSlotWidth != nil ? ToolbarMetrics.compactPillRowHeight : nil)
         // Measure width when not driven by the toolbar slot (standalone bar).
@@ -173,6 +161,22 @@ struct TabPillRowView: View {
             guard toolbarSlotWidth == nil, w > 10 else { return }
             availableWidth = w
         }
+    }
+
+    private func newTabButton(trailingPadding: CGFloat) -> some View {
+        Button(action: { store.newDocument() }) {
+            Image(systemName: "plus")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .frame(width: 28, height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(Color(NSColor.quaternaryLabelColor).opacity(0.5))
+                )
+        }
+        .buttonStyle(.plain)
+        .padding(.trailing, trailingPadding)
+        .help("New Tab  ⌘T")
     }
 
     // MARK: - Pill cell
