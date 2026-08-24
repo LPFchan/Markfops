@@ -8,6 +8,16 @@ private struct PillBarWidthKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
+enum TabPillSizing {
+    static let iconOnlyThreshold: CGFloat = 56
+    static let collapsedActiveWidth: CGFloat = 112
+
+    static func resolvedWidth(baseWidth: CGFloat, isActive: Bool) -> CGFloat {
+        guard isActive, baseWidth < iconOnlyThreshold else { return baseWidth }
+        return max(baseWidth, collapsedActiveWidth)
+    }
+}
+
 /// Scrollable tab pill row — used as the toolbar's principal item in compact mode.
 struct TabPillRowView: View {
     /// When set from the toolbar `GeometryReader`, pill widths follow the allotted principal
@@ -30,13 +40,14 @@ struct TabPillRowView: View {
     // Divides available space equally across all pills. Floor is kept low so when the window is
     // narrow, pills shrink (and scroll) instead of the system toolbar overflowing the sidebar or
     // mode controls into the >> menu.
-    private var pillWidth: CGFloat {
+    private var uniformPillWidth: CGFloat {
         let buttonW: CGFloat = 36 + 8   // + button + its trailing padding
         let leadPad: CGFloat = 8        // .padding(.leading, 8) on the scroll content
         let spacing: CGFloat = 4
         let count = max(1, CGFloat(store.documents.count))
         let forAllPills = widthForLayout - buttonW - leadPad - spacing * (count - 1)
-        // Down to ~26pt: favicon-only tabs (see `DocumentTabView.isIconOnly`).
+        // Down to ~26pt: inactive tabs become favicon-only. The active tab keeps enough room
+        // for its title and close affordance (see `TabPillSizing.resolvedWidth`).
         return max(26, min(200, forAllPills / count))
     }
 
@@ -132,6 +143,7 @@ struct TabPillRowView: View {
 
     @ViewBuilder
     private func pillCell(document: Document, index: Int) -> some View {
+        let isActive      = store.activeID == document.id
         let isDragging    = TabDragState.shared.draggingDocumentID == document.id
         let isAnyDragging = TabDragState.shared.draggingDocumentID != nil
         let translation   = TabDragState.shared.dragTranslation
@@ -141,11 +153,11 @@ struct TabPillRowView: View {
 
         DocumentTabView(
             document: document,
-            isActive: store.activeID == document.id,
+            isActive: isActive,
             onSelect: { store.activeID = document.id },
             onClose: { store.close(id: document.id) },
             isInDetachZone: inDetachZone,
-            pillWidth: pillWidth
+            pillWidth: TabPillSizing.resolvedWidth(baseWidth: uniformPillWidth, isActive: isActive)
         )
         .id(document.id)
         // Dragging pill becomes a ghost in-place; the system drag image follows the cursor.
@@ -153,7 +165,8 @@ struct TabPillRowView: View {
         .opacity(isDragging ? 0.3 : (isAnyDragging ? 0.45 : 1.0))
         .scaleEffect(isDragging ? 0.92 : (isAnyDragging ? 0.96 : 1.0), anchor: .center)
         // Animate pill width changes as tabs open/close.
-        .animation(.spring(duration: 0.28), value: pillWidth)
+        .animation(.spring(duration: 0.28), value: uniformPillWidth)
+        .animation(.spring(duration: 0.22), value: isActive)
         .animation(.spring(duration: 0.22), value: isDragging)
         .animation(.spring(duration: 0.18), value: inDetachZone)
         .animation(.spring(duration: 0.15), value: isAnyDragging)

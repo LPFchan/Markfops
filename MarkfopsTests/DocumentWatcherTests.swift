@@ -2,6 +2,25 @@ import XCTest
 @testable import Markfops
 
 final class DocumentWatcherTests: XCTestCase {
+    func testCollapsedTabSizingKeepsOnlyTheActiveTabModeratelyWide() {
+        let collapsedWidth: CGFloat = 32
+
+        XCTAssertEqual(
+            TabPillSizing.resolvedWidth(baseWidth: collapsedWidth, isActive: false),
+            collapsedWidth
+        )
+        XCTAssertEqual(
+            TabPillSizing.resolvedWidth(baseWidth: collapsedWidth, isActive: true),
+            TabPillSizing.collapsedActiveWidth
+        )
+
+        let roomyWidth: CGFloat = 90
+        XCTAssertEqual(
+            TabPillSizing.resolvedWidth(baseWidth: roomyWidth, isActive: true),
+            roomyWidth
+        )
+    }
+
     func testRelativeTabCloseScopesKeepTheExpectedDocuments() {
         let leftStore = DocumentStore()
         let leftDocuments = (0..<5).map { _ in leftStore.newDocument() }

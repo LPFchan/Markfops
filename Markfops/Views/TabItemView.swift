@@ -411,7 +411,7 @@ struct DocumentTabView: View {
     /// Below this width, show favicon only (no title) so tabs can shrink with the window.
     private var isIconOnly: Bool {
         guard let w = pillWidth else { return false }
-        return w < 56
+        return w < TabPillSizing.iconOnlyThreshold
     }
 
     private var faviconSize: CGFloat {
@@ -476,13 +476,10 @@ struct DocumentTabView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .lineLimit(1)
             } else if isIconOnly && !isRenaming {
-                ZStack(alignment: .trailing) {
-                    HStack(spacing: 0) {
-                        Spacer(minLength: 0)
-                        faviconView
-                        Spacer(minLength: 0)
-                    }
-                    closeSlot
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    faviconView
+                    Spacer(minLength: 0)
                 }
             } else {
                 HStack(spacing: 5) {
