@@ -10,7 +10,7 @@ private struct PillBarWidthKey: PreferenceKey {
 
 /// Scrollable tab pill row — used as the toolbar's principal item in compact mode.
 struct TabPillRowView: View {
-    /// When set from the toolbar `GeometryReader`, pill widths follow the **alotted** principal
+    /// When set from the toolbar `GeometryReader`, pill widths follow the allotted principal
     /// width. Otherwise `ScrollView` content reports a huge intrinsic width and `NSToolbar` moves
     /// the whole principal item (or other controls) into the overflow `>>` menu instead of shrinking.
     var toolbarSlotWidth: CGFloat? = nil
@@ -44,7 +44,7 @@ struct TabPillRowView: View {
         HStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 4) {
+                    LazyHStack(spacing: 4) {
                         ForEach(Array(store.documents.enumerated()), id: \.element.id) { i, document in
                             pillCell(document: document, index: i)
                         }
@@ -85,6 +85,12 @@ struct TabPillRowView: View {
                 }
                 .onChange(of: store.activeID) { _, newID in
                     if let id = newID { withAnimation(.spring(duration: 0.22)) { proxy.scrollTo(id, anchor: .center) } }
+                }
+                .onAppear {
+                    guard let activeID = store.activeID else { return }
+                    DispatchQueue.main.async {
+                        proxy.scrollTo(activeID, anchor: .center)
+                    }
                 }
             }
 
