@@ -289,16 +289,17 @@ struct SidebarView: View {
         }
         .frame(minWidth: 180, idealWidth: 220, maxWidth: 320)
         .toolbar {
-            // Only show the + button when the sidebar column is actually visible.
-            // In compact mode the pill bar already has its own + button.
-            if columnVisibility != .detailOnly {
-                ToolbarItemGroup(placement: .automatic) {
-                    Spacer()
-                    Button(action: { store.newDocument() }) {
-                        Image(systemName: "plus")
-                    }
-                    .help("New Document  ⌘N")
+            // Keep this toolbar item mounted while the sidebar animates. Conditionally removing it
+            // makes AppKit rebuild and retile the entire toolbar in the middle of the transition.
+            ToolbarItemGroup(placement: .automatic) {
+                Spacer()
+                Button(action: { store.newDocument() }) {
+                    Image(systemName: "plus")
                 }
+                .help("New Document  ⌘N")
+                .opacity(columnVisibility == .detailOnly ? 0 : 1)
+                .disabled(columnVisibility == .detailOnly)
+                .accessibilityHidden(columnVisibility == .detailOnly)
             }
         }
         .onAppear {
