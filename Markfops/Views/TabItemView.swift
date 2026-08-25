@@ -485,9 +485,9 @@ struct DocumentTabView: View {
                 HStack(spacing: 5) {
                     faviconView
 
-                    // Title / rename field — fills remaining space.
-                    // Close button overlays the trailing edge so the title can extend to the pill's right edge;
-                    // the trailing gradient mask fades the text behind the button when hovering.
+                    // Title / rename field — fills remaining space. A fixed trailing clearance
+                    // reserves room for the close button so its fade ends at the button's
+                    // leading edge instead of extending to the pill's right edge.
                     Group {
                         if isRenaming {
                             TextField("", text: $renameText)
@@ -503,13 +503,23 @@ struct DocumentTabView: View {
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .mask(trailingFadeMask)
+                                .padding(.trailing, fadeClearance)
+                                .mask(
+                                    LinearGradient(
+                                        stops: [
+                                            .init(color: .black, location: 0),
+                                            .init(color: .black, location: 0.88),
+                                            .init(color: .clear,  location: 1.00),
+                                        ],
+                                        startPoint: .leading, endPoint: .trailing
+                                    )
+                                )
                         }
                     }
                     .animation(.spring(duration: 0.18), value: isRenaming)
-                    .overlay(alignment: .trailing) {
-                        if !isRenaming { closeSlot }
-                    }
+
+                    // Close (×) button sits right after the title, inside the reserved clearance.
+                    if !isRenaming { closeSlot }
                 }
             }
         }
@@ -593,17 +603,9 @@ struct DocumentTabView: View {
         return Color.clear
     }
 
-    private var trailingFadeMask: LinearGradient {
-        let fade = isHovered || document.isDirty
-        return LinearGradient(
-            stops: [
-                .init(color: .black, location: 0),
-                .init(color: .black, location: fade ? 0.70 : 1.0),
-                .init(color: .clear,  location: fade ? 1.00 : 1.0),
-            ],
-            startPoint: .leading, endPoint: .trailing
-        )
-    }
+    /// Fixed trailing clearance on the title so its fade lands at the close button's
+    /// leading edge, regardless of hover state. Matches closeSlot's 16pt width.
+    private var fadeClearance: CGFloat { 18 }
 
     private var closeSlot: some View {
         ZStack {
