@@ -89,11 +89,14 @@ struct ContentView: View {
                         }
                 }
             }
-            // Title visibility is handled by navigationTitle ("" in compact mode).
-            // We deliberately do NOT call toolbar(removing: .title) here: toggling the
-            // toolbar item set at transition end rebuilds the toolbar and momentarily
-            // blanks the detail content (WebView frame -> 0), forcing a full WebKit
-            // re-render of the document — the end-of-slide freeze.
+            // Removing the native title item is what cedes the toolbar's center slot
+            // to the principal pill row in compact mode. Crucially the removal is
+            // PERSISTENT, not toggled per-transition: as a stable modifier the title
+            // item is absent from the toolbar template from the start, so the
+            // per-toggle item-set churn that rebuilt the toolbar and blanked the
+            // detail (the freeze) never happens. Title text is still gated by
+            // navigationTitle below.
+            .modifier(DetailToolbarDefaultTitleRemoval())
         }
         // Scene-level so the View-menu command and Cmd+backslash keep working even
         // when focus sits in the toolbar pill row (compact mode) rather than the editor.
@@ -615,28 +618,27 @@ private struct CompactToolbarPrincipalItem: View {
         isCompact && !isTransitioning
     }
 
-   var body: some View {
-       // Keep the outer frame at a CONSTANT width in both modes. Collapsing the
-       // principal item to zero width on every toggle forced the whole pill strip to
-       // re-layout twice and stalled the main runloop (~550ms) — the lag spike. A
-       // fixed frame with the strip clipped/faded avoids the geometry churn entirely.
-       // Keep the frame constant in both modes (no zero-width swap) and drive the
-       // cross-fade purely through opacity, so the handoff does no geometry churn.
-       TabPillRowView(toolbarSlotWidth: idealWidth)
-           .frame(width: idealWidth, alignment: .center)
-           .clipped()
-           .opacity(occupiesToolbarSpace && isVisible ? 1 : 0)
-           .allowsHitTesting(occupiesToolbarSpace && isVisible)
-           .accessibilityHidden(!occupiesToolbarSpace || !isVisible)
-        // NSToolbar asks the principal item for its preferred size; a fully fixed
-        // frame can end up squeezed to zero width when the toolbar rebuilds its item
-        // set, leaving the pill row invisible in compact mode. A flexible range with
-        // an ideal keeps the constant geometry AND answers the sizing query.
+    var body: some View {
+        // A .principal item must measure its own width once the window title is
+        // removed, so the pill strip expands to fill whatever space it is given. The
+        // GeometryReader self-sizes the row to the slot the toolbar allocates.
+        GeometryReader { geo in
+            let w = max(1, geo.size.width)
+            TabPillRowView(toolbarSlotWidth: w)
+                .frame(width: w, alignment: .center)
+                .clipped()
+        }
+        .opacity(occupiesToolbarSpace && isVisible ? 1 : 0)
+        .allowsHitTesting(occupiesToolbarSpace && isVisible)
+        .accessibilityHidden(!occupiesToolbarSpace || !isVisible)
+        // Collapse to zero width while the sidebar is animating (the handoff), and
+        // expand to the full available width once compact mode settles. Geometry churn
+        // is confined to the settled endpoint, not the slide, so it does not stall
+        // the runloop mid-animation.
         .frame(
-            minWidth: idealWidth,
-            idealWidth: idealWidth,
-            maxWidth: .infinity,
-            alignment: .center
+            minWidth: occupiesToolbarSpace ? 120 : 0,
+            idealWidth: occupiesToolbarSpace ? idealWidth : 0,
+            maxWidth: occupiesToolbarSpace ? .infinity : 0
         )
         .frame(height: ToolbarMetrics.compactPillRowHeight)
         .layoutPriority(-1)
@@ -671,6 +673,18 @@ private struct CompactToolbarPrincipalItem: View {
 
 /// Switches ownership of the center toolbar slot only after the sidebar has reached its endpoint.
 /// The surrounding toolbar is hidden while AppKit installs or removes its native title item.
+private struct DetailToolbarDefaultTitleRemoval: ViewModifier {
+    // Persistent (not per-transition) so the title item is never in the toolbar
+    // template and toggling never rebuilds the item set.
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, *) {
+            content.toolbar(removing: .title)
+        } else {
+            content
+        }
+    }
+}
+
 // MARK: - Welcome screen
 
 private struct WelcomeView: View {
