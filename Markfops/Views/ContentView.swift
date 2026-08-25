@@ -89,14 +89,11 @@ struct ContentView: View {
                         }
                 }
             }
-            // Removing the native title item is what cedes the toolbar's center slot
-            // to the principal pill row in compact mode. Crucially the removal is
-            // PERSISTENT, not toggled per-transition: as a stable modifier the title
-            // item is absent from the toolbar template from the start, so the
-            // per-toggle item-set churn that rebuilt the toolbar and blanked the
-            // detail (the freeze) never happens. Title text is still gated by
-            // navigationTitle below.
-            .modifier(DetailToolbarDefaultTitleRemoval())
+            // Single-titlebar layout: removing the native title item in compact mode
+            // cedes the toolbar center slot to the pill strip; keeping it in sidebar
+            // mode shows the title + proxy. The swap is confined to the settled
+            // endpoint. See finishSidebarTransition for the freeze handling.
+            .modifier(DetailToolbarDefaultTitleRemoval(isCompact: toolbarUsesCompactLayout))
         }
         // Scene-level so the View-menu command and Cmd+backslash keep working even
         // when focus sits in the toolbar pill row (compact mode) rather than the editor.
@@ -209,7 +206,6 @@ struct ContentView: View {
         transaction.animation = nil
         withTransaction(transaction) {
             isSidebarTransitioning = false
-            toolbarUsesCompactLayout = columnVisibility == .detailOnly
         }
 
         // The layout has settled — put the captured center content back in the middle.
@@ -229,6 +225,17 @@ struct ContentView: View {
         // the outgoing, so the eye sees a swap rather than a blank gap.
         withAnimation(.easeInOut(duration: 0.18)) {
             isToolbarContentVisible = true
+        }
+
+        // Defer the toolbar title-item swap to a low-priority, post-render moment.
+        // Adding/removing the .title toolbar item rebuilds the toolbar item set and
+        // forces a synchronous ~150ms main-thread layout (the end-of-slide freeze).
+        // Running it after the slide and fade have painted moves that cost out of the
+        // visible handoff, so the slide completes before the toolbar rebuilds.
+        let compact = columnVisibility == .detailOnly
+        DispatchQueue.main.async {
+            guard generation == sidebarTransitionGeneration else { return }
+            toolbarUsesCompactLayout = compact
         }
     }
 
@@ -674,11 +681,15 @@ private struct CompactToolbarPrincipalItem: View {
 /// Switches ownership of the center toolbar slot only after the sidebar has reached its endpoint.
 /// The surrounding toolbar is hidden while AppKit installs or removes its native title item.
 private struct DetailToolbarDefaultTitleRemoval: ViewModifier {
-    // Persistent (not per-transition) so the title item is never in the toolbar
-    // template and toggling never rebuilds the item set.
+    let isCompact: Bool
+
     func body(content: Content) -> some View {
-        if #available(macOS 15.0, *) {
-            content.toolbar(removing: .title)
+        if isCompact {
+            if #available(macOS 15.0, *) {
+                content.toolbar(removing: .title)
+            } else {
+                content
+            }
         } else {
             content
         }
