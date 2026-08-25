@@ -157,7 +157,10 @@ struct ContentView: View {
     }
 
     private func beginSidebarTransitionIfNeeded() {
-        guard !isSidebarTransitioning else { return }
+        guard SidebarTransitionGeometry.shouldBeginFromObserver(
+            toolbarIsVisible: isToolbarContentVisible,
+            isTransitioning: isSidebarTransitioning
+        ) else { return }
         prepareSidebarTransition()
     }
 
@@ -223,6 +226,17 @@ enum SidebarTransitionGeometry {
         return widths.allSatisfy {
             abs($0 - expandedWidth) <= expandedEndpointTolerance
         }
+    }
+
+    static func shouldBeginFromObserver(
+        toolbarIsVisible: Bool,
+        isTransitioning: Bool
+    ) -> Bool {
+        toolbarIsVisible && !isTransitioning
+    }
+
+    static func reachedCollapsedEndpoint(offsets: [CGFloat]) -> Bool {
+        offsets.allSatisfy { abs($0) <= collapsedEndpointWidth }
     }
 }
 
@@ -413,17 +427,31 @@ private struct SidebarTransitionObserver: NSViewRepresentable {
         }
 
         private func transitionReachedEndpoint(includePresentationFrame: Bool = false) -> Bool {
-            guard let splitView,
-                  let sidebar = splitView.subviews.min(by: { $0.frame.minX < $1.frame.minX }) else {
+            guard let splitView else {
                 return false
             }
 
+            if isCompact {
+                guard sidebarItem(in: splitView)?.isCollapsed ?? false,
+                      let detail = splitView.subviews.max(by: { $0.frame.maxX < $1.frame.maxX }) else {
+                    return false
+                }
+
+                let offsets = includePresentationFrame
+                    ? [detail.frame.minX, detail.layer?.presentation()?.frame.minX ?? detail.frame.minX]
+                    : [detail.frame.minX]
+                return SidebarTransitionGeometry.reachedCollapsedEndpoint(offsets: offsets)
+            }
+
+            guard let sidebar = splitView.subviews.min(by: { $0.frame.minX < $1.frame.minX }) else {
+                return false
+            }
             let widths = includePresentationFrame
                 ? [sidebar.frame.width, sidebar.layer?.presentation()?.frame.width ?? sidebar.frame.width]
                 : [sidebar.frame.width]
 
             return SidebarTransitionGeometry.reachedEndpoint(
-                compact: isCompact,
+                compact: false,
                 widths: widths,
                 expandedWidth: expandedSidebarWidth
             )

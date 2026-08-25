@@ -33,6 +33,36 @@ final class DocumentWatcherTests: XCTestCase {
         )
     }
 
+    func testToolbarOwnershipResizeDoesNotRestartHiddenTransition() {
+        XCTAssertFalse(
+            SidebarTransitionGeometry.shouldBeginFromObserver(
+                toolbarIsVisible: false,
+                isTransitioning: false
+            )
+        )
+        XCTAssertFalse(
+            SidebarTransitionGeometry.shouldBeginFromObserver(
+                toolbarIsVisible: true,
+                isTransitioning: true
+            )
+        )
+        XCTAssertTrue(
+            SidebarTransitionGeometry.shouldBeginFromObserver(
+                toolbarIsVisible: true,
+                isTransitioning: false
+            )
+        )
+    }
+
+    func testCollapsedSidebarWaitsForPresentedDetailToReachLeadingEdge() {
+        XCTAssertTrue(
+            SidebarTransitionGeometry.reachedCollapsedEndpoint(offsets: [0, 1])
+        )
+        XCTAssertFalse(
+            SidebarTransitionGeometry.reachedCollapsedEndpoint(offsets: [0, 8])
+        )
+    }
+
     func testCollapsedTabSizingKeepsOnlyTheActiveTabModeratelyWide() {
         let collapsedWidth: CGFloat = 32
 
