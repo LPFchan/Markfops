@@ -309,11 +309,14 @@ final class UndoManagerTests: XCTestCase {
             0.5,
             accuracy: 0.001
         )
-        XCTAssertTrue(
+        // Near the target but still moving fast: keep animating, do not jolt.
+        XCTAssertFalse(
             SidebarScrollPhysics.shouldSnap(
-                currentY: 179.6,
+                currentY: 179.8,
                 targetY: 180,
-                nextY: 179.7,
+                nextY: 179.9,
+                velocity: 40,
+                settleVelocity: 2,
                 elapsed: 0,
                 tickCount: 1,
                 snapDistance: 0.5,
@@ -321,25 +324,32 @@ final class UndoManagerTests: XCTestCase {
                 maximumTicks: 180
             )
         )
+        // Near the target and nearly at rest: settle cleanly.
         XCTAssertTrue(
             SidebarScrollPhysics.shouldSnap(
-                currentY: 0,
+                currentY: 179.6,
                 targetY: 180,
-                nextY: 1,
-                elapsed: 0.9,
-                tickCount: 2,
+                nextY: 179.7,
+                velocity: 1,
+                settleVelocity: 2,
+                elapsed: 0,
+                tickCount: 1,
                 snapDistance: 0.5,
                 maximumDuration: 0.9,
                 maximumTicks: 180
             )
         )
-        XCTAssertTrue(
+        // Watchdogs only settle a spring that is already near the target;
+        // they must never teleport a scroll that is still mid-flight.
+        XCTAssertFalse(
             SidebarScrollPhysics.shouldSnap(
                 currentY: 0,
                 targetY: 180,
                 nextY: 1,
-                elapsed: 0,
-                tickCount: 180,
+                velocity: 120,
+                settleVelocity: 2,
+                elapsed: 0.9,
+                tickCount: 2,
                 snapDistance: 0.5,
                 maximumDuration: 0.9,
                 maximumTicks: 180
@@ -350,12 +360,71 @@ final class UndoManagerTests: XCTestCase {
                 currentY: 0,
                 targetY: 180,
                 nextY: 1,
+                velocity: 120,
+                settleVelocity: 2,
+                elapsed: 0,
+                tickCount: 180,
+                snapDistance: 0.5,
+                maximumDuration: 0.9,
+                maximumTicks: 180
+            )
+        )
+        // A watchdog firing while near the target still settles.
+        XCTAssertTrue(
+            SidebarScrollPhysics.shouldSnap(
+                currentY: 179.7,
+                targetY: 180,
+                nextY: 179.8,
+                velocity: 60,
+                settleVelocity: 2,
+                elapsed: 0.9,
+                tickCount: 2,
+                snapDistance: 0.5,
+                maximumDuration: 0.9,
+                maximumTicks: 180
+            )
+        )
+        // Far from the target with time left: keep animating.
+        XCTAssertFalse(
+            SidebarScrollPhysics.shouldSnap(
+                currentY: 0,
+                targetY: 180,
+                nextY: 1,
+                velocity: 120,
+                settleVelocity: 2,
                 elapsed: 0.1,
                 tickCount: 2,
                 snapDistance: 0.5,
                 maximumDuration: 0.9,
                 maximumTicks: 180
             )
+        )
+    }
+
+    func testSidebarSpringFinalApproachBlendIsFrameRateIndependent() {
+        // One 60 Hz step should blend exactly as far as two 120 Hz steps.
+        let step60 = SidebarScrollPhysics.finalApproachBlend(perTick: 1.0 / 60.0)
+        let step120 = SidebarScrollPhysics.finalApproachBlend(perTick: 1.0 / 120.0)
+        let twoSteps120 = step120 + (1 - step120) * step120
+        XCTAssertEqual(step60, twoSteps120, accuracy: 0.0001)
+        XCTAssertGreaterThan(step60, 0)
+        XCTAssertLessThan(step60, 1)
+    }
+
+    func testSidebarSpringClosingSpeedIsZeroAtTarget() {
+        let naturalFrequency = sqrt(CGFloat(30))
+        let closing = SidebarScrollPhysics.criticallyDampedClosingSpeed(
+            displacement: 4,
+            naturalFrequency: naturalFrequency
+        )
+        XCTAssertGreaterThan(closing, 0)
+        XCTAssertEqual(
+            SidebarScrollPhysics.criticallyDampedClosingSpeed(
+                displacement: 0,
+                naturalFrequency: naturalFrequency
+            ),
+            0,
+            accuracy: 0.0001
         )
     }
 

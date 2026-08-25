@@ -61,16 +61,39 @@ enum SidebarScrollPhysics {
         currentY: CGFloat,
         targetY: CGFloat,
         nextY: CGFloat,
+        velocity: CGFloat,
+        settleVelocity: CGFloat,
         elapsed: CFTimeInterval,
         tickCount: Int,
         snapDistance: CGFloat,
         maximumDuration: CFTimeInterval,
         maximumTicks: Int
     ) -> Bool {
-        abs(targetY - currentY) <= snapDistance
+        let nearEnough = abs(targetY - currentY) <= snapDistance
             || abs(targetY - nextY) <= snapDistance
-            || elapsed >= maximumDuration
-            || tickCount >= maximumTicks
+        // Only cut to the target once the spring is nearly at rest *and* close.
+        // Snapping on position alone (or on a timer) teleports the scroll view
+        // while it is still visibly moving, which reads as a jolt at the end.
+        return nearEnough && abs(velocity) <= settleVelocity
+            || (nearEnough && elapsed >= maximumDuration)
+            || (nearEnough && tickCount >= maximumTicks)
+    }
+
+    /// In the final approach the raw spring asymptotes just outside the snap
+    /// distance and never quite arrives, so the old watchdog had to teleport the
+    /// scroll view mid-flight — the jolt at the end of the animation. Instead we
+    /// blend the spring velocity toward a critically damped closing speed, which
+    /// decelerates smoothly to rest exactly at the target.
+    static func criticallyDampedClosingSpeed(displacement: CGFloat, naturalFrequency: CGFloat) -> CGFloat {
+        2 * 1.15 * naturalFrequency * displacement
+    }
+
+    /// Blend factor for one integration step, expressed per 60 Hz frame and
+    /// scaled by dt so the same feel lands at 60 Hz and 120 Hz, unlike the
+    /// previous per-tick multipliers, which damped twice as hard on 120 Hz
+    /// displays and could stall the spring outside the snap distance.
+    static func finalApproachBlend(perTick dt: CFTimeInterval) -> CGFloat {
+        1 - pow(1 - 0.3, dt * 60)
     }
 }
 
@@ -200,10 +223,8 @@ struct SidebarView: View {
     private static let tocFollowScrollStiffness: CGFloat = 30
     private static let tocFollowScrollDamping: CGFloat = 12
     private static let tocFollowScrollSettlingDistance: CGFloat = 0.12
-    private static let tocFollowScrollNearTargetDistance: CGFloat = 14
-    private static let tocFollowScrollNearTargetVelocityDamping: CGFloat = 0.46
-    private static let tocFollowScrollFinalApproachDistance: CGFloat = 5
-    private static let tocFollowScrollFinalApproachVelocityDamping: CGFloat = 0.24
+    private static let tocFollowScrollFinalApproachDistance: CGFloat = 10
+    private static let tocFollowScrollSettleVelocity: CGFloat = 2
     private static let tocFollowScrollMaximumDuration: CFTimeInterval = 0.9
     private static let tocFollowScrollMaximumTicks = 180
     private static let sidebarContentTopPadding: CGFloat = 4
@@ -705,11 +726,13 @@ struct SidebarView: View {
 
         let acceleration = Self.tocFollowScrollStiffness * displacement - Self.tocFollowScrollDamping * scrollContext.velocity
         scrollContext.velocity += acceleration * dt
-        if abs(displacement) < Self.tocFollowScrollNearTargetDistance {
-            scrollContext.velocity *= Self.tocFollowScrollNearTargetVelocityDamping
-        }
         if abs(displacement) < Self.tocFollowScrollFinalApproachDistance {
-            scrollContext.velocity *= Self.tocFollowScrollFinalApproachVelocityDamping
+            let closingSpeed = SidebarScrollPhysics.criticallyDampedClosingSpeed(
+                displacement: displacement,
+                naturalFrequency: sqrt(Self.tocFollowScrollStiffness)
+            )
+            let blend = SidebarScrollPhysics.finalApproachBlend(perTick: dt)
+            scrollContext.velocity = scrollContext.velocity * (1 - blend) + closingSpeed * blend
         }
         var nextY = currentY + scrollContext.velocity * dt
 
@@ -722,6 +745,8 @@ struct SidebarView: View {
             currentY: currentY,
             targetY: targetY,
             nextY: nextY,
+            velocity: scrollContext.velocity,
+            settleVelocity: Self.tocFollowScrollSettleVelocity,
             elapsed: elapsed,
             tickCount: scrollContext.animationTickCount,
             snapDistance: snapDistance,
