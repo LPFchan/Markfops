@@ -12,8 +12,10 @@ struct EditorContainerView: View {
     @State private var renderedText: String?
     @State private var renderedThemeKey: String?
     @State private var isDragTargeted = false
-    @State private var bridge = PreviewBridge()
-    @State private var editorBridge = EditorBridge()
+    /// Bridges live on the document so ContentView can drive viewport-anchor capture
+    /// through the same instances during sidebar/compact transitions.
+    private var bridge: PreviewBridge { document.sharedPreviewBridge }
+    private var editorBridge: EditorBridge { document.sharedEditorBridge }
     @State private var findController = FindController()
 
     private var findOverlayReservedTopInset: CGFloat {
@@ -95,31 +97,33 @@ struct EditorContainerView: View {
             if newMode != .edit {
                 findController.showsReplace = false
             }
+            let anchorContext = ViewportAnchorSync.Context(
+                document: document,
+                editorBridge: editorBridge,
+                previewBridge: bridge
+            )
             if oldMode == .preview && newMode == .edit {
-                let fallbackRatio = document.scrollRatio
-                let documentID = document.id
-                bridge.currentViewportAnchor { anchor in
-                    DispatchQueue.main.async {
-                        guard document.id == documentID, document.mode == .edit else { return }
-                        let ratio = anchor?.ratio ?? fallbackRatio
-                        document.scrollRatio = ratio
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            guard document.id == documentID, document.mode == .edit else { return }
-                            if anchor.map({ editorBridge.scrollToSourceLineCentered($0.sourceLine) }) != true {
-                                editorBridge.scrollToRatio(ratio)
-                            }
-                            _ = editorBridge.focus()
-                        }
+                // Capture the preview center anchor before edit layout settles,
+                // then re-center the editor on it.
+                ViewportAnchorSync.capture(context: anchorContext) { anchor in
+                    guard document.mode == .edit else { return }
+                    ViewportAnchorSync.restore(anchor, context: anchorContext)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        guard document.mode == .edit else { return }
+                        _ = editorBridge.focus()
                     }
                 }
             } else if newMode == .preview {
-                let ratio = editorBridge.currentScrollRatio() ?? document.scrollRatio
-                let sourceLine = editorBridge.currentSourceLineAtViewportCenter()
-                document.scrollRatio = ratio
+                // Capture the editor center anchor and carry it into the preview.
+                let anchor = ViewportAnchorSync.Anchor(
+                    sourceLine: editorBridge.currentSourceLineAtViewportCenter(),
+                    ratio: editorBridge.currentScrollRatio() ?? document.scrollRatio
+                )
+                document.scrollRatio = anchor.ratio
                 refreshPreviewPreservingScroll(
                     from: document.rawText,
-                    sourceLine: sourceLine,
-                    ratio: ratio
+                    sourceLine: anchor.sourceLine,
+                    ratio: anchor.ratio
                 )
                 let documentID = document.id
                 DispatchQueue.main.async {

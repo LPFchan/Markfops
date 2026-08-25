@@ -71,6 +71,11 @@ final class Document: Identifiable {
     /// The text storage is shared by editor views created for this document so native undo
     /// registrations continue to address the same storage across view recreation.
     @ObservationIgnored let textStorage: NSTextStorage
+    /// Bridges to the live editor/preview coordinators. Owned here (lazily) so both
+    /// EditorContainerView and ancestors like ContentView can drive scroll-anchor
+    /// capture/restore through the same instances.
+    @ObservationIgnored lazy var sharedEditorBridge = EditorBridge()
+    @ObservationIgnored lazy var sharedPreviewBridge = PreviewBridge()
 
     init(id: UUID = UUID(), fileURL: URL? = nil, rawText: String = "") {
         let initialH1Title = HeadingParser.firstH1Title(in: rawText)

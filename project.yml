@@ -16,6 +16,9 @@ packages:
   swift-collections:
     url: https://github.com/apple/swift-collections
     from: "1.0.0"
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.0.0"
 
 targets:
   Markfops:
@@ -82,6 +85,8 @@ targets:
         product: libcmark_gfm
       - package: swift-collections
         product: Collections
+      - package: Sparkle
+        product: Sparkle
 
   MarkfopsTests:
     type: bundle.unit-test

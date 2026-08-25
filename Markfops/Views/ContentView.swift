@@ -13,6 +13,8 @@ struct ContentView: View {
     @State private var isToolbarContentVisible = true
     @State private var toolbarUsesCompactLayout = false
     @State private var sidebarTransitionGeneration = 0
+    /// In-flight viewport-anchor capture for the current sidebar/compact toggle.
+    @State private var layoutTransitionSession: ViewportAnchorSync.LayoutTransitionSession?
 
     private var editorConfig: EditorConfiguration {
         var config = EditorConfiguration.default
@@ -156,6 +158,20 @@ struct ContentView: View {
             isToolbarContentVisible = false
             isSidebarTransitioning = true
         }
+
+        captureLayoutAnchor()
+    }
+
+    /// Snapshots the content at the center of the viewport before the detail pane
+    /// changes width, so the restore (fired when the transition settles) can put the
+    /// same content back in the middle instead of leaving the scroll position drifted.
+    private func captureLayoutAnchor() {
+        layoutTransitionSession?.cancel()
+        layoutTransitionSession = nil
+        guard let document = store.activeDocument else { return }
+        layoutTransitionSession = ViewportAnchorSync.captureForLayoutTransition(
+            context: .shared(for: document)
+        )
     }
 
     private func beginSidebarTransitionIfNeeded() {
@@ -305,7 +321,9 @@ private struct SidebarTransitionObserver: NSViewRepresentable {
     }
 
     final class Coordinator {
-        private static let safetyDelay: TimeInterval = 0.45
+        // The native sidebar slide is ~0.25s. The safety fallback must land just past
+        // that, not well past it, or the toolbar handoff snaps late (the hard-cut feel).
+        private static let safetyDelay: TimeInterval = 0.32
         private static let presentationCheckDelay: TimeInterval = 1.0 / 120.0
 
         private weak var splitView: NSSplitView?
