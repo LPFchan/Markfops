@@ -107,30 +107,51 @@ final class ViewportAnchorSync {
 
     // MARK: - Sidebar / compact toggle
 
-    /// Captures the center anchor before the sidebar layout change and schedules the
-    /// restore for once the transition settles. Width changes reflow text, which is
-    /// why the same line lands at a different scroll offset without this. Returns a
-    /// session token so the caller can cancel the pending restore if a newer
-    /// transition supersedes it.
+    /// Captures the center anchor before the sidebar layout change. The caller fires
+    /// the returned session once the transition has visually settled; the restore then
+    /// re-centers on the anchor. Driving the restore from the settle signal (rather
+    /// than a fixed timer) means there is no window where the reflowed layout is
+    /// visible at a drifted scroll offset before the correction lands.
     @discardableResult
     static func captureForLayoutTransition(
-        context: Context,
-        restoreDelay: TimeInterval = 0.32
+        context: Context
     ) -> LayoutTransitionSession {
         let session = LayoutTransitionSession()
         capture(context: context) { anchor in
-            guard !session.isCancelled else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + restoreDelay) {
-                guard !session.isCancelled else { return }
-                restore(anchor, context: context)
-            }
+            session.arm(anchor: anchor, context: context)
         }
         return session
     }
 
-    /// Cancellation token for a pending layout-transition restore.
+    /// Holds a captured anchor until the caller reports the layout transition has
+    /// settled, then performs the restore. Cancellable so a superseding toggle or a
+    /// mode switch can drop a stale restore.
     final class LayoutTransitionSession {
         private(set) var isCancelled = false
-        func cancel() { isCancelled = true }
+        private var pendingAnchor: Anchor?
+        private var pendingContext: Context?
+
+        func arm(anchor: Anchor, context: Context) {
+            guard !isCancelled else { return }
+            pendingAnchor = anchor
+            pendingContext = context
+        }
+
+        /// Fires the restore for the armed anchor, if any. No-op when cancelled or
+        /// when capture has not completed yet.
+        func fire() {
+            guard !isCancelled,
+                  let anchor = pendingAnchor,
+                  let context = pendingContext else { return }
+            pendingAnchor = nil
+            pendingContext = nil
+            restore(anchor, context: context)
+        }
+
+        func cancel() {
+            isCancelled = true
+            pendingAnchor = nil
+            pendingContext = nil
+        }
     }
 }

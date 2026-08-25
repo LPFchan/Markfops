@@ -28,7 +28,11 @@ struct ContentView: View {
             get: { columnVisibility },
             set: { newVisibility, transaction in
                 guard newVisibility != columnVisibility else { return }
-                prepareSidebarTransition()
+                // Do NOT touch transition state here. prepareSidebarTransition()
+                // collapses the compact pill row to zero width, which lets the detail
+                // expand to full width in the SAME SwiftUI update as the column change —
+                // that is the hard cut. Defer the toolbar mask until the split view
+                // actually starts animating (SidebarTransitionObserver fires then).
                 withTransaction(transaction) {
                     columnVisibility = newVisibility
                 }
@@ -80,7 +84,9 @@ struct ContentView: View {
             }
             .modifier(DetailToolbarDefaultTitleRemoval(isCompact: toolbarUsesCompactLayout))
         }
-        .focusedValue(\.sidebarVisibility, sidebarVisibilityBinding)
+        // Scene-level so the View-menu command and Cmd+backslash keep working even
+        // when focus sits in the toolbar pill row (compact mode) rather than the editor.
+        .focusedSceneValue(\.sidebarVisibility, sidebarVisibilityBinding)
         // The native title owns the draggable file proxy while the sidebar is visible.
         .navigationTitle(
             toolbarUsesCompactLayout
@@ -190,6 +196,12 @@ struct ContentView: View {
             isSidebarTransitioning = false
             toolbarUsesCompactLayout = columnVisibility == .detailOnly
         }
+
+        // The layout has settled — put the captured center content back in the middle.
+        // Firing here (instead of on a fixed timer) removes the drift-then-snap flash.
+        layoutTransitionSession?.fire()
+        layoutTransitionSession = nil
+
         DispatchQueue.main.async {
             guard generation == sidebarTransitionGeneration else { return }
             // One short cross-fade covers both the incoming toolbar content and
