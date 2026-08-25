@@ -314,8 +314,13 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         }
 
         stopScrollAnimation()
-        layoutManager.ensureLayout(for: textContainer)
-        scrollView.layoutSubtreeIfNeeded()
+        // Layout only up to the target line, not the whole document. ensureLayout(for:)
+        // forces a synchronous layout of EVERY glyph — on a long document that is the
+        // freeze the user feels at the end of the slide. We only need geometry through
+        // the anchor line to compute its Y, so bound the layout to that character range.
+        let anchorEnd = lineRange.location + lineRange.length
+        let glyphEnd = layoutManager.glyphIndexForCharacter(at: min(anchorEnd, textView.string.count))
+        layoutManager.ensureLayout(forGlyphRange: NSRange(location: 0, length: glyphEnd))
 
         let characterRange: NSRange
         if lineRange.length > 0 {
@@ -332,7 +337,14 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         lineRect.origin.y += textView.textContainerOrigin.y
 
         let visibleHeight = scrollView.contentView.bounds.height
-        let scrollableHeight = max(0, textView.bounds.height - visibleHeight)
+        // Use the laid-out content height when available, else fall back to the view
+        // bounds. With a bounded layout the container may not be fully laid out yet,
+        // so prefer usedRect (accurate through the anchor) over a stale bounds height.
+        let contentHeight = max(
+            layoutManager.usedRect(for: textContainer).height,
+            textView.bounds.height
+        )
+        let scrollableHeight = max(0, contentHeight - visibleHeight)
         let targetY = max(0, min(scrollableHeight, lineRect.midY - visibleHeight / 2))
         scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
         scrollView.reflectScrolledClipView(scrollView.contentView)

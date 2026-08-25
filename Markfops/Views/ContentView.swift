@@ -2,6 +2,13 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
+/// Shared flag: true while the sidebar column is animating between its endpoints.
+/// The editor reads this to pin its text-wrap width mid-slide, so the document
+/// re-wraps once when the slide ends instead of reflowing on every animation frame.
+enum SidebarSlideState {
+    static var isSliding = false
+}
+
 struct ContentView: View {
     @Environment(DocumentStore.self) private var store
     @AppStorage("editorFontSize") private var fontSize: Double = 15
@@ -82,7 +89,11 @@ struct ContentView: View {
                         }
                 }
             }
-            .modifier(DetailToolbarDefaultTitleRemoval(isCompact: toolbarUsesCompactLayout))
+            // Title visibility is handled by navigationTitle ("" in compact mode).
+            // We deliberately do NOT call toolbar(removing: .title) here: toggling the
+            // toolbar item set at transition end rebuilds the toolbar and momentarily
+            // blanks the detail content (WebView frame -> 0), forcing a full WebKit
+            // re-render of the document — the end-of-slide freeze.
         }
         // Scene-level so the View-menu command and Cmd+backslash keep working even
         // when focus sits in the toolbar pill row (compact mode) rather than the editor.
@@ -164,6 +175,7 @@ struct ContentView: View {
             isToolbarContentVisible = false
             isSidebarTransitioning = true
         }
+        SidebarSlideState.isSliding = true
 
         captureLayoutAnchor()
     }
@@ -201,14 +213,19 @@ struct ContentView: View {
         // Firing here (instead of on a fixed timer) removes the drift-then-snap flash.
         layoutTransitionSession?.fire()
         layoutTransitionSession = nil
+        SidebarSlideState.isSliding = false
+        // Re-wrap the editor at the final width NOW rather than waiting ~540ms for
+        // AppKit to deliver another resize — that wait was the end-of-slide stall.
+        store.activeDocument.map { $0.sharedEditorBridge.releaseWrapFreeze() }
 
-        DispatchQueue.main.async {
-            guard generation == sidebarTransitionGeneration else { return }
-            // One short cross-fade covers both the incoming toolbar content and
-            // the outgoing, so the eye sees a swap rather than a blank gap.
-            withAnimation(.easeInOut(duration: 0.18)) {
-                isToolbarContentVisible = true
-            }
+        // Fire the fade directly. We are already on the main thread here; deferring
+        // to DispatchQueue.main.async queued the fade behind ~580ms of runloop work
+        // that the sidebar animation system enqueues, which was the lag spike.
+        guard generation == sidebarTransitionGeneration else { return }
+        // One short cross-fade covers both the incoming toolbar content and
+        // the outgoing, so the eye sees a swap rather than a blank gap.
+        withAnimation(.easeInOut(duration: 0.18)) {
+            isToolbarContentVisible = true
         }
     }
 
@@ -267,8 +284,11 @@ enum SidebarTransitionGeometry {
         toolbarIsVisible && !isTransitioning
     }
 
-    static func reachedCollapsedEndpoint(offsets: [CGFloat]) -> Bool {
-        offsets.allSatisfy { abs($0) <= collapsedEndpointWidth }
+    /// The collapse endpoint is the sidebar column having shrunk to ~zero width.
+    /// It deliberately reads the sidebar, not the detail frame, so a slow detail
+    /// layout cannot postpone settle-detection past the safety fallback.
+    static func reachedCollapsedEndpoint(widths: [CGFloat]) -> Bool {
+        widths.allSatisfy { $0 <= collapsedEndpointWidth }
     }
 
     static func isSidebarTransitionResize(
@@ -478,16 +498,19 @@ private struct SidebarTransitionObserver: NSViewRepresentable {
                 return false
             }
 
-            if isCompact {
-                guard sidebarItem(in: splitView)?.isCollapsed ?? false,
-                      let detail = splitView.subviews.max(by: { $0.frame.maxX < $1.frame.maxX }) else {
+           if isCompact {
+                // Base the collapse endpoint on the sidebar item itself, which AppKit
+                // drives directly. Requiring the DETAIL to reach the window edge (the old
+                // check) coupled settle-detection to a slow, wedged layout pass, so the
+                // endpoint was missed and the safety fallback fired on every collapse.
+                guard let item = sidebarItem(in: splitView), item.isCollapsed else {
                     return false
                 }
-
-                let offsets = includePresentationFrame
-                    ? [detail.frame.minX, detail.layer?.presentation()?.frame.minX ?? detail.frame.minX]
-                    : [detail.frame.minX]
-                return SidebarTransitionGeometry.reachedCollapsedEndpoint(offsets: offsets)
+                let width = sidebarWidth(in: splitView)
+                let widths = includePresentationFrame
+                    ? [width, splitView.subviews.min(by: { $0.frame.minX < $1.frame.minX })?.layer?.presentation()?.frame.width ?? width]
+                    : [width]
+                return SidebarTransitionGeometry.reachedCollapsedEndpoint(widths: widths)
             }
 
             guard let sidebar = splitView.subviews.min(by: { $0.frame.minX < $1.frame.minX }) else {
@@ -592,20 +615,28 @@ private struct CompactToolbarPrincipalItem: View {
         isCompact && !isTransitioning
     }
 
-    var body: some View {
-        GeometryReader { geo in
-            let w = max(1, geo.size.width)
-            TabPillRowView(toolbarSlotWidth: w)
-                .frame(width: w, alignment: .center)
-                .clipped()
-        }
-        .opacity(occupiesToolbarSpace && isVisible ? 1 : 0)
-        .allowsHitTesting(occupiesToolbarSpace && isVisible)
-        .accessibilityHidden(!occupiesToolbarSpace || !isVisible)
+   var body: some View {
+       // Keep the outer frame at a CONSTANT width in both modes. Collapsing the
+       // principal item to zero width on every toggle forced the whole pill strip to
+       // re-layout twice and stalled the main runloop (~550ms) — the lag spike. A
+       // fixed frame with the strip clipped/faded avoids the geometry churn entirely.
+       // Keep the frame constant in both modes (no zero-width swap) and drive the
+       // cross-fade purely through opacity, so the handoff does no geometry churn.
+       TabPillRowView(toolbarSlotWidth: idealWidth)
+           .frame(width: idealWidth, alignment: .center)
+           .clipped()
+           .opacity(occupiesToolbarSpace && isVisible ? 1 : 0)
+           .allowsHitTesting(occupiesToolbarSpace && isVisible)
+           .accessibilityHidden(!occupiesToolbarSpace || !isVisible)
+        // NSToolbar asks the principal item for its preferred size; a fully fixed
+        // frame can end up squeezed to zero width when the toolbar rebuilds its item
+        // set, leaving the pill row invisible in compact mode. A flexible range with
+        // an ideal keeps the constant geometry AND answers the sizing query.
         .frame(
-            minWidth: occupiesToolbarSpace ? 120 : 0,
-            idealWidth: occupiesToolbarSpace ? idealWidth : 0,
-            maxWidth: occupiesToolbarSpace ? .infinity : 0
+            minWidth: idealWidth,
+            idealWidth: idealWidth,
+            maxWidth: .infinity,
+            alignment: .center
         )
         .frame(height: ToolbarMetrics.compactPillRowHeight)
         .layoutPriority(-1)
@@ -640,22 +671,6 @@ private struct CompactToolbarPrincipalItem: View {
 
 /// Switches ownership of the center toolbar slot only after the sidebar has reached its endpoint.
 /// The surrounding toolbar is hidden while AppKit installs or removes its native title item.
-private struct DetailToolbarDefaultTitleRemoval: ViewModifier {
-    let isCompact: Bool
-
-    func body(content: Content) -> some View {
-        if isCompact {
-            if #available(macOS 15.0, *) {
-                content.toolbar(removing: .title)
-            } else {
-                content
-            }
-        } else {
-            content
-        }
-    }
-}
-
 // MARK: - Welcome screen
 
 private struct WelcomeView: View {

@@ -121,6 +121,9 @@ enum MarkdownHeadingFormatter {
 final class EditorBridge {
     weak var coordinator: TextViewCoordinator?
 
+    /// Releases a slide-time text-wrap freeze immediately (re-wraps at the final width).
+    func releaseWrapFreeze() { coordinator?.textView?.releaseWrapFreeze() }
+
     func currentSourceLineAtViewportCenter() -> Int? {
         coordinator?.currentSourceLineAtViewportCenter()
     }
@@ -163,6 +166,48 @@ final class EditorBridge {
 // MARK: - NSTextView subclass
 
 final class MarkdownNSTextView: NSTextView {
+    /// Immediately re-wraps the text at the current frame width after a slide freeze.
+    /// Without this the container stays pinned at the pre-slide width until AppKit
+    /// happens to deliver another resize (~540ms later) — the end-of-slide stall.
+    func releaseWrapFreeze() {
+        guard let container = textContainer,
+              let layoutManager,
+              let scrollView = enclosingScrollView,
+              container.containerSize.width > 0,
+              abs(container.containerSize.width - frame.size.width) > 1 else { return }
+        container.containerSize = NSSize(width: frame.size.width, height: container.containerSize.height)
+        // Lay out ONLY the visible region (plus a margin), not the whole document.
+        // ensureLayout(for:) forces a synchronous layout of every glyph (~127ms on a
+        // long doc) — the residual freeze. Bounding to the viewport makes the re-wrap
+        // ~1ms; the rest lays out lazily as the user scrolls.
+        let visible = scrollView.contentView.documentVisibleRect
+        let margin = visible.height
+        let targetRect = visible.insetBy(dx: 0, dy: -margin)
+        layoutManager.ensureLayout(forBoundingRect: targetRect, in: container)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        let oldWidth = frame.size.width
+        // While the sidebar slides, pin the text container width so the document does
+        // not re-wrap on every animation frame (the sluggish drag the user feels). The
+        // single re-wrap happens when the slide ends and isSliding clears.
+        if let container = textContainer, abs(newSize.width - oldWidth) > 1 {
+            if SidebarSlideState.isSliding, container.containerSize.width > 0 {
+                // Freeze the wrap width mid-slide; re-wrap once when it ends.
+                let frozen = container.containerSize.width
+                super.setFrameSize(newSize)
+                container.containerSize = NSSize(width: frozen, height: container.containerSize.height)
+                return
+            }
+            // Slide over (or not sliding): resync the container to the real width once.
+            super.setFrameSize(newSize)
+            if container.containerSize.width != newSize.width {
+                container.containerSize = NSSize(width: newSize.width, height: container.containerSize.height)
+            }
+            return
+        }
+        super.setFrameSize(newSize)
+    }
     convenience init(textStorage: NSTextStorage) {
         let layoutManager = NSLayoutManager()
         textStorage.addLayoutManager(layoutManager)

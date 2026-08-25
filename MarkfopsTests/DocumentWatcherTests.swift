@@ -54,12 +54,14 @@ final class DocumentWatcherTests: XCTestCase {
         )
     }
 
-    func testCollapsedSidebarWaitsForPresentedDetailToReachLeadingEdge() {
+    func testCollapsedSidebarSettlesOnSidebarWidthNotDetailFrame() {
+        // Settle is decided by the sidebar column width collapsing, independent of
+        // how quickly the detail frame catches up.
         XCTAssertTrue(
-            SidebarTransitionGeometry.reachedCollapsedEndpoint(offsets: [0, 1])
+            SidebarTransitionGeometry.reachedCollapsedEndpoint(widths: [0, 1])
         )
         XCTAssertFalse(
-            SidebarTransitionGeometry.reachedCollapsedEndpoint(offsets: [0, 8])
+            SidebarTransitionGeometry.reachedCollapsedEndpoint(widths: [0, 8])
         )
     }
 
