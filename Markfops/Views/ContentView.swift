@@ -81,7 +81,7 @@ struct ContentView: View {
         .focusedValue(\.sidebarVisibility, sidebarVisibilityBinding)
         // The native title owns the draggable file proxy while the sidebar is visible.
         .navigationTitle(
-            toolbarUsesCompactLayout || !isToolbarContentVisible
+            toolbarUsesCompactLayout
                 ? ""
                 : (store.activeDocument?.displayTitle ?? "Markfops")
         )
@@ -176,7 +176,9 @@ struct ContentView: View {
         }
         DispatchQueue.main.async {
             guard generation == sidebarTransitionGeneration else { return }
-            withAnimation(.easeIn(duration: 0.10)) {
+            // One short cross-fade covers both the incoming toolbar content and
+            // the outgoing, so the eye sees a swap rather than a blank gap.
+            withAnimation(.easeInOut(duration: 0.18)) {
                 isToolbarContentVisible = true
             }
         }
@@ -303,8 +305,8 @@ private struct SidebarTransitionObserver: NSViewRepresentable {
     }
 
     final class Coordinator {
-        private static let safetyDelay: TimeInterval = 0.70
-        private static let presentationCheckDelay: TimeInterval = 1.0 / 60.0
+        private static let safetyDelay: TimeInterval = 0.45
+        private static let presentationCheckDelay: TimeInterval = 1.0 / 120.0
 
         private weak var splitView: NSSplitView?
         private var resizeObserver: NSObjectProtocol?
