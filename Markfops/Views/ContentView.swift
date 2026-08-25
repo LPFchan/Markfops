@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var scrollToHeading: HeadingNode? = nil
     @State private var isSidebarTransitioning = false
     @State private var isToolbarContentVisible = true
+    @State private var toolbarUsesCompactLayout = false
     @State private var sidebarTransitionGeneration = 0
 
     private var editorConfig: EditorConfiguration {
@@ -20,11 +21,22 @@ struct ContentView: View {
         return config
     }
 
+    private var sidebarVisibilityBinding: Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: { columnVisibility },
+            set: { newVisibility in
+                guard newVisibility != columnVisibility else { return }
+                prepareSidebarTransition()
+                columnVisibility = newVisibility
+            }
+        )
+    }
+
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        NavigationSplitView(columnVisibility: sidebarVisibilityBinding) {
             SidebarView(
                 onTOCTap: handleTOCTap,
-                columnVisibility: $columnVisibility
+                columnVisibility: sidebarVisibilityBinding
             )
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
@@ -39,7 +51,7 @@ struct ContentView: View {
                     .toolbar {
                         ToolbarItem(placement: .principal) {
                             CompactToolbarPrincipalItem(
-                                isCompact: columnVisibility == .detailOnly,
+                                isCompact: toolbarUsesCompactLayout,
                                 isTransitioning: isSidebarTransitioning,
                                 isVisible: isToolbarContentVisible
                             )
@@ -54,7 +66,7 @@ struct ContentView: View {
                         .toolbar {
                             ToolbarItem(placement: .principal) {
                                 CompactToolbarPrincipalItem(
-                                    isCompact: columnVisibility == .detailOnly,
+                                    isCompact: toolbarUsesCompactLayout,
                                     isTransitioning: isSidebarTransitioning,
                                     isVisible: isToolbarContentVisible
                                 )
@@ -62,12 +74,12 @@ struct ContentView: View {
                         }
                 }
             }
-            .modifier(DetailToolbarDefaultTitleRemoval(isCompact: columnVisibility == .detailOnly))
+            .modifier(DetailToolbarDefaultTitleRemoval(isCompact: toolbarUsesCompactLayout))
         }
-        .focusedValue(\.sidebarVisibility, $columnVisibility)
+        .focusedValue(\.sidebarVisibility, sidebarVisibilityBinding)
         // The native title owns the draggable file proxy while the sidebar is visible.
         .navigationTitle(
-            columnVisibility == .detailOnly || !isToolbarContentVisible
+            toolbarUsesCompactLayout || !isToolbarContentVisible
                 ? ""
                 : (store.activeDocument?.displayTitle ?? "Markfops")
         )
@@ -86,7 +98,7 @@ struct ContentView: View {
         .background {
             SidebarTransitionObserver(
                 isCompact: columnVisibility == .detailOnly,
-                onTransitionBegan: beginSidebarTransition,
+                onTransitionBegan: beginSidebarTransitionIfNeeded,
                 onTransitionSettled: finishSidebarTransition
             )
         }
@@ -133,7 +145,7 @@ struct ContentView: View {
         store.managedWindow
     }
 
-    private func beginSidebarTransition() {
+    private func prepareSidebarTransition() {
         sidebarTransitionGeneration &+= 1
 
         var transaction = Transaction()
@@ -144,12 +156,18 @@ struct ContentView: View {
         }
     }
 
+    private func beginSidebarTransitionIfNeeded() {
+        guard !isSidebarTransitioning else { return }
+        prepareSidebarTransition()
+    }
+
     private func finishSidebarTransition() {
         let generation = sidebarTransitionGeneration
         var transaction = Transaction()
         transaction.animation = nil
         withTransaction(transaction) {
             isSidebarTransitioning = false
+            toolbarUsesCompactLayout = columnVisibility == .detailOnly
         }
         DispatchQueue.main.async {
             guard generation == sidebarTransitionGeneration else { return }
@@ -190,6 +208,24 @@ struct ContentView: View {
 /// The native sidebar button animates `NSSplitViewItem` directly. Observing that resize lets the
 /// toolbar mask appear before AppKit presents the first transition frame while leaving the native
 /// `NavigationSplitView` binding untouched.
+enum SidebarTransitionGeometry {
+    static let collapsedEndpointWidth: CGFloat = 4.5
+    static let expandedEndpointTolerance: CGFloat = 1.5
+
+    static func reachedEndpoint(
+        compact: Bool,
+        widths: [CGFloat],
+        expandedWidth: CGFloat
+    ) -> Bool {
+        if compact {
+            return widths.allSatisfy { $0 <= collapsedEndpointWidth }
+        }
+        return widths.allSatisfy {
+            abs($0 - expandedWidth) <= expandedEndpointTolerance
+        }
+    }
+}
+
 private struct SidebarTransitionObserver: NSViewRepresentable {
     let isCompact: Bool
     let onTransitionBegan: () -> Void
@@ -238,18 +274,19 @@ private struct SidebarTransitionObserver: NSViewRepresentable {
     }
 
     final class Coordinator {
-        private static let settleDelay: TimeInterval = 0.12
         private static let safetyDelay: TimeInterval = 0.70
+        private static let presentationCheckDelay: TimeInterval = 1.0 / 60.0
 
         private weak var splitView: NSSplitView?
         private var resizeObserver: NSObjectProtocol?
-        private var settleWorkItem: DispatchWorkItem?
+        private var endpointWorkItem: DispatchWorkItem?
         private var safetyWorkItem: DispatchWorkItem?
         private var attachWorkItem: DispatchWorkItem?
         private var isTransitionActive = false
         private var isCompact = false
         private var sidebarWasCollapsed = false
         private var lastSidebarWidth: CGFloat?
+        private var expandedSidebarWidth: CGFloat = 180
         private var onTransitionBegan: () -> Void = {}
         private var onTransitionSettled: () -> Void = {}
 
@@ -282,6 +319,11 @@ private struct SidebarTransitionObserver: NSViewRepresentable {
             splitView = candidate
             sidebarWasCollapsed = sidebarItem(in: candidate)?.isCollapsed ?? isCompact
             lastSidebarWidth = sidebarWidth(in: candidate)
+            if !sidebarWasCollapsed,
+               let width = lastSidebarWidth,
+               width > SidebarTransitionGeometry.collapsedEndpointWidth {
+                expandedSidebarWidth = width
+            }
             resizeObserver = NotificationCenter.default.addObserver(
                 forName: NSSplitView.didResizeSubviewsNotification,
                 object: candidate,
@@ -299,8 +341,8 @@ private struct SidebarTransitionObserver: NSViewRepresentable {
             splitView = nil
             attachWorkItem?.cancel()
             attachWorkItem = nil
-            settleWorkItem?.cancel()
-            settleWorkItem = nil
+            endpointWorkItem?.cancel()
+            endpointWorkItem = nil
             safetyWorkItem?.cancel()
             safetyWorkItem = nil
             isTransitionActive = false
@@ -324,9 +366,14 @@ private struct SidebarTransitionObserver: NSViewRepresentable {
             sidebarWasCollapsed = sidebarIsCollapsed
             lastSidebarWidth = width
 
-            guard belongsToCollapseTransition else { return }
+            guard belongsToCollapseTransition else {
+                if width > SidebarTransitionGeometry.collapsedEndpointWidth {
+                    expandedSidebarWidth = width
+                }
+                return
+            }
             beginIfNeeded()
-            scheduleSettle()
+            scheduleEndpointCheckIfNeeded()
         }
 
         private func beginIfNeeded() {
@@ -342,20 +389,51 @@ private struct SidebarTransitionObserver: NSViewRepresentable {
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.safetyDelay, execute: safety)
         }
 
-        private func scheduleSettle() {
-            settleWorkItem?.cancel()
-            let settle = DispatchWorkItem { [weak self] in
-                self?.finishIfNeeded()
+        private func scheduleEndpointCheckIfNeeded() {
+            guard isTransitionActive, transitionReachedEndpoint() else { return }
+
+            endpointWorkItem?.cancel()
+            let check = DispatchWorkItem { [weak self] in
+                self?.finishIfPresentationReachedEndpoint()
             }
-            settleWorkItem = settle
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.settleDelay, execute: settle)
+            endpointWorkItem = check
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + Self.presentationCheckDelay,
+                execute: check
+            )
+        }
+
+        private func finishIfPresentationReachedEndpoint() {
+            guard isTransitionActive else { return }
+            guard transitionReachedEndpoint(includePresentationFrame: true) else {
+                scheduleEndpointCheckIfNeeded()
+                return
+            }
+            finishIfNeeded()
+        }
+
+        private func transitionReachedEndpoint(includePresentationFrame: Bool = false) -> Bool {
+            guard let splitView,
+                  let sidebar = splitView.subviews.min(by: { $0.frame.minX < $1.frame.minX }) else {
+                return false
+            }
+
+            let widths = includePresentationFrame
+                ? [sidebar.frame.width, sidebar.layer?.presentation()?.frame.width ?? sidebar.frame.width]
+                : [sidebar.frame.width]
+
+            return SidebarTransitionGeometry.reachedEndpoint(
+                compact: isCompact,
+                widths: widths,
+                expandedWidth: expandedSidebarWidth
+            )
         }
 
         private func finishIfNeeded() {
             guard isTransitionActive else { return }
             isTransitionActive = false
-            settleWorkItem?.cancel()
-            settleWorkItem = nil
+            endpointWorkItem?.cancel()
+            endpointWorkItem = nil
             safetyWorkItem?.cancel()
             safetyWorkItem = nil
             onTransitionSettled()
@@ -461,8 +539,8 @@ private struct CompactToolbarPrincipalItem: View {
     }
 }
 
-/// Removes the native title only while compact tabs serve as the window label.
-/// `ToolbarDefaultItemKind.title` is macOS 15+; older systems keep prior toolbar behavior.
+/// Switches ownership of the center toolbar slot only after the sidebar has reached its endpoint.
+/// The surrounding toolbar is hidden while AppKit installs or removes its native title item.
 private struct DetailToolbarDefaultTitleRemoval: ViewModifier {
     let isCompact: Bool
 

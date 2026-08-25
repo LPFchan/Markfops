@@ -2,6 +2,37 @@ import XCTest
 @testable import Markfops
 
 final class DocumentWatcherTests: XCTestCase {
+    func testSidebarTransitionWaitsForModelAndPresentationEndpoints() {
+        XCTAssertTrue(
+            SidebarTransitionGeometry.reachedEndpoint(
+                compact: true,
+                widths: [4, 4],
+                expandedWidth: 180
+            )
+        )
+        XCTAssertFalse(
+            SidebarTransitionGeometry.reachedEndpoint(
+                compact: true,
+                widths: [4, 8],
+                expandedWidth: 180
+            )
+        )
+        XCTAssertTrue(
+            SidebarTransitionGeometry.reachedEndpoint(
+                compact: false,
+                widths: [180, 179],
+                expandedWidth: 180
+            )
+        )
+        XCTAssertFalse(
+            SidebarTransitionGeometry.reachedEndpoint(
+                compact: false,
+                widths: [180, 176],
+                expandedWidth: 180
+            )
+        )
+    }
+
     func testCollapsedTabSizingKeepsOnlyTheActiveTabModeratelyWide() {
         let collapsedWidth: CGFloat = 32
 
