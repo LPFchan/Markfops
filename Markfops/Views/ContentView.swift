@@ -24,10 +24,12 @@ struct ContentView: View {
     private var sidebarVisibilityBinding: Binding<NavigationSplitViewVisibility> {
         Binding(
             get: { columnVisibility },
-            set: { newVisibility in
+            set: { newVisibility, transaction in
                 guard newVisibility != columnVisibility else { return }
                 prepareSidebarTransition()
-                columnVisibility = newVisibility
+                withTransaction(transaction) {
+                    columnVisibility = newVisibility
+                }
             }
         )
     }
@@ -238,6 +240,19 @@ enum SidebarTransitionGeometry {
     static func reachedCollapsedEndpoint(offsets: [CGFloat]) -> Bool {
         offsets.allSatisfy { abs($0) <= collapsedEndpointWidth }
     }
+
+    static func isSidebarTransitionResize(
+        transitionIsActive: Bool,
+        wasCollapsed: Bool,
+        isCollapsed: Bool,
+        previousWidth: CGFloat,
+        currentWidth: CGFloat
+    ) -> Bool {
+        transitionIsActive
+            || wasCollapsed != isCollapsed
+            || (previousWidth <= collapsedEndpointWidth)
+                != (currentWidth <= collapsedEndpointWidth)
+    }
 }
 
 private struct SidebarTransitionObserver: NSViewRepresentable {
@@ -368,19 +383,19 @@ private struct SidebarTransitionObserver: NSViewRepresentable {
 
             let sidebarIsCollapsed = sidebarItem(in: splitView)?.isCollapsed ?? isCompact
             let width = sidebarWidth(in: splitView)
-            let wasAtCollapsedWidth = (lastSidebarWidth ?? width) <= 1
-            let isAtCollapsedWidth = width <= 1
-            let belongsToCollapseTransition = isTransitionActive
-                || isCompact
-                || sidebarIsCollapsed
-                || sidebarWasCollapsed
-                || wasAtCollapsedWidth
-                || isAtCollapsedWidth
+            let previousWidth = lastSidebarWidth ?? width
+            let belongsToSidebarTransition = SidebarTransitionGeometry.isSidebarTransitionResize(
+                transitionIsActive: isTransitionActive,
+                wasCollapsed: sidebarWasCollapsed,
+                isCollapsed: sidebarIsCollapsed,
+                previousWidth: previousWidth,
+                currentWidth: width
+            )
 
             sidebarWasCollapsed = sidebarIsCollapsed
             lastSidebarWidth = width
 
-            guard belongsToCollapseTransition else {
+            guard belongsToSidebarTransition else {
                 if width > SidebarTransitionGeometry.collapsedEndpointWidth {
                     expandedSidebarWidth = width
                 }
@@ -532,14 +547,12 @@ private struct CompactToolbarPrincipalItem: View {
     let isTransitioning: Bool
     let isVisible: Bool
     @Environment(DocumentStore.self) private var store
+    @State private var windowWidth: CGFloat = 720
 
     private static let reservedChromeWidth: CGFloat = 244
     private static let minimumIdealWidth: CGFloat = 180
 
-    /// Read synchronously when SwiftUI negotiates the toolbar item. Sidebar transitions leave the
-    /// window width unchanged, so the value stays fixed for the entire split-view animation.
     private var idealWidth: CGFloat {
-        let windowWidth = store.managedWindow?.contentView?.bounds.width ?? 720
         return max(Self.minimumIdealWidth, windowWidth - Self.reservedChromeWidth)
     }
 
@@ -564,6 +577,32 @@ private struct CompactToolbarPrincipalItem: View {
         )
         .frame(height: ToolbarMetrics.compactPillRowHeight)
         .layoutPriority(-1)
+        .onAppear { refreshWindowWidth() }
+        .onChange(of: isCompact) { _, compact in
+            if compact {
+                refreshWindowWidth()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResizeNotification)) { note in
+            guard isCompact,
+                  let window = note.object as? NSWindow,
+                  window === store.managedWindow else { return }
+            updateWindowWidth(window.contentView?.bounds.width ?? window.frame.width)
+        }
+    }
+
+    private func refreshWindowWidth() {
+        guard let window = store.managedWindow else { return }
+        updateWindowWidth(window.contentView?.bounds.width ?? window.frame.width)
+    }
+
+    private func updateWindowWidth(_ width: CGFloat) {
+        guard abs(width - windowWidth) > 0.5 else { return }
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            windowWidth = width
+        }
     }
 }
 

@@ -63,6 +63,81 @@ final class DocumentWatcherTests: XCTestCase {
         )
     }
 
+    func testWindowResizeDoesNotMasqueradeAsSidebarTransition() {
+        XCTAssertFalse(
+            SidebarTransitionGeometry.isSidebarTransitionResize(
+                transitionIsActive: false,
+                wasCollapsed: true,
+                isCollapsed: true,
+                previousWidth: 900,
+                currentWidth: 760
+            )
+        )
+        XCTAssertFalse(
+            SidebarTransitionGeometry.isSidebarTransitionResize(
+                transitionIsActive: false,
+                wasCollapsed: false,
+                isCollapsed: false,
+                previousWidth: 220,
+                currentWidth: 260
+            )
+        )
+    }
+
+    func testCollapsedStateChangeStartsSidebarTransitionTracking() {
+        XCTAssertTrue(
+            SidebarTransitionGeometry.isSidebarTransitionResize(
+                transitionIsActive: false,
+                wasCollapsed: false,
+                isCollapsed: true,
+                previousWidth: 180,
+                currentWidth: 0
+            )
+        )
+        XCTAssertTrue(
+            SidebarTransitionGeometry.isSidebarTransitionResize(
+                transitionIsActive: false,
+                wasCollapsed: true,
+                isCollapsed: false,
+                previousWidth: 0,
+                currentWidth: 180
+            )
+        )
+    }
+
+    func testCollapsedEndpointCrossingStartsSidebarTransitionTracking() {
+        XCTAssertTrue(
+            SidebarTransitionGeometry.isSidebarTransitionResize(
+                transitionIsActive: false,
+                wasCollapsed: false,
+                isCollapsed: false,
+                previousWidth: 4,
+                currentWidth: 200
+            )
+        )
+        XCTAssertTrue(
+            SidebarTransitionGeometry.isSidebarTransitionResize(
+                transitionIsActive: false,
+                wasCollapsed: true,
+                isCollapsed: true,
+                previousWidth: 200,
+                currentWidth: 4
+            )
+        )
+    }
+
+    func testActiveSidebarTransitionKeepsTrackingResizeEvents() {
+        XCTAssertTrue(
+            SidebarTransitionGeometry.isSidebarTransitionResize(
+                transitionIsActive: true,
+                wasCollapsed: false,
+                isCollapsed: false,
+                previousWidth: 180,
+                currentWidth: 120
+            )
+        )
+    }
+
     func testCollapsedTabSizingKeepsOnlyTheActiveTabModeratelyWide() {
         let collapsedWidth: CGFloat = 32
 

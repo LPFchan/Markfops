@@ -64,8 +64,8 @@ Markfops is a working native macOS Markdown app with XcodeGen project generation
   - Why it matters: new windows and detached tabs remain independent, external files join the active window without duplicate state, large file sets no longer exhaust the process file-descriptor limit, long documents switch modes without rebuilding both native surfaces, sidebar transitions no longer rebuild the compact tab graph, wide compact windows devote the available toolbar space to tabs, the native title continues exposing the draggable file proxy, repeating unchanged rendering and highlighting no longer consumes transition time, sidebar animation work settles cleanly, undo and redo survive editor recreation and document moves, editor colors no longer disappear during view updates, and regressions now fail the build
   - Related ids: none yet
 - Date: 2026-08-25
-  - Change: sidebar transitions stage toolbar ownership changes after the native split-view animation reaches its visible endpoint, using the detail pane's presented leading edge when the collapsed sidebar view is absent
-  - Why it matters: compact tabs and the native document title remain hidden while AppKit rearranges them, then reliably return without a mid-slide pill jump or toolbar fade stutter
+  - Change: sidebar transitions preserve the native visibility transaction while staging toolbar ownership at the visible endpoint; ordinary compact-mode window resizing is excluded from transition masking and refreshes only the live compact toolbar width
+  - Why it matters: sidebar expansion and collapse remain animated, compact tabs and the native title stay hidden only while AppKit rearranges them, and resizing the window no longer makes the toolbar disappear or invalidates the hidden 200-tab strip
   - Related ids: none yet
 
 ## Active Blockers And Risks
