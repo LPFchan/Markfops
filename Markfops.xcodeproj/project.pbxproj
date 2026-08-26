@@ -518,6 +518,7 @@
 				CODE_SIGN_ENTITLEMENTS = Markfops/Resources/Markfops.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = Markfops/Resources/Info.plist;
@@ -526,6 +527,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.markfops.Markfops;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.0;
@@ -558,6 +560,7 @@
 				CODE_SIGN_ENTITLEMENTS = Markfops/Resources/Markfops.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = Markfops/Resources/Info.plist;
@@ -566,6 +569,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.markfops.Markfops;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.0;

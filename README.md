@@ -1,97 +1,91 @@
 # Markfops
 
-A lightweight, native macOS Markdown reader and editor. No Electron — built with Swift + SwiftUI.
+A fast, native macOS Markdown editor and reader. No Electron — just Swift, SwiftUI, and AppKit.
 
-## Features
+## Install
 
-- **Full GFM support** — tables, task lists, strikethrough, fenced code blocks, autolinks
-- **Edit / Preview mode** per tab (⌘⇧P to toggle)
-- **Vertical sidebar** with document list — like Notes or ChatGPT
-- **Horizontal tab bar** with favicon-style letter badges
-- **Independent windows** with tabs that can move or detach between windows
-- **Table of contents** — click the ▶ triangle in the sidebar to expand a document's headings; click any heading to jump to it in the editor or preview
-- **Favicon letter** — the first letter of the H1 heading shown in both sidebar and tab bar
-- **Drag and drop** — drag any `.md` file onto the app window to open it; title-bar proxy icon for macOS-native drag behaviour (Cmd+click to see path)
-- **Full keyboard shortcuts** on-par with macOS TextEdit (see below)
-- **Syntax highlighting** in the editor (headings, bold, italic, code, links, blockquotes, tables…)
-- **Light and dark mode** preview — automatically follows System Appearance
+1. Download the latest `.dmg` from [Releases](https://github.com/LPFchan/Markfops/releases)
+2. Open it and drag **Markfops** into **Applications**
+3. First launch: macOS will warn that the app is unidentified. Open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway**
 
-## Requirements
+Requires macOS 14 (Sonoma) or later. Markfops checks for its own updates from then on.
 
-- macOS 14.0 (Sonoma) or later
-- Xcode 16 or later
+## What it does
 
-## Building
+- **Real Markdown** — full GitHub Flavored Markdown: tables, task lists, strikethrough, fenced code, autolinks
+- **Edit or preview** any tab with `⌘⇧P`, with syntax highlighting while you write
+- **Tabs and windows** that behave like macOS expects — drag tabs between windows, or tear one off into its own
+- **Sidebar with table of contents** — expand any document to jump straight to a heading
+- **Your files stay yours** — plain `.md` on disk, drag-and-drop to open, proxy icon in the title bar, PDF export
+- **Light and dark** preview that follows your system appearance
+- **Four languages** — English, 한국어, 日本語, 简体中文
+
+## Keyboard shortcuts
+
+| Action | | Action | |
+|---|---|---|---|
+| New document | ⌘N | Find | ⌘F |
+| New tab | ⌘T | Find & Replace | ⌘⌥F |
+| New window | ⌘⇧N | Bold | ⌘B |
+| Open file | ⌘O | Italic | ⌘I |
+| Save | ⌘S | Inline code | ⌘⌥K |
+| Save As | ⌘⇧S | Undo / Redo | ⌘Z / ⌘⇧Z |
+| Close tab | ⌘W | Next / previous tab | ⌘⇧] / ⌘⇧[ |
+| Toggle edit / preview | ⌘⇧P | Preferences | ⌘, |
+
+## Building from source
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/Markfops.git
+git clone https://github.com/LPFchan/Markfops.git
 cd Markfops
-xcodegen generate        # generates Markfops.xcodeproj
-open Markfops.xcodeproj  # then press ⌘R
+xcodegen generate
+open Markfops.xcodeproj   # then ⌘R
 ```
 
-> **First run:** Xcode will resolve Swift Package dependencies (libcmark_gfm, swift-collections) automatically. This requires an internet connection on the first build.
+Needs Xcode 16+. The first build resolves Swift packages, so you'll want an internet connection.
 
-### Profiling tab switches
-
-The generated `Markfops` scheme profiles the Debug configuration so Instruments can load Sparkle under local ad-hoc signing. Archive builds continue to use Release.
-
-1. In Xcode, choose **Product → Profile**, select **Blank**, and click **Choose**.
-2. Add the **Points of Interest** or **os_signpost** instrument with the **+** button.
-3. Start recording, switch between the large documents a few times, then stop.
-4. Filter the signpost track for the `com.markfops.Markfops` subsystem.
-
-The outer `Tab Switch` interval measures selection through the next main-loop turn after the native surface updates. Nested intervals separate document activation, editor creation or update, editor configuration, large-text comparison and synchronization, syntax highlighting, preview cache checks, Markdown rendering, preview loading, and preview DOM updates. `Surface Selected` also reports whether the tab was already warm.
-
-## Keyboard Shortcuts
-
-| Action | Shortcut |
-|---|---|
-| New document | ⌘N |
-| New tab | ⌘T |
-| New window | ⌘⇧N |
-| Open file | ⌘O |
-| Save | ⌘S |
-| Save As | ⌘⇧S |
-| Close tab | ⌘W |
-| Toggle Edit / Preview | ⌘⇧P |
-| Next tab | ⌘⇧] |
-| Previous tab | ⌘⇧[ |
-| Find | ⌘F |
-| Find & Replace | ⌘⌥F |
-| Bold | ⌘B |
-| Italic | ⌘I |
-| Inline Code | ⌘⌥K |
-| Undo / Redo | ⌘Z / ⌘⇧Z |
-| Preferences | ⌘, |
-| Quit | ⌘Q |
-
-## Project Structure
+<details>
+<summary>Project layout and tech stack</summary>
 
 ```
 Markfops/
 ├── App/           — Entry point, AppDelegate
 ├── Diagnostics/   — Instruments signposts for performance profiling
 ├── State/         — Document, DocumentStore, EditMode, HeadingNode
-├── Views/         — All SwiftUI views (sidebar, tab bar, editor container…)
+├── Views/         — SwiftUI views (sidebar, tab bar, editor container…)
 ├── Editor/        — NSTextView subclass + syntax highlighter
 ├── Renderer/      — cmark-gfm HTML renderer + HTML template
-├── Parsing/       — Heading parser (for TOC + favicon letter)
+├── Parsing/       — Heading parser (TOC + favicon letter)
 ├── Commands/      — Keyboard shortcuts via CommandMenu
-└── Resources/     — CSS stylesheets, asset catalog
+└── Resources/     — CSS stylesheets, asset catalog, localizations
 ```
-
-## Tech Stack
 
 | Layer | Technology |
 |---|---|
 | UI | SwiftUI + AppKit bridging |
-| Markdown parsing | [libcmark_gfm](https://github.com/KristopherGBaker/libcmark_gfm) (GFM reference implementation) |
+| Markdown parsing | [libcmark_gfm](https://github.com/KristopherGBaker/libcmark_gfm) |
 | Preview | WKWebView + custom CSS |
-| Editor | NSTextView (TextKit 2) with custom syntax highlighter |
-| State | `@Observable` (Swift 5.9+) |
+| Editor | NSTextView (TextKit 2) with a custom syntax highlighter |
+| State | `@Observable` |
 | Tab ordering | `OrderedDictionary` from [swift-collections](https://github.com/apple/swift-collections) |
+| Updates | [Sparkle 2](https://sparkle-project.org) |
+
+</details>
+
+<details>
+<summary>Profiling tab switches</summary>
+
+The generated `Markfops` scheme profiles the Debug configuration so Instruments can load Sparkle under local ad-hoc signing. Archive builds use Release.
+
+1. **Product → Profile**, select **Blank**, click **Choose**
+2. Add the **Points of Interest** or **os_signpost** instrument with **+**
+3. Record, switch between large documents a few times, stop
+4. Filter the signpost track for the `com.markfops.Markfops` subsystem
+
+The outer `Tab Switch` interval measures selection through the next main-loop turn after the native surface updates. Nested intervals separate document activation, editor creation or update, editor configuration, large-text comparison and synchronization, syntax highlighting, preview cache checks, Markdown rendering, preview loading, and preview DOM updates. `Surface Selected` also reports whether the tab was already warm.
+
+</details>
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE).
