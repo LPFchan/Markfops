@@ -1,11 +1,10 @@
-/* Sidebar */
-"Documents" = "Documents";
+/* Sidebar and welcome screen */
+"Markfops" = "Markfops";
 "New Document" = "New Document";
+"New Document  ⌘N" = "New Document  ⌘N";
 
-/* Horizontal tab bar */
+/* Horizontal tab bar and toolbar */
 "New Tab  ⌘T" = "New Tab  ⌘T";
-
-/* Toolbar */
 "Mode" = "Mode";
 "Toggle Edit / Preview  ⌘⇧P" = "Toggle Edit / Preview  ⌘⇧P";
 "Edit" = "Edit";
@@ -14,10 +13,21 @@
 /* File menu */
 "New" = "New";
 "New Tab" = "New Tab";
+"New Window" = "New Window";
 "Open…" = "Open…";
+"Open Recent" = "Open Recent";
+"No Recent Documents" = "No Recent Documents";
+"Clear Menu" = "Clear Menu";
 "Save" = "Save";
 "Save As…" = "Save As…";
+"Duplicate" = "Duplicate";
+"Rename…" = "Rename…";
+"Move To…" = "Move To…";
+"Revert to Saved" = "Revert to Saved";
+"Print…" = "Print…";
+"Export as PDF…" = "Export as PDF…";
 "Close Tab" = "Close Tab";
+"Close Window" = "Close Window";
 
 /* Compact tab context menu */
 "Close" = "Close";
@@ -26,21 +36,40 @@
 "Close Tabs to the Right" = "Close Tabs to the Right";
 "Move Tab to New Window" = "Move Tab to New Window";
 
+/* Sidebar document context menu */
+"Move to New Window" = "Move to New Window";
+"Reveal in Finder" = "Reveal in Finder";
+
+/* Find */
+"Find" = "Find";
+"Find…" = "Find…";
+"Find and Replace…" = "Find and Replace…";
+"Find Next" = "Find Next";
+"Find Previous" = "Find Previous";
+"Use Selection for Find" = "Use Selection for Find";
+"Replace" = "Replace";
+"All" = "All";
+"No Match" = "No Match";
+
 /* View menu */
 "View" = "View";
 "Toggle Edit / Preview" = "Toggle Edit / Preview";
+"Show Sidebar" = "Show Sidebar";
+"Hide Sidebar" = "Hide Sidebar";
 "Next Tab" = "Next Tab";
 "Previous Tab" = "Previous Tab";
+"Increase Font Size" = "Increase Font Size";
+"Decrease Font Size" = "Decrease Font Size";
 
 /* Format menu */
 "Format" = "Format";
+"Heading 1" = "Heading 1";
+"Heading 2" = "Heading 2";
+"Heading 3" = "Heading 3";
 "Bold" = "Bold";
 "Italic" = "Italic";
 "Inline Code" = "Inline Code";
-
-/* Welcome screen */
-"Markfops" = "Markfops";
-"Open…" = "Open…";
+"Paste and Match Style" = "Paste and Match Style";
 
 /* Settings */
 "Updates" = "Updates";
@@ -48,6 +77,11 @@
 "Editor" = "Editor";
 "Font Size" = "Font Size";
 "Font" = "Font";
+"%lldpt" = "%lldpt";
+"SF Mono" = "SF Mono";
+"Menlo" = "Menlo";
+"Monaco" = "Monaco";
+"Courier New" = "Courier New";
 
 /* Panels — rename / move */
 "Rename" = "Rename";
@@ -69,5 +103,5 @@
 /* Alerts — quit with unsaved changes */
 "You have unsaved changes" = "You have unsaved changes";
 "Unsaved documents: %@" = "Unsaved documents: %@";
-"Review Unsaved\u{2026}" = "Review Unsaved\u{2026}";
+"Review Unsaved…" = "Review Unsaved…";
 "Quit Anyway" = "Quit Anyway";

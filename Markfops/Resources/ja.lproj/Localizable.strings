@@ -1,23 +1,33 @@
-/* Sidebar */
-"Documents" = "ドキュメント";
+/* Sidebar and welcome screen */
+"Markfops" = "Markfops";
 "New Document" = "新規ドキュメント";
+"New Document  ⌘N" = "新規ドキュメント  ⌘N";
 
-/* Horizontal tab bar */
+/* Horizontal tab bar and toolbar */
 "New Tab  ⌘T" = "新しいタブ  ⌘T";
-
-/* Toolbar */
 "Mode" = "モード";
-"Toggle Edit / Preview  ⌘⇧P" = "編集/プレビュー切り替え  ⌘⇧P";
+"Toggle Edit / Preview  ⌘⇧P" = "編集／プレビューを切り替え  ⌘⇧P";
 "Edit" = "編集";
 "Preview" = "プレビュー";
 
 /* File menu */
 "New" = "新規";
 "New Tab" = "新しいタブ";
+"New Window" = "新規ウインドウ";
 "Open…" = "開く…";
+"Open Recent" = "最近使った項目";
+"No Recent Documents" = "最近使った書類はありません";
+"Clear Menu" = "メニューを消去";
 "Save" = "保存";
 "Save As…" = "別名で保存…";
+"Duplicate" = "複製";
+"Rename…" = "名前を変更…";
+"Move To…" = "別の場所へ移動…";
+"Revert to Saved" = "保存済みに戻す";
+"Print…" = "プリント…";
+"Export as PDF…" = "PDFとして書き出す…";
 "Close Tab" = "タブを閉じる";
+"Close Window" = "ウインドウを閉じる";
 
 /* Compact tab context menu */
 "Close" = "閉じる";
@@ -26,21 +36,40 @@
 "Close Tabs to the Right" = "右側のタブを閉じる";
 "Move Tab to New Window" = "タブを新しいウインドウに移動";
 
+/* Sidebar document context menu */
+"Move to New Window" = "新しいウインドウに移動";
+"Reveal in Finder" = "Finderで表示";
+
+/* Find */
+"Find" = "検索";
+"Find…" = "検索…";
+"Find and Replace…" = "検索と置換…";
+"Find Next" = "次を検索";
+"Find Previous" = "前を検索";
+"Use Selection for Find" = "選択部分を検索に使用";
+"Replace" = "置換";
+"All" = "すべて";
+"No Match" = "一致なし";
+
 /* View menu */
 "View" = "表示";
-"Toggle Edit / Preview" = "編集/プレビュー切り替え";
+"Toggle Edit / Preview" = "編集／プレビューを切り替え";
+"Show Sidebar" = "サイドバーを表示";
+"Hide Sidebar" = "サイドバーを非表示";
 "Next Tab" = "次のタブ";
 "Previous Tab" = "前のタブ";
+"Increase Font Size" = "フォントサイズを拡大";
+"Decrease Font Size" = "フォントサイズを縮小";
 
 /* Format menu */
 "Format" = "フォーマット";
+"Heading 1" = "見出し 1";
+"Heading 2" = "見出し 2";
+"Heading 3" = "見出し 3";
 "Bold" = "太字";
 "Italic" = "斜体";
 "Inline Code" = "インラインコード";
-
-/* Welcome screen */
-"Markfops" = "Markfops";
-"Open…" = "開く…";
+"Paste and Match Style" = "ペーストしてスタイルを合わせる";
 
 /* Settings */
 "Updates" = "アップデート";
@@ -48,15 +77,20 @@
 "Editor" = "エディタ";
 "Font Size" = "フォントサイズ";
 "Font" = "フォント";
+"%lldpt" = "%lldpt";
+"SF Mono" = "SF Mono";
+"Menlo" = "Menlo";
+"Monaco" = "Monaco";
+"Courier New" = "Courier New";
 
 /* Panels — rename / move */
 "Rename" = "名前を変更";
 "Rename document" = "ドキュメントの名前を変更";
 "Move" = "移動";
-"Move document to a new location" = "別の場所へ移動";
+"Move document to a new location" = "ドキュメントを別の場所へ移動";
 
 /* Alerts — revert */
-"Revert \"%@\" to saved version?" = "「%@」を保存済みの内容に戻しますか？";
+"Revert \"%@\" to saved version?" = "「%@」を保存済みのバージョンに戻しますか？";
 "Your unsaved changes will be lost." = "保存していない変更は失われます。";
 "Revert" = "戻す";
 
@@ -69,5 +103,5 @@
 /* Alerts — quit with unsaved changes */
 "You have unsaved changes" = "保存されていない変更があります";
 "Unsaved documents: %@" = "未保存のドキュメント: %@";
-"Review Unsaved\u{2026}" = "未保存を確認…";
+"Review Unsaved…" = "未保存の項目を確認…";
 "Quit Anyway" = "そのまま終了";

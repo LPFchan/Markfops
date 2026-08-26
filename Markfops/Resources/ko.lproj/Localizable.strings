@@ -1,11 +1,10 @@
-/* Sidebar */
-"Documents" = "문서";
+/* Sidebar and welcome screen */
+"Markfops" = "Markfops";
 "New Document" = "새 문서";
+"New Document  ⌘N" = "새 문서  ⌘N";
 
-/* Horizontal tab bar */
+/* Horizontal tab bar and toolbar */
 "New Tab  ⌘T" = "새 탭  ⌘T";
-
-/* Toolbar */
 "Mode" = "모드";
 "Toggle Edit / Preview  ⌘⇧P" = "편집/미리보기 전환  ⌘⇧P";
 "Edit" = "편집";
@@ -14,6 +13,7 @@
 /* File menu */
 "New" = "새로 만들기";
 "New Tab" = "새 탭";
+"New Window" = "새 윈도우";
 "Open…" = "열기…";
 "Open Recent" = "최근 항목";
 "No Recent Documents" = "최근 문서 없음";
@@ -23,8 +23,11 @@
 "Duplicate" = "복제";
 "Rename…" = "이름 바꾸기…";
 "Move To…" = "다른 위치로 이동…";
+"Revert to Saved" = "저장된 버전으로 되돌리기";
+"Print…" = "인쇄…";
+"Export as PDF…" = "PDF로 내보내기…";
 "Close Tab" = "탭 닫기";
-"Close Window" = "창 닫기";
+"Close Window" = "윈도우 닫기";
 
 /* Compact tab context menu */
 "Close" = "닫기";
@@ -33,22 +36,9 @@
 "Close Tabs to the Right" = "오른쪽 탭 닫기";
 "Move Tab to New Window" = "탭을 새 윈도우로 이동";
 
-/* Context menu / tab — same strings as File menu where applicable; explicit \u{2026} keys match Swift sources */
-"Save As\u{2026}" = "다른 이름으로 저장…";
-"Rename\u{2026}" = "이름 바꾸기…";
-"Move To\u{2026}" = "다른 위치로 이동…";
-"Export as PDF\u{2026}" = "PDF로 내보내기…";
-
-/* Finder */
+/* Sidebar document context menu */
+"Move to New Window" = "새 윈도우로 이동";
 "Reveal in Finder" = "Finder에서 보기";
-
-/* View menu */
-"View" = "보기";
-"Toggle Edit / Preview" = "편집/미리보기 전환";
-"Next Tab" = "다음 탭";
-"Previous Tab" = "이전 탭";
-"Show Sidebar" = "사이드바 보기";
-"Hide Sidebar" = "사이드바 숨기기";
 
 /* Find */
 "Find" = "찾기";
@@ -57,24 +47,29 @@
 "Find Next" = "다음 찾기";
 "Find Previous" = "이전 찾기";
 "Use Selection for Find" = "선택 영역으로 찾기";
+"Replace" = "바꾸기";
+"All" = "모두";
+"No Match" = "일치하는 항목 없음";
 
-/* Font */
-"Increase Font Size" = "글꼴 크기 늘리기";
+/* View menu */
+"View" = "보기";
+"Toggle Edit / Preview" = "편집/미리보기 전환";
+"Show Sidebar" = "사이드바 보기";
+"Hide Sidebar" = "사이드바 숨기기";
+"Next Tab" = "다음 탭";
+"Previous Tab" = "이전 탭";
+"Increase Font Size" = "글꼴 크기 키우기";
 "Decrease Font Size" = "글꼴 크기 줄이기";
 
 /* Format menu */
 "Format" = "서식";
+"Heading 1" = "제목 1";
+"Heading 2" = "제목 2";
+"Heading 3" = "제목 3";
 "Bold" = "굵게";
 "Italic" = "기울임꼴";
 "Inline Code" = "인라인 코드";
-"Paste and Match Style" = "붙여넣기 및 스타일 맞춤";
-
-/* Print / export (menu titles) */
-"Print…" = "인쇄…";
-"Export as PDF…" = "PDF로 내보내기…";
-
-/* Welcome screen */
-"Markfops" = "Markfops";
+"Paste and Match Style" = "붙여넣고 스타일 일치시키기";
 
 /* Settings */
 "Updates" = "업데이트";
@@ -82,21 +77,22 @@
 "Editor" = "편집기";
 "Font Size" = "글꼴 크기";
 "Font" = "글꼴";
+"%lldpt" = "%lldpt";
+"SF Mono" = "SF Mono";
+"Menlo" = "Menlo";
+"Monaco" = "Monaco";
+"Courier New" = "Courier New";
 
-/* Help / accessibility */
-"New Document  ⌘N" = "새 문서  ⌘N";
-
-/* Panels — rename / move (save panels) */
+/* Panels — rename / move */
 "Rename" = "이름 바꾸기";
 "Rename document" = "문서 이름 바꾸기";
 "Move" = "이동";
 "Move document to a new location" = "다른 위치로 이동";
 
 /* Alerts — revert */
-"Revert \"%@\" to saved version?" = "\"%@\"을(를) 저장된 버전으로 되돌릴까요?";
+"Revert \"%@\" to saved version?" = "\"%@\"을(를) 저장된 버전으로 되돌리겠습니까?";
 "Your unsaved changes will be lost." = "저장하지 않은 변경 사항이 사라집니다.";
 "Revert" = "되돌리기";
-"Revert to Saved" = "저장된 버전으로 되돌리기";
 
 /* Alerts — close tab with unsaved changes */
 "Save changes to \"%@\"?" = "\"%@\"의 변경 사항을 저장하시겠습니까?";
@@ -106,6 +102,6 @@
 
 /* Alerts — quit with unsaved changes */
 "You have unsaved changes" = "저장되지 않은 변경 사항이 있습니다";
-"Unsaved documents: %@" = "저장되지 않은 문서: %@";
-"Review Unsaved\u{2026}" = "저장되지 않은 내용 검토…";
+"Unsaved documents: %@" = "저장하지 않은 문서: %@";
+"Review Unsaved…" = "저장하지 않은 항목 검토…";
 "Quit Anyway" = "그래도 종료";
