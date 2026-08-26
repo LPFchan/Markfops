@@ -20,6 +20,28 @@ packages:
     url: https://github.com/sparkle-project/Sparkle
     from: "2.0.0"
 
+schemes:
+  Markfops:
+    build:
+      targets:
+        Markfops: all
+    run:
+      config: Debug
+    profile:
+      config: Debug
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+  MarkfopsTests:
+    build:
+      targets:
+        MarkfopsTests: [test]
+    test:
+      config: Debug
+      targets:
+        - MarkfopsTests
+
 targets:
   Markfops:
     type: application
@@ -64,6 +86,11 @@ targets:
         CFBundleVersion: "1"
         CFBundleShortVersionString: "1.0.0"
         CFBundleIconFile: AppIcon
+        CFBundleIcons:
+          ISGraphicIconConfiguration:
+            ISEnclosureColor: orange
+            ISSymbolColor: white
+            ISSymbolName: pawprint.fill
         CFBundleDocumentTypes:
           - CFBundleTypeName: Markdown Document
             LSItemContentTypes:
@@ -80,6 +107,9 @@ targets:
         NSSupportsAutomaticTermination: false
         NSSupportsSuddenTermination: false
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        SUEnableAutomaticChecks: true
+        SUFeedURL: https://lpfchan.github.io/Markfops/appcast.xml
+        SUPublicEDKey: KZjcrANd2+I475/JYRziHeQpM+NT9zE6NvD5QWjcozs=
     dependencies:
       - package: libcmark_gfm
         product: libcmark_gfm

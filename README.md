@@ -34,9 +34,12 @@ open Markfops.xcodeproj  # then press ⌘R
 
 ### Profiling tab switches
 
-1. In Xcode, choose **Product → Profile** and select the **Points of Interest** template.
-2. Start recording, switch between the large documents a few times, then stop.
-3. Filter the signpost track for the `com.markfops.Markfops` subsystem.
+The generated `Markfops` scheme profiles the Debug configuration so Instruments can load Sparkle under local ad-hoc signing. Archive builds continue to use Release.
+
+1. In Xcode, choose **Product → Profile**, select **Blank**, and click **Choose**.
+2. Add the **Points of Interest** or **os_signpost** instrument with the **+** button.
+3. Start recording, switch between the large documents a few times, then stop.
+4. Filter the signpost track for the `com.markfops.Markfops` subsystem.
 
 The outer `Tab Switch` interval measures selection through the next main-loop turn after the native surface updates. Nested intervals separate document activation, editor creation or update, editor configuration, large-text comparison and synchronization, syntax highlighting, preview cache checks, Markdown rendering, preview loading, and preview DOM updates. `Surface Selected` also reports whether the tab was already warm.
 
