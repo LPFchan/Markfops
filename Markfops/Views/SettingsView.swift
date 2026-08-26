@@ -9,27 +9,33 @@ struct SettingsView: View {
         // Form always embeds a scroll view on macOS; a fixed VStack keeps the
         // pane at exactly the size of its content with no scrollbar.
         VStack(alignment: .leading, spacing: 20) {
-            settingsSection("Updates") {
+            settingsSection { Text("Updates") } content: {
                 HStack {
                     Button("Check for Updates…") {
                         (NSApp.delegate as? AppDelegate)?.updaterController.checkForUpdates(nil)
                     }
                     Spacer()
                     // Sparkle persists this choice itself via SPUUpdater.
-                    Toggle("Automatically check for updates", isOn: Binding(
+                    Toggle(isOn: Binding(
                         get: { (NSApp.delegate as? AppDelegate)?.updaterController.updater.automaticallyChecksForUpdates ?? true },
                         set: { (NSApp.delegate as? AppDelegate)?.updaterController.updater.automaticallyChecksForUpdates = $0 }
-                    ))
+                    )) {
+                        Text("Automatically check for updates")
+                    }
                     .toggleStyle(.checkbox)
                 }
             }
 
-            settingsSection("Editor") {
-                LabeledContent("Font Size") {
+            settingsSection { Text("Editor") } content: {
+                HStack {
+                    Text("Font Size")
+                    Spacer()
                     Stepper("\(Int(fontSize))pt", value: $fontSize, in: 10...32, step: 1)
                 }
 
-                LabeledContent("Font") {
+                HStack {
+                    Text("Font")
+                    Spacer()
                     Picker("Font", selection: $fontFamily) {
                         Text("SF Mono").tag("SF Mono")
                         Text("Menlo").tag("Menlo")
@@ -48,11 +54,11 @@ struct SettingsView: View {
     }
 
     private func settingsSection<Content: View>(
-        _ title: String,
+        @ViewBuilder title: () -> Text,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.headline)
+            title().font(.headline)
             VStack(alignment: .leading, spacing: 12) { content() }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)

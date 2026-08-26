@@ -74,6 +74,7 @@
 /* Settings */
 "Updates" = "更新";
 "Check for Updates…" = "检查更新…";
+"Automatically check for updates" = "自动检查更新";
 "Editor" = "编辑器";
 "Font Size" = "字体大小";
 "Font" = "字体";

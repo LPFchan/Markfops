@@ -74,6 +74,7 @@
 /* Settings */
 "Updates" = "Updates";
 "Check for Updates…" = "Check for Updates…";
+"Automatically check for updates" = "Automatically check for updates";
 "Editor" = "Editor";
 "Font Size" = "Font Size";
 "Font" = "Font";

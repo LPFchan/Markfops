@@ -74,6 +74,7 @@
 /* Settings */
 "Updates" = "アップデート";
 "Check for Updates…" = "アップデートを確認…";
+"Automatically check for updates" = "自動的にアップデートを確認";
 "Editor" = "エディタ";
 "Font Size" = "フォントサイズ";
 "Font" = "フォント";
