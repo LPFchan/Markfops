@@ -4,6 +4,7 @@ struct EditorContainerView: View {
     @Bindable var document: Document
     var configuration: EditorConfiguration
     var scrollToHeading: HeadingNode?
+    var isSelected = true
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var htmlContent: String = ""
@@ -36,7 +37,7 @@ struct EditorContainerView: View {
                 configuration: configuration,
                 scrollToLine: scrollToHeading?.lineNumber,
                 editorBridge: editorBridge,
-                isActive: document.mode == .edit
+                isActive: isSelected && document.mode == .edit
             )
             .id(document.id)
             .padding(.top, findOverlayReservedTopInset)
@@ -51,12 +52,12 @@ struct EditorContainerView: View {
                 themeKey: colorScheme == .dark ? "dark" : "light",
                 bridge: bridge,
                 onScrollChange: { ratio in
-                    guard document.mode == .preview else { return }
+                    guard isSelected, document.mode == .preview else { return }
                     document.scrollRatio = ratio
                     document.syncActiveHeadingToScrollPosition()
                 },
                 onUserScroll: {
-                    guard document.mode == .preview else { return }
+                    guard isSelected, document.mode == .preview else { return }
                     document.registerUserContentScroll()
                 }
             )
@@ -79,9 +80,12 @@ struct EditorContainerView: View {
                     .allowsHitTesting(false)
                 : nil
         )
-        .focusedSceneValue(\.editorBridge, editorBridge)
-        .focusedSceneValue(\.previewBridge, bridge)
-        .focusedSceneValue(\.findController, findController)
+        .modifier(SelectedDocumentFocusValues(
+            isSelected: isSelected,
+            editorBridge: editorBridge,
+            previewBridge: bridge,
+            findController: findController
+        ))
         .onAppear {
             findController.attach(editorBridge: editorBridge, previewBridge: bridge, mode: document.mode)
         }
@@ -197,5 +201,19 @@ struct EditorContainerView: View {
             }
         }
         return true
+    }
+}
+
+private struct SelectedDocumentFocusValues: ViewModifier {
+    let isSelected: Bool
+    let editorBridge: EditorBridge
+    let previewBridge: PreviewBridge
+    let findController: FindController
+
+    func body(content: Content) -> some View {
+        content
+            .focusedSceneValue(\.editorBridge, isSelected ? editorBridge : nil)
+            .focusedSceneValue(\.previewBridge, isSelected ? previewBridge : nil)
+            .focusedSceneValue(\.findController, isSelected ? findController : nil)
     }
 }

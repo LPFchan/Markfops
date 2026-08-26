@@ -122,6 +122,42 @@ final class UndoManagerTests: XCTestCase {
         XCTAssertTrue(second.undoManager.canUndo)
     }
 
+    func testTabStackKeepsEachDocumentEditorMountedAcrossSelectionChanges() {
+        let first = Document(rawText: "First")
+        let second = Document(rawText: "Second")
+        let selection = HostedTabSelection(documents: [first, second], activeID: first.id)
+        let hostingView = NSHostingView(rootView: HostedTabContent(selection: selection))
+        hostingView.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+        let window = NSWindow(
+            contentRect: hostingView.frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hostingView
+        window.makeKeyAndOrderFront(nil)
+        defer { window.orderOut(nil) }
+
+        settle(hostingView)
+        let initialTextViews = findTextViews(in: hostingView)
+        XCTAssertEqual(initialTextViews.count, 1)
+        let firstTextView = initialTextViews.first { $0.textStorage === first.textStorage }
+        XCTAssertNotNil(firstTextView)
+
+        selection.activeID = second.id
+        settle(hostingView)
+        let selectedTextViews = findTextViews(in: hostingView)
+        let secondTextView = selectedTextViews.first { $0.textStorage === second.textStorage }
+        XCTAssertNotNil(secondTextView)
+
+        selection.activeID = first.id
+        settle(hostingView)
+
+        let restoredTextViews = findTextViews(in: hostingView)
+        XCTAssertTrue(restoredTextViews.contains { $0 === firstTextView })
+        XCTAssertTrue(restoredTextViews.contains { $0 === secondTextView })
+    }
+
     func testHostedEditorHasInteractiveScrollableGeometry() {
         let text = Array(repeating: "A long line of editable Markdown text.", count: 200)
             .joined(separator: "\n")
@@ -676,6 +712,17 @@ final class UndoManagerTests: XCTestCase {
         }
         return nil
     }
+
+    private func findTextViews(in view: NSView) -> [MarkdownNSTextView] {
+        var matches: [MarkdownNSTextView] = []
+        if let textView = view as? MarkdownNSTextView {
+            matches.append(textView)
+        }
+        for subview in view.subviews {
+            matches.append(contentsOf: findTextViews(in: subview))
+        }
+        return matches
+    }
 }
 
 @Observable
@@ -693,6 +740,30 @@ private struct HostedDocumentContent: View {
     var body: some View {
         EditorContainerView(
             document: selection.document,
+            configuration: .default,
+            scrollToHeading: nil
+        )
+    }
+}
+
+@Observable
+private final class HostedTabSelection {
+    let documents: [Document]
+    var activeID: UUID
+
+    init(documents: [Document], activeID: UUID) {
+        self.documents = documents
+        self.activeID = activeID
+    }
+}
+
+private struct HostedTabContent: View {
+    @Bindable var selection: HostedTabSelection
+
+    var body: some View {
+        DocumentSurfaceStack(
+            documents: selection.documents,
+            activeID: selection.activeID,
             configuration: .default,
             scrollToHeading: nil
         )

@@ -58,8 +58,9 @@ struct ContentView: View {
             Group {
                 if let document = store.activeDocument {
                     @Bindable var doc = document
-                    EditorContainerView(
-                        document: document,
+                    DocumentSurfaceStack(
+                        documents: store.documents,
+                        activeID: document.id,
                         configuration: editorConfig,
                         scrollToHeading: scrollToHeading
                     )
@@ -262,6 +263,45 @@ struct ContentView: View {
             }
         }
         return true
+    }
+}
+
+/// Keeps each visited document's native editor and preview mounted while another tab is selected.
+/// Tabs that were opened in a batch stay cheap until first selected. After that first selection,
+/// changing tabs only changes visibility and does not rebuild AppKit or WebKit.
+struct DocumentSurfaceStack: View {
+    let documents: [Document]
+    let activeID: UUID
+    let configuration: EditorConfiguration
+    let scrollToHeading: HeadingNode?
+    @State private var mountedDocumentIDs: Set<UUID> = []
+
+    private var mountedDocuments: [Document] {
+        documents.filter { mountedDocumentIDs.contains($0.id) || $0.id == activeID }
+    }
+
+    var body: some View {
+        ZStack {
+            ForEach(mountedDocuments) { document in
+                let isSelected = document.id == activeID
+                EditorContainerView(
+                    document: document,
+                    configuration: configuration,
+                    scrollToHeading: isSelected ? scrollToHeading : nil,
+                    isSelected: isSelected
+                )
+                .opacity(isSelected ? 1 : 0)
+                .allowsHitTesting(isSelected)
+                .accessibilityHidden(!isSelected)
+                .zIndex(isSelected ? 1 : 0)
+            }
+        }
+        .onAppear {
+            mountedDocumentIDs.insert(activeID)
+        }
+        .onChange(of: activeID) { _, newID in
+            mountedDocumentIDs.insert(newID)
+        }
     }
 }
 
