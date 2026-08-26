@@ -1,9 +1,22 @@
-<?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
-  <channel>
-    <title>Markfops</title>
-    <link>https://lpfchan.github.io/Markfops/</link>
-    <description>Sparkle appcast for Markfops.</description>
-    <language>en</language>
-  </channel>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0">
+    <channel>
+        <title>Markfops</title>
+        <link>https://lpfchan.github.io/Markfops/</link>
+        <description>Sparkle appcast for Markfops.</description>
+        <language>en</language>
+        <item>
+            <title>1.0.0</title>
+            <pubDate>Wed, 26 Aug 2026 14:41:11 +0000</pubDate>
+            <sparkle:version>104</sparkle:version>
+            <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:releaseNotesLink>https://LPFchan.github.io/Markfops/sparkle/Markfops-v1.0.0.md</sparkle:releaseNotesLink>
+            <sparkle:releaseNotesLink xml:lang="en">https://LPFchan.github.io/Markfops/sparkle/Markfops-v1.0.0.en.md</sparkle:releaseNotesLink>
+            <sparkle:releaseNotesLink xml:lang="ja">https://LPFchan.github.io/Markfops/sparkle/Markfops-v1.0.0.ja.md</sparkle:releaseNotesLink>
+            <sparkle:releaseNotesLink xml:lang="ko">https://LPFchan.github.io/Markfops/sparkle/Markfops-v1.0.0.ko.md</sparkle:releaseNotesLink>
+            <sparkle:releaseNotesLink xml:lang="zh">https://LPFchan.github.io/Markfops/sparkle/Markfops-v1.0.0.zh.md</sparkle:releaseNotesLink>
+            <enclosure url="https://github.com/LPFchan/Markfops/releases/download/v1.0.0/Markfops-v1.0.0.dmg" length="4421844" type="application/octet-stream" sparkle:edSignature="RBm30nllhsCbKm3WewUn8ZJGNSLuO+SGdOSJkwf6rCVMr5QqdEuFcQQNwvM4vATziZ3jY6A1zwxsrvpT89R5BQ=="/>
+        </item>
+    </channel>
 </rss>
