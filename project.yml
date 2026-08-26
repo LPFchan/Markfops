@@ -30,6 +30,9 @@ schemes:
           script: |
             set -e
             PLIST="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
+            # The release workflow passes MARKETING_VERSION/CURRENT_PROJECT_VERSION
+            # explicitly; when it does, those win and this stamp stays out of the way.
+            if [ "$MARKETING_VERSION" != "0.0.0" ]; then exit 0; fi
             DESC=$(git -C "$SRCROOT" describe --tags --long --always 2>/dev/null || echo "v0.0.0-0-g0000000")
             VER=$(printf '%s' "$DESC" | sed -E 's/^v?([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
             COUNT=$(printf '%s' "$DESC" | sed -E 's/^v?[0-9]+\.[0-9]+\.[0-9]+-([0-9]+)-.*/\1/')
