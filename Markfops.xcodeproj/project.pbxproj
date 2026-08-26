@@ -45,6 +45,7 @@
 		B89DCC60EA80687073D32DFD /* TabDragState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3813E1BAFCCEA6FB9393425E /* TabDragState.swift */; };
 		E0C3F0B655B41483DB893661 /* EditorContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82E44B05505F730184B28AED /* EditorContainerView.swift */; };
 		E1A62CC049CF14792278BAC2 /* EditorConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A68CE2DA2091BB9E61384381 /* EditorConfiguration.swift */; };
+		F021B53584B3F0AB0B80B8DB /* AuxiliaryWindowCloseHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4061B4ED2E773406BB7694F4 /* AuxiliaryWindowCloseHandler.swift */; };
 		FB2755379609C59596A212D3 /* TOCItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E95C68DC8DB05D8DEE49B9A /* TOCItemView.swift */; };
 		FF758F7E1D37D8AC8C93D7F4 /* libcmark_gfm in Frameworks */ = {isa = PBXBuildFile; productRef = DF868D31CDAF6E5ADD270D37 /* libcmark_gfm */; };
 		FF91F9B05F650E29F7C95A4E /* HeadingParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFB5DBBC98ED92CDEC01BA31 /* HeadingParserTests.swift */; };
@@ -72,6 +73,7 @@
 		35ABE72586B11782CBEF1196 /* PreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewView.swift; sourceTree = "<group>"; };
 		3813E1BAFCCEA6FB9393425E /* TabDragState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabDragState.swift; sourceTree = "<group>"; };
 		3AD38016280157D603C3E2CB /* TextViewCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextViewCoordinator.swift; sourceTree = "<group>"; };
+		4061B4ED2E773406BB7694F4 /* AuxiliaryWindowCloseHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuxiliaryWindowCloseHandler.swift; sourceTree = "<group>"; };
 		4CF153CF61BA07386D4CD9AB /* FaviconBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaviconBadge.swift; sourceTree = "<group>"; };
 		4D67A2CE029ADE8669191CD1 /* MarkdownEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEditorView.swift; sourceTree = "<group>"; };
 		4E95C68DC8DB05D8DEE49B9A /* TOCItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOCItemView.swift; sourceTree = "<group>"; };
@@ -256,6 +258,7 @@
 			isa = PBXGroup;
 			children = (
 				14011151494BB8C871B4D646 /* AppDelegate.swift */,
+				4061B4ED2E773406BB7694F4 /* AuxiliaryWindowCloseHandler.swift */,
 				CA1E1392B3F2270B4776011B /* MarkfopsApp.swift */,
 			);
 			path = App;
@@ -374,6 +377,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4773F129D7E392E1E516AC2B /* AppDelegate.swift in Sources */,
+				F021B53584B3F0AB0B80B8DB /* AuxiliaryWindowCloseHandler.swift in Sources */,
 				6F510D2C422BA6E3BBAF526F /* ContentView.swift in Sources */,
 				02BBEC589FB91DCD1A819A3D /* Document.swift in Sources */,
 				5F5AFA51A1E970047664EA95 /* DocumentStore.swift in Sources */,
@@ -526,7 +530,7 @@
 				CODE_SIGN_ENTITLEMENTS = "$(MARKFOPS_CODE_SIGN_ENTITLEMENTS)";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 0;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = Markfops/Resources/Info.plist;
@@ -535,7 +539,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 0.0.0;
 				MARKFOPS_CODE_SIGN_ENTITLEMENTS = Markfops/Resources/Markfops.entitlements;
 				PRODUCT_BUNDLE_IDENTIFIER = com.markfops.Markfops;
 				SDKROOT = macosx;
@@ -569,7 +573,7 @@
 				CODE_SIGN_ENTITLEMENTS = "$(MARKFOPS_CODE_SIGN_ENTITLEMENTS)";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 0;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = Markfops/Resources/Info.plist;
@@ -578,7 +582,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 0.0.0;
 				MARKFOPS_CODE_SIGN_ENTITLEMENTS = Markfops/Resources/Markfops.entitlements;
 				PRODUCT_BUNDLE_IDENTIFIER = com.markfops.Markfops;
 				SDKROOT = macosx;

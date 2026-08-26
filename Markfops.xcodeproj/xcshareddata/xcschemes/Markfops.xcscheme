@@ -6,6 +6,24 @@
       parallelizeBuildables = "YES"
       buildImplicitDependencies = "YES"
       runPostActionsOnFailure = "NO">
+      <PostActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent
+               title = "Stamp built Info.plist with git version"
+               scriptText = "set -e&#10;PLIST=&quot;$TARGET_BUILD_DIR/$INFOPLIST_PATH&quot;&#10;DESC=$(git -C &quot;$SRCROOT&quot; describe --tags --long --always 2&gt;/dev/null || echo &quot;v0.0.0-0-g0000000&quot;)&#10;VER=$(printf &apos;%s&apos; &quot;$DESC&quot; | sed -E &apos;s/^v?([0-9]+\.[0-9]+\.[0-9]+).*/\1/&apos;)&#10;COUNT=$(printf &apos;%s&apos; &quot;$DESC&quot; | sed -E &apos;s/^v?[0-9]+\.[0-9]+\.[0-9]+-([0-9]+)-.*/\1/&apos;)&#10;/usr/libexec/PlistBuddy -c &quot;Set :CFBundleShortVersionString $VER&quot; &quot;$PLIST&quot;&#10;/usr/libexec/PlistBuddy -c &quot;Set :CFBundleVersion $COUNT&quot; &quot;$PLIST&quot;&#10;">
+               <EnvironmentBuildable>
+                  <BuildableReference
+                     BuildableIdentifier = "primary"
+                     BlueprintIdentifier = "70BF8E53F4D295FF4DC6B7DC"
+                     BuildableName = "Markfops.app"
+                     BlueprintName = "Markfops"
+                     ReferencedContainer = "container:Markfops.xcodeproj">
+                  </BuildableReference>
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
+      </PostActions>
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"
