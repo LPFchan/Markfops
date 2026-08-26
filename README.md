@@ -2,6 +2,12 @@
 
 A fast, native macOS Markdown editor and reader. No Electron — just Swift, SwiftUI, and AppKit.
 
+<p align="center">
+  <video src="https://github.com/LPFchan/Markfops/raw/main/.github/assets/demo.mp4" width="620" controls muted loop playsinline>
+    <a href="https://github.com/LPFchan/Markfops/raw/main/.github/assets/demo.mp4">Watch the demo</a>
+  </video>
+</p>
+
 ## Install
 
 1. Download the latest `.dmg` from [Releases](https://github.com/LPFchan/Markfops/releases)

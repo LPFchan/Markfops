@@ -46,20 +46,16 @@ targets:
   Markfops:
     type: application
     platform: macOS
+    # XcodeGen has no `resources:` target key — everything bundled must come through
+    # `sources:`. Excluding Assets.xcassets here previously meant it was never compiled,
+    # so the app shipped with no icon. Preview CSS is inlined in HTMLTemplate.swift.
     sources:
       - path: Markfops
         excludes:
-          - Resources/Assets.xcassets
           - Resources/preview-light.css
           - Resources/preview-dark.css
           - Resources/Info.plist
           - Resources/Markfops.entitlements
-    resources:
-      - path: Markfops/Resources/Assets.xcassets
-      - path: Markfops/Resources/preview-light.css
-      - path: Markfops/Resources/preview-dark.css
-      - path: Markfops/Resources/en.lproj/Localizable.strings
-      - path: Markfops/Resources/ko.lproj/Localizable.strings
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.markfops.Markfops
@@ -88,11 +84,6 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleIconFile: AppIcon
-        CFBundleIcons:
-          ISGraphicIconConfiguration:
-            ISEnclosureColor: orange
-            ISSymbolColor: white
-            ISSymbolName: pawprint.fill
         CFBundleDocumentTypes:
           - CFBundleTypeName: Markdown Document
             LSItemContentTypes:

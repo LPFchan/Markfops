@@ -12,6 +12,7 @@
 		0709B30A7683170F86F4D3B7 /* Collections in Frameworks */ = {isa = PBXBuildFile; productRef = 58F3F796AEC3FCCE686F9178 /* Collections */; };
 		0E3AD83D4F9E518E9547EB45 /* ViewportAnchorSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86FDEC3CC484E02EF9301B89 /* ViewportAnchorSync.swift */; };
 		0F3DB7DCF1EBB8111808A9C0 /* MarkdownSyntaxHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9715758E602896E139E741BE /* MarkdownSyntaxHighlighter.swift */; };
+		11F9895B75EDAB5CD3D00990 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 897DDE3B2BFA07A7E680F871 /* Assets.xcassets */; };
 		1206DCA30D179D228DF1E42F /* MarkdownRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9474347D5E720593FBBE8726 /* MarkdownRendererTests.swift */; };
 		13B38088C65798132F2C2CCF /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BABF61C15310FD3F71CDE50 /* MarkdownRenderer.swift */; };
 		16A02CC39F0DAE666A2604C2 /* TextViewCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AD38016280157D603C3E2CB /* TextViewCoordinator.swift */; };
@@ -84,6 +85,7 @@
 		810B6B16387E492066895CB8 /* MarkfopsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MarkfopsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		82E44B05505F730184B28AED /* EditorContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorContainerView.swift; sourceTree = "<group>"; };
 		86FDEC3CC484E02EF9301B89 /* ViewportAnchorSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewportAnchorSync.swift; sourceTree = "<group>"; };
+		897DDE3B2BFA07A7E680F871 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8BABF61C15310FD3F71CDE50 /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
 		8BC9FCE11E56D60DF58C1367 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		9088AEA8402EA1966D08F364 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
@@ -221,6 +223,7 @@
 		AE12CBB21FE351A8E096C41E /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				897DDE3B2BFA07A7E680F871 /* Assets.xcassets */,
 				DAD2AA09699D1444F08346FB /* Localizable.strings */,
 			);
 			path = Resources;
@@ -355,6 +358,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				11F9895B75EDAB5CD3D00990 /* Assets.xcassets in Resources */,
 				51151CAB4FFDDC744AD66BFB /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
