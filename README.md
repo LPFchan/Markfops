@@ -9,6 +9,8 @@
   No Electron — just Swift, SwiftUI, and AppKit.
 </p>
 
+https://github.com/user-attachments/assets/6106043c-bc84-4b4e-886f-851b95b03242
+
 ## Install
 
 1. Download the latest `.dmg` from [Releases](https://github.com/LPFchan/Markfops/releases)
