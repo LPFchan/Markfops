@@ -10,8 +10,9 @@ struct EditorContainerView: View {
     @State private var htmlContent: String = ""
     @State private var bodyHTML: String = ""
     @State private var renderedDocumentID: UUID?
-    @State private var renderedText: String?
+    @State private var renderedTextRevision: UInt64?
     @State private var renderedThemeKey: String?
+    @State private var renderedContentRevision: UInt64 = 0
     @State private var isDragTargeted = false
     /// Bridges live on the document so ContentView can drive viewport-anchor capture
     /// through the same instances during sidebar/compact transitions.
@@ -50,6 +51,7 @@ struct EditorContainerView: View {
                 document: document,
                 pageHTML: htmlContent,
                 bodyHTML: bodyHTML,
+                contentRevision: renderedContentRevision,
                 themeKey: colorScheme == .dark ? "dark" : "light",
                 bridge: bridge,
                 isActive: isSelected && document.mode == .preview,
@@ -175,7 +177,7 @@ struct EditorContainerView: View {
             active: isSelected
         )
         let needsRender = renderedDocumentID != document.id
-            || renderedText != text
+            || renderedTextRevision != document.textRevision
             || renderedThemeKey != themeKey
             || bodyHTML.isEmpty
         TabSwitchProfiler.endInterval(
@@ -187,7 +189,7 @@ struct EditorContainerView: View {
         }
 
         renderedDocumentID = document.id
-        renderedText = text
+        renderedTextRevision = document.textRevision
         renderedThemeKey = themeKey
         let signpostID = TabSwitchProfiler.beginInterval(
             "Markdown Render",
@@ -201,6 +203,7 @@ struct EditorContainerView: View {
         bodyHTML = fragment
         let page = HTMLTemplate.currentPage(body: fragment, colorScheme: colorScheme)
         htmlContent = page
+        renderedContentRevision &+= 1
         return true
     }
 

@@ -6,7 +6,7 @@ Do not use it as a transcript or a scratchpad.
 
 ## Snapshot
 
-- Last updated: 2026-08-25
+- Last updated: 2026-08-26
 - Overall posture: `active`
 - Current focus: stabilize and validate the native app for the `0.1.0` release
 - Highest-priority blocker: final release smoke testing and packaging validation are still pending
@@ -44,8 +44,8 @@ Markfops is a working native macOS Markdown app with XcodeGen project generation
 ## Recent Changes To Project Reality
 
 - Date: 2026-08-26
-  - Change: each visited tab now retains its native editor and preview surfaces while inactive; unvisited tabs remain lazy
-  - Why it matters: switching tabs no longer recreates the text view or reloads the preview from scratch
+  - Change: each visited tab now retains its native editor and preview surfaces in a stable per-window detail host, including across compact-toolbar ownership changes; editor and preview caches use revision counters, and lifecycle/state signposts identify any future teardown trigger
+  - Why it matters: switching tabs no longer recreates the text view or reloads the preview from scratch, and unrelated view updates no longer compare complete large-document strings
   - Related ids: none yet
 
 - Date: 2026-04-02

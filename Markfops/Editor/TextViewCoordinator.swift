@@ -19,6 +19,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
     var document: Document
     var textView: MarkdownNSTextView?
     var isActive = true
+    var lastAppliedTextRevision: UInt64
     let highlighter = MarkdownSyntaxHighlighter()
     private var headingDebounceItem: DispatchWorkItem?
     private weak var observedScrollView: NSScrollView?
@@ -37,6 +38,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
 
     init(document: Document) {
         self.document = document
+        self.lastAppliedTextRevision = document.textRevision
     }
 
     deinit {
@@ -61,6 +63,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         cancelUserScrollIdleReset()
         userScrollGesture.end()
         self.document = document
+        lastAppliedTextRevision = document.textRevision
         self.textView = textView
         return true
     }
@@ -195,6 +198,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         let newText = textView.string
 
         document.rawText = newText
+        lastAppliedTextRevision = document.textRevision
         document.updateTextMetrics()
         document.isDirty = newText != document.savedText
 

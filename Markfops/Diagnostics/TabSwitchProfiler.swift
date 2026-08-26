@@ -113,16 +113,78 @@ enum TabSwitchProfiler {
         os_signpost(.end, log: log, name: name, signpostID: signpostID)
     }
 
-    static func selected(document: Document, wasMounted: Bool) {
+    static func selected(document: Document, wasMounted: Bool, mountedCount: Int) {
         os_signpost(
             .event,
             log: log,
             name: "Surface Selected",
-            "chars=%{public}ld lines=%{public}ld warm=%{public}d mode=%{public}s",
+            "chars=%{public}ld lines=%{public}ld warm=%{public}d mounted=%{public}ld mode=%{public}s",
             document.textStorage.length,
             document.lineCount,
             wasMounted ? 1 : 0,
+            mountedCount,
             document.mode == .edit ? "edit" : "preview"
+        )
+    }
+
+    static func surfaceStackAppeared(
+        instanceID: UUID,
+        activeID: UUID?,
+        mountedCount: Int,
+        documentCount: Int
+    ) {
+        surfaceStackLifecycle(
+            "Surface Stack Appear",
+            instanceID: instanceID,
+            activeID: activeID,
+            mountedCount: mountedCount,
+            documentCount: documentCount
+        )
+    }
+
+    static func surfaceStackDisappeared(
+        instanceID: UUID,
+        activeID: UUID?,
+        mountedCount: Int,
+        documentCount: Int
+    ) {
+        surfaceStackLifecycle(
+            "Surface Stack Disappear",
+            instanceID: instanceID,
+            activeID: activeID,
+            mountedCount: mountedCount,
+            documentCount: documentCount
+        )
+    }
+
+    static func viewStateChanged(_ state: String, from oldValue: String, to newValue: String) {
+        os_signpost(
+            .event,
+            log: log,
+            name: "View State Changed",
+            "state=%{public}@ from=%{public}@ to=%{public}@",
+            state as NSString,
+            oldValue as NSString,
+            newValue as NSString
+        )
+    }
+
+    private static func surfaceStackLifecycle(
+        _ name: StaticString,
+        instanceID: UUID,
+        activeID: UUID?,
+        mountedCount: Int,
+        documentCount: Int
+    ) {
+        os_signpost(
+            .event,
+            log: log,
+            name: name,
+            "instance=%{public}@ active=%{public}@ mounted=%{public}ld documents=%{public}ld",
+            instanceID.uuidString as NSString,
+            activeID?.uuidString as NSString? ?? "none",
+            mountedCount,
+            documentCount
         )
     }
 }

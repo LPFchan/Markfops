@@ -15,6 +15,9 @@ final class Document: Identifiable {
     }
     var rawText: String {
         didSet {
+            if rawText != oldValue {
+                textRevision &+= 1
+            }
             if textStorage.string != rawText {
                 undoManager.disableUndoRegistration()
                 textStorage.replaceCharacters(
@@ -26,6 +29,9 @@ final class Document: Identifiable {
             notifyStateChange()
         }
     }
+    /// Monotonic content identity used by retained native surfaces to avoid comparing the
+    /// complete document during unrelated SwiftUI updates such as tab selection.
+    @ObservationIgnored private(set) var textRevision: UInt64
     @ObservationIgnored private(set) var lineCount: Int
     @ObservationIgnored private var lineStartOffsets: [Int]
     var isDirty: Bool {
@@ -86,6 +92,7 @@ final class Document: Identifiable {
         self.id = id
         self.fileURL = fileURL
         self.rawText = rawText
+        self.textRevision = 0
         self.textStorage = NSTextStorage(string: rawText)
         let textMetrics = Self.textMetrics(for: rawText)
         self.lineCount = textMetrics.lineCount

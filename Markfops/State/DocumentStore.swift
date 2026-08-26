@@ -8,6 +8,27 @@ enum TabCloseScope {
     case right
 }
 
+/// Per-window record of document surfaces that have been created lazily.
+///
+/// The store owns this object so a temporary SwiftUI subtree rebuild cannot forget which tabs
+/// have already paid the cost of creating their AppKit and WebKit surfaces.
+@Observable
+final class DocumentSurfaceRegistry {
+    private(set) var mountedDocumentIDs: Set<UUID> = []
+
+    func contains(_ documentID: UUID) -> Bool {
+        mountedDocumentIDs.contains(documentID)
+    }
+
+    func markMounted(_ documentID: UUID) {
+        mountedDocumentIDs.insert(documentID)
+    }
+
+    func remove(_ documentID: UUID) {
+        mountedDocumentIDs.remove(documentID)
+    }
+}
+
 @Observable
 final class DocumentStore {
     let windowID: UUID
@@ -15,6 +36,7 @@ final class DocumentStore {
     @ObservationIgnored weak var managedWindow: NSWindow?
     @ObservationIgnored private var pendingRecoverySave: DispatchWorkItem?
     @ObservationIgnored private var isRestoringRecovery = false
+    @ObservationIgnored let surfaceRegistry = DocumentSurfaceRegistry()
 
     init(windowID: UUID = UUID(), coordinator: DocumentCoordinator? = nil) {
         self.windowID = windowID
@@ -329,6 +351,7 @@ final class DocumentStore {
     // internal so tab drop delegates and file-watch teardown can call it
     func removeDocument(id: UUID) {
         guard let idx = documents.firstIndex(where: { $0.id == id }) else { return }
+        surfaceRegistry.remove(id)
         documents[idx].onStateChange = nil
         documents[idx].stopWatching()
         documents.remove(at: idx)
@@ -343,6 +366,7 @@ final class DocumentStore {
     @discardableResult
     func removeForTransfer(id: UUID) -> Document? {
         guard let idx = documents.firstIndex(where: { $0.id == id }) else { return nil }
+        surfaceRegistry.remove(id)
         let document = documents.remove(at: idx)
         document.stopWatching()
         if activeID == id {

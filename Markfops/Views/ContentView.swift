@@ -55,41 +55,13 @@ struct ContentView: View {
             )
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
-            Group {
-                if let document = store.activeDocument {
-                    @Bindable var doc = document
-                    DocumentSurfaceStack(
-                        documents: store.documents,
-                        activeID: document.id,
-                        configuration: editorConfig,
-                        scrollToHeading: scrollToHeading
-                    )
-                    .toolbar {
-                        ToolbarItem(placement: .principal) {
-                            CompactToolbarPrincipalItem(
-                                isCompact: toolbarUsesCompactLayout,
-                                isTransitioning: isSidebarTransitioning,
-                                isVisible: isToolbarContentVisible
-                            )
-                        }
-                        ModeToggleToolbarItem(
-                            mode: $doc.mode,
-                            isVisible: isToolbarContentVisible
-                        )
-                    }
-                } else {
-                    WelcomeView()
-                        .toolbar {
-                            ToolbarItem(placement: .principal) {
-                                CompactToolbarPrincipalItem(
-                                    isCompact: toolbarUsesCompactLayout,
-                                    isTransitioning: isSidebarTransitioning,
-                                    isVisible: isToolbarContentVisible
-                                )
-                            }
-                        }
-                }
-            }
+            DocumentDetailView(
+                configuration: editorConfig,
+                scrollToHeading: scrollToHeading,
+                toolbarUsesCompactLayout: toolbarUsesCompactLayout,
+                isSidebarTransitioning: isSidebarTransitioning,
+                isToolbarContentVisible: isToolbarContentVisible
+            )
             // Single-titlebar layout: removing the native title item in compact mode
             // cedes the toolbar center slot to the pill strip; keeping it in sidebar
             // mode shows the title + proxy. The swap is confined to the settled
@@ -141,6 +113,11 @@ struct ContentView: View {
             documentWindow?.isDocumentEdited = doc?.isDirty ?? false
             refreshProxyIcon()
         }
+        .modifier(TabSwitchStateInstrumentation(
+            columnVisibility: columnVisibility,
+            toolbarUsesCompactLayout: toolbarUsesCompactLayout,
+            isSidebarTransitioning: isSidebarTransitioning
+        ))
     }
 
     /// Keeps the window proxy icon in sync with the active document.
@@ -266,18 +243,113 @@ struct ContentView: View {
     }
 }
 
+private struct TabSwitchStateInstrumentation: ViewModifier {
+    let columnVisibility: NavigationSplitViewVisibility
+    let toolbarUsesCompactLayout: Bool
+    let isSidebarTransitioning: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .modifier(ColumnVisibilityInstrumentation(value: columnVisibility))
+            .modifier(BooleanStateInstrumentation(
+                name: "toolbarUsesCompactLayout",
+                value: toolbarUsesCompactLayout
+            ))
+            .modifier(BooleanStateInstrumentation(
+                name: "isSidebarTransitioning",
+                value: isSidebarTransitioning
+            ))
+    }
+}
+
+private struct ColumnVisibilityInstrumentation: ViewModifier {
+    let value: NavigationSplitViewVisibility
+
+    func body(content: Content) -> some View {
+        content.onChange(of: value) { oldValue, newValue in
+            TabSwitchProfiler.viewStateChanged(
+                "columnVisibility",
+                from: String(describing: oldValue),
+                to: String(describing: newValue)
+            )
+        }
+    }
+}
+
+private struct BooleanStateInstrumentation: ViewModifier {
+    let name: String
+    let value: Bool
+
+    func body(content: Content) -> some View {
+        content.onChange(of: value) { oldValue, newValue in
+            TabSwitchProfiler.viewStateChanged(
+                name,
+                from: String(oldValue),
+                to: String(newValue)
+            )
+        }
+    }
+}
+
+/// Stable detail-column root. Active-document changes update its contents without replacing the
+/// parent that owns the retained AppKit and WebKit surfaces.
+private struct DocumentDetailView: View {
+    @Environment(DocumentStore.self) private var store
+    let configuration: EditorConfiguration
+    let scrollToHeading: HeadingNode?
+    let toolbarUsesCompactLayout: Bool
+    let isSidebarTransitioning: Bool
+    let isToolbarContentVisible: Bool
+
+    private var activeDocumentMode: Binding<EditMode> {
+        Binding(
+            get: { store.activeDocument?.mode ?? .edit },
+            set: { store.activeDocument?.mode = $0 }
+        )
+    }
+
+    var body: some View {
+        ZStack {
+            DocumentSurfaceStack(
+                documents: store.documents,
+                activeID: store.activeID,
+                registry: store.surfaceRegistry,
+                configuration: configuration,
+                scrollToHeading: scrollToHeading
+            )
+            if store.activeDocument == nil {
+                WelcomeView()
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                CompactToolbarPrincipalItem(
+                    isCompact: toolbarUsesCompactLayout,
+                    isTransitioning: isSidebarTransitioning,
+                    isVisible: isToolbarContentVisible
+                )
+            }
+            ModeToggleToolbarItem(
+                mode: activeDocumentMode,
+                isVisible: isToolbarContentVisible && store.activeDocument != nil
+            )
+        }
+    }
+}
+
 /// Keeps each visited document's native editor and preview mounted while another tab is selected.
 /// Tabs that were opened in a batch stay cheap until first selected. After that first selection,
 /// changing tabs only changes visibility and does not rebuild AppKit or WebKit.
 struct DocumentSurfaceStack: View {
     let documents: [Document]
-    let activeID: UUID
+    let activeID: UUID?
+    @Bindable var registry: DocumentSurfaceRegistry
     let configuration: EditorConfiguration
     let scrollToHeading: HeadingNode?
-    @State private var mountedDocumentIDs: Set<UUID> = []
+    @State private var lifecycleID = UUID()
 
     private var mountedDocuments: [Document] {
-        documents.filter { mountedDocumentIDs.contains($0.id) || $0.id == activeID }
+        documents.filter { registry.contains($0.id) || $0.id == activeID }
     }
 
     var body: some View {
@@ -297,16 +369,34 @@ struct DocumentSurfaceStack: View {
             }
         }
         .onAppear {
-            mountedDocumentIDs.insert(activeID)
+            if let activeID {
+                registry.markMounted(activeID)
+            }
+            TabSwitchProfiler.surfaceStackAppeared(
+                instanceID: lifecycleID,
+                activeID: activeID,
+                mountedCount: registry.mountedDocumentIDs.count,
+                documentCount: documents.count
+            )
+        }
+        .onDisappear {
+            TabSwitchProfiler.surfaceStackDisappeared(
+                instanceID: lifecycleID,
+                activeID: activeID,
+                mountedCount: registry.mountedDocumentIDs.count,
+                documentCount: documents.count
+            )
         }
         .onChange(of: activeID) { _, newID in
+            guard let newID else { return }
             if let document = documents.first(where: { $0.id == newID }) {
                 TabSwitchProfiler.selected(
                     document: document,
-                    wasMounted: mountedDocumentIDs.contains(newID)
+                    wasMounted: registry.contains(newID),
+                    mountedCount: registry.mountedDocumentIDs.count
                 )
             }
-            mountedDocumentIDs.insert(newID)
+            registry.markMounted(newID)
         }
     }
 }
@@ -726,16 +816,12 @@ private struct CompactToolbarPrincipalItem: View {
 
 /// Switches ownership of the center toolbar slot only after the sidebar has reached its endpoint.
 /// The surrounding toolbar is hidden while AppKit installs or removes its native title item.
-private struct DetailToolbarDefaultTitleRemoval: ViewModifier {
+struct DetailToolbarDefaultTitleRemoval: ViewModifier {
     let isCompact: Bool
 
     func body(content: Content) -> some View {
-        if isCompact {
-            if #available(macOS 15.0, *) {
-                content.toolbar(removing: .title)
-            } else {
-                content
-            }
+        if #available(macOS 15.0, *) {
+            content.toolbar(removing: isCompact ? .title : nil)
         } else {
             content
         }

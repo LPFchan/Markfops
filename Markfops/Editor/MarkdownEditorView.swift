@@ -450,9 +450,6 @@ struct EditorView: NSViewRepresentable {
             height: .greatestFiniteMagnitude
         )
         textView.configuration = configuration
-        if textView.textStorage?.string != text {
-            textView.string = text
-        }
 
         // Wire syntax highlighter
         context.coordinator.highlighter.updateConfiguration(configuration)
@@ -532,48 +529,14 @@ struct EditorView: NSViewRepresentable {
             signpostID: configurationSignpost
         )
 
-        let comparisonSignpost = TabSwitchProfiler.beginInterval(
-            "Editor Text Compare",
-            document: document,
-            active: isActive
-        )
-        let textNeedsSync = textView.string != text
-        TabSwitchProfiler.endInterval(
-            "Editor Text Compare",
-            signpostID: comparisonSignpost
-        )
+        if context.coordinator.lastAppliedTextRevision != document.textRevision {
+            // Document.rawText keeps the shared NSTextStorage synchronized. The revision is
+            // therefore enough to acknowledge the new content without bridging and comparing
+            // the full Swift string on every unrelated SwiftUI update.
+            context.coordinator.lastAppliedTextRevision = document.textRevision
+        }
 
-        if textNeedsSync {
-            let textSyncSignpost = TabSwitchProfiler.beginInterval(
-                "Editor Text Sync",
-                document: document,
-                active: isActive
-            )
-            defer {
-                TabSwitchProfiler.endInterval(
-                    "Editor Text Sync",
-                    signpostID: textSyncSignpost
-                )
-            }
-            let sel = textView.selectedRange()
-            context.coordinator.highlighter.isEnabled = false
-            textView.setPlainTextWithoutUndo(text)
-            context.coordinator.highlighter.isEnabled = isActive
-            if isActive, let storage = textView.textStorage, !text.isEmpty {
-                let highlightSignpost = TabSwitchProfiler.beginInterval(
-                    "Syntax Highlight",
-                    document: document,
-                    active: true
-                )
-                context.coordinator.highlighter.highlightAll(in: storage)
-                TabSwitchProfiler.endInterval(
-                    "Syntax Highlight",
-                    signpostID: highlightSignpost
-                )
-            }
-            let safe = NSRange(location: min(sel.location, textView.string.count), length: 0)
-            textView.setSelectedRange(safe)
-        } else if isActive && (context.coordinator.highlighter.needsFullHighlight || highlightingConfigurationChanged),
+        if isActive && (context.coordinator.highlighter.needsFullHighlight || highlightingConfigurationChanged),
                   let storage = textView.textStorage,
                   storage.length > 0 {
             let highlightSignpost = TabSwitchProfiler.beginInterval(

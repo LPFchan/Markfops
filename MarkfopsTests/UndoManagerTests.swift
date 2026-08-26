@@ -158,6 +158,47 @@ final class UndoManagerTests: XCTestCase {
         XCTAssertTrue(restoredTextViews.contains { $0 === secondTextView })
     }
 
+    func testToolbarLayoutChangesKeepMountedDocumentEditorsAlive() {
+        let first = Document(rawText: "First")
+        let second = Document(rawText: "Second")
+        let selection = HostedTabSelection(documents: [first, second], activeID: first.id)
+        let hostingView = NSHostingView(rootView: HostedToolbarTabContent(selection: selection))
+        hostingView.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+        let window = NSWindow(
+            contentRect: hostingView.frame,
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hostingView
+        window.makeKeyAndOrderFront(nil)
+        defer { window.orderOut(nil) }
+
+        settle(hostingView)
+        guard let firstTextView = findTextViews(in: hostingView).first(where: {
+            $0.textStorage === first.textStorage
+        }) else {
+            return XCTFail("The first editor was not mounted")
+        }
+
+        selection.activeID = second.id
+        settle(hostingView)
+        guard let secondTextView = findTextViews(in: hostingView).first(where: {
+            $0.textStorage === second.textStorage
+        }) else {
+            return XCTFail("The second editor was not mounted")
+        }
+
+        selection.isCompact = true
+        settle(hostingView)
+        selection.isCompact = false
+        settle(hostingView)
+
+        let retainedTextViews = findTextViews(in: hostingView)
+        XCTAssertTrue(retainedTextViews.contains { $0 === firstTextView })
+        XCTAssertTrue(retainedTextViews.contains { $0 === secondTextView })
+    }
+
     func testHostedEditorHasInteractiveScrollableGeometry() {
         let text = Array(repeating: "A long line of editable Markdown text.", count: 200)
             .joined(separator: "\n")
@@ -749,7 +790,9 @@ private struct HostedDocumentContent: View {
 @Observable
 private final class HostedTabSelection {
     let documents: [Document]
+    let registry = DocumentSurfaceRegistry()
     var activeID: UUID
+    var isCompact = false
 
     init(documents: [Document], activeID: UUID) {
         self.documents = documents
@@ -764,8 +807,24 @@ private struct HostedTabContent: View {
         DocumentSurfaceStack(
             documents: selection.documents,
             activeID: selection.activeID,
+            registry: selection.registry,
             configuration: .default,
             scrollToHeading: nil
         )
+    }
+}
+
+private struct HostedToolbarTabContent: View {
+    @Bindable var selection: HostedTabSelection
+
+    var body: some View {
+        DocumentSurfaceStack(
+            documents: selection.documents,
+            activeID: selection.activeID,
+            registry: selection.registry,
+            configuration: .default,
+            scrollToHeading: nil
+        )
+        .modifier(DetailToolbarDefaultTitleRemoval(isCompact: selection.isCompact))
     }
 }

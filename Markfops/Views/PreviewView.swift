@@ -131,6 +131,7 @@ struct PreviewView: NSViewRepresentable {
     let document: Document
     let pageHTML: String
     let bodyHTML: String
+    let contentRevision: UInt64
     let themeKey: String
     let bridge: PreviewBridge
     var isActive = true
@@ -187,18 +188,20 @@ struct PreviewView: NSViewRepresentable {
             context.coordinator.isPageReady = false
             context.coordinator.lastThemeKey = themeKey
             context.coordinator.lastRenderedBodyHTML = bodyHTML
+            context.coordinator.lastRenderedContentRevision = contentRevision
             context.coordinator.beginPageLoadSignpost()
             webView.loadHTMLString(pageHTML, baseURL: nil)
             return
         }
 
-        guard bodyHTML != context.coordinator.lastRenderedBodyHTML else {
+        guard contentRevision != context.coordinator.lastRenderedContentRevision else {
             if isActive {
                 TabSwitchProfiler.finishSwitch(documentID: document.id, surface: "preview")
             }
             return
         }
         context.coordinator.lastRenderedBodyHTML = bodyHTML
+        context.coordinator.lastRenderedContentRevision = contentRevision
         context.coordinator.updateBodyHTML(bodyHTML)
     }
 
@@ -218,6 +221,7 @@ struct PreviewView: NSViewRepresentable {
         var isActive = false
         var lastThemeKey: String = ""
         var lastRenderedBodyHTML: String = ""
+        var lastRenderedContentRevision: UInt64 = 0
         var isPageReady = false
         var isEditingInView = false
         var onScrollChange: ((Double) -> Void)?

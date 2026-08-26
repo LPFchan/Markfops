@@ -3,6 +3,18 @@ import XCTest
 @testable import Markfops
 
 final class HeadingParserTests: XCTestCase {
+    func testDocumentTextRevisionAdvancesOnlyWhenContentChanges() {
+        let document = Document(rawText: "Initial")
+
+        XCTAssertEqual(document.textRevision, 0)
+        document.rawText = "Updated"
+        XCTAssertEqual(document.textRevision, 1)
+        document.rawText = "Updated"
+        XCTAssertEqual(document.textRevision, 1)
+        document.rawText = "Updated again"
+        XCTAssertEqual(document.textRevision, 2)
+    }
+
 
     func testFirstH1Title() {
         let text = "# Hello World\n\nSome text\n\n## Section"
