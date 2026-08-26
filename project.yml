@@ -25,6 +25,17 @@ schemes:
     build:
       targets:
         Markfops: all
+      postActions:
+        - name: Stamp built Info.plist with git version
+          script: |
+            set -e
+            PLIST="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
+            DESC=$(git -C "$SRCROOT" describe --tags --long --always 2>/dev/null || echo "v0.0.0-0-g0000000")
+            VER=$(printf '%s' "$DESC" | sed -E 's/^v?([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+            COUNT=$(printf '%s' "$DESC" | sed -E 's/^v?[0-9]+\.[0-9]+\.[0-9]+-([0-9]+)-.*/\1/')
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VER" "$PLIST"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $COUNT" "$PLIST"
+          settingsTarget: Markfops
     run:
       config: Debug
     profile:
@@ -59,8 +70,13 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.markfops.Markfops
-        MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1"
+        # Placeholder values only: the "Stamp built Info.plist with git version"
+        # script phase overwrites them in the built bundle from the newest git
+        # tag (v1.2.3 -> 1.2.3, commit count since the tag as the build number).
+        # The release workflow overrides both explicitly, so tagged GitHub
+        # builds are unaffected.
+        MARKETING_VERSION: "0.0.0"
+        CURRENT_PROJECT_VERSION: "0"
         SWIFT_VERSION: "5.0"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         CODE_SIGN_ENTITLEMENTS: $(MARKFOPS_CODE_SIGN_ENTITLEMENTS)
@@ -105,7 +121,6 @@ targets:
         product: Collections
       - package: Sparkle
         product: Sparkle
-
   MarkfopsTests:
     type: bundle.unit-test
     platform: macOS

@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         CompactTabContextMenuController.start()
         NSWindow.allowsAutomaticWindowTabbing = false  // remove View > "Show Tab Bar" / "Show All Tabs"
+        AuxiliaryWindowCloseHandler.start()
         restoreLastSession()
     }
 

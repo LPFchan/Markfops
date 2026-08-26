@@ -6,63 +6,80 @@ struct SettingsView: View {
     @AppStorage("editorFontFamily") private var fontFamily: String = "SF Mono"
 
     var body: some View {
-        Form {
-            Section("Updates") {
-                Button("Check for Updates…") {
-                    (NSApp.delegate as? AppDelegate)?.updaterController.checkForUpdates(nil)
+        // Form always embeds a scroll view on macOS; a fixed VStack keeps the
+        // pane at exactly the size of its content with no scrollbar.
+        VStack(alignment: .leading, spacing: 20) {
+            settingsSection("Updates") {
+                HStack {
+                    Button("Check for Updates…") {
+                        (NSApp.delegate as? AppDelegate)?.updaterController.checkForUpdates(nil)
+                    }
+                    Spacer()
+                    // Sparkle persists this choice itself via SPUUpdater.
+                    Toggle("Automatically check for updates", isOn: Binding(
+                        get: { (NSApp.delegate as? AppDelegate)?.updaterController.updater.automaticallyChecksForUpdates ?? true },
+                        set: { (NSApp.delegate as? AppDelegate)?.updaterController.updater.automaticallyChecksForUpdates = $0 }
+                    ))
+                    .toggleStyle(.checkbox)
                 }
-
-                // Sparkle persists this choice itself via SPUUpdater.
-                Toggle("Automatically check for updates", isOn: Binding(
-                    get: { (NSApp.delegate as? AppDelegate)?.updaterController.updater.automaticallyChecksForUpdates ?? true },
-                    set: { (NSApp.delegate as? AppDelegate)?.updaterController.updater.automaticallyChecksForUpdates = $0 }
-                ))
             }
 
-            Section("Editor") {
-                HStack {
-                    Text("Font Size")
-                    Spacer()
+            settingsSection("Editor") {
+                LabeledContent("Font Size") {
                     Stepper("\(Int(fontSize))pt", value: $fontSize, in: 10...32, step: 1)
                 }
 
-                Picker("Font", selection: $fontFamily) {
-                    Text("SF Mono").tag("SF Mono")
-                    Text("Menlo").tag("Menlo")
-                    Text("Monaco").tag("Monaco")
-                    Text("Courier New").tag("Courier New")
+                LabeledContent("Font") {
+                    Picker("Font", selection: $fontFamily) {
+                        Text("SF Mono").tag("SF Mono")
+                        Text("Menlo").tag("Menlo")
+                        Text("Monaco").tag("Monaco")
+                        Text("Courier New").tag("Courier New")
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .fixedSize()
                 }
-                .pickerStyle(.menu)
             }
         }
-        .formStyle(.grouped)
-        .frame(width: 400)
-        .fixedSize(horizontal: false, vertical: true)
-        .background(SettingsCloseShortcutSupport())
+        .padding(20)
+        .frame(width: 440)
+        .background(WindowSizingToFit())
+    }
+
+    private func settingsSection<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.headline)
+            VStack(alignment: .leading, spacing: 12) { content() }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+        }
     }
 }
 
-/// Restores the standard Close menu item so the Settings window responds to
-/// Cmd+W. MarkfopsCommands replaces the `.saveItem` group with document-scoped
-/// close buttons that are no-ops when no document store is focused (as in the
-/// Settings window), which leaves the system with no ⌘W close item at all.
-/// Document windows are unaffected: their custom close buttons appear earlier
-/// in the File menu and win key-equivalent matching while a document is key.
-private struct SettingsCloseShortcutSupport: NSViewRepresentable {
+/// Pins the hosting window's content size to the view's ideal size so the pane
+/// is never scrollable or larger than its content.
+private struct WindowSizingToFit: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
-        DispatchQueue.main.async { Self.installCloseItemIfNeeded() }
+        DispatchQueue.main.async { Self.fit(view) }
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { Self.fit(nsView) }
+    }
 
-    private static func installCloseItemIfNeeded() {
-        guard let fileMenu = NSApp.mainMenu?.items.first(where: { $0.title == "File" })?.submenu,
-              !fileMenu.items.contains(where: { $0.action == #selector(NSWindow.performClose(_:)) })
-        else { return }
-        fileMenu.addItem(withTitle: "Close",
-                         action: #selector(NSWindow.performClose(_:)),
-                         keyEquivalent: "w")
+    private static func fit(_ view: NSView) {
+        guard let window = view.window,
+              let contentView = window.contentView else { return }
+        let size = contentView.fittingSize
+        guard size.width > 0, size.height > 0 else { return }
+        window.setContentSize(size)
+        window.styleMask.remove(.resizable)
     }
 }
