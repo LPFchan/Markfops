@@ -485,8 +485,9 @@ struct DocumentTabView: View {
                 HStack(spacing: 5) {
                     faviconView
 
-                    // Title / rename field — fills remaining space. The fade runs up to the
-                    // close button's leading edge; the close slot keeps its own footprint.
+                    // Title / rename field — fills the full pill width. The close button is a
+                    // trailing overlay that occludes the text when hovered, so it claims no
+                    // layout space; the fade ends at its leading edge.
                     Group {
                         if isRenaming {
                             TextField("", text: $renameText)
@@ -506,7 +507,7 @@ struct DocumentTabView: View {
                                     LinearGradient(
                                         stops: [
                                             .init(color: .black, location: 0),
-                                            .init(color: .black, location: 0.92),
+                                            .init(color: .black, location: 0.88),
                                             .init(color: .clear,  location: 1.00),
                                         ],
                                         startPoint: .leading, endPoint: .trailing
@@ -515,15 +516,20 @@ struct DocumentTabView: View {
                         }
                     }
                     .animation(.spring(duration: 0.18), value: isRenaming)
-
-                    // Close (×) button sits right after the title, inside the reserved clearance.
-                    if !isRenaming { closeSlot }
                 }
             }
         }
         .padding(.horizontal, horizontalPadding)
         .padding(.vertical, 6)
         .frame(width: pillWidth)
+        // Close (×) floats over the title's trailing end, appearing on hover to occlude the
+        // text behind it. The title's fade mask is aligned to this button's leading edge.
+        .overlay(alignment: .trailing) {
+            if !isRenaming && !isInDetachZone && !isIconOnly {
+                closeSlot
+                    .padding(.trailing, horizontalPadding)
+            }
+        }
         .background(
             RoundedRectangle(cornerRadius: isInDetachZone ? 3 : 7)
                 .fill(backgroundFill)
@@ -615,6 +621,11 @@ struct DocumentTabView: View {
             }
             .buttonStyle(.plain)
             .frame(width: 16, height: 16)
+            // Opaque backdrop so the overlaid title doesn't show through around the glyph.
+            .background(
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color(NSColor.windowBackgroundColor))
+            )
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 3)
