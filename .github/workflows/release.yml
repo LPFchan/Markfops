@@ -29,6 +29,9 @@ jobs:
           ref: v1.0.3
           path: dmgtool
 
+      - name: Add custom-background CLI support to DMGMaker
+        run: git -C dmgtool apply --unidiff-zero "$GITHUB_WORKSPACE/Packaging/DMGMaker-v1.0.3.patch"
+
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
@@ -94,7 +97,10 @@ jobs:
           mkdir -p "$STAGING"
           ditto "$APP" "$STAGING/Markfops.app"
           cd dmgtool
-          swift run -c release "DMG Maker" --app "$STAGING/Markfops.app" --name "Markfops-${VERSION}"
+          swift run -c release "DMG Maker" \
+            --app "$STAGING/Markfops.app" \
+            --name "Markfops-${VERSION}" \
+            --background "$GITHUB_WORKSPACE/Packaging/DMGBackground.png"
           DMG="$STAGING/Markfops-${VERSION}.dmg"
           test -f "$DMG"
           echo "DMG_PATH=$DMG" >> "$GITHUB_ENV"

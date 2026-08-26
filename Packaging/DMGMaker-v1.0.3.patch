@@ -1,0 +1,21 @@
+diff --git a/Sources/DMGMaker/DMGEngine.swift b/Sources/DMGMaker/DMGEngine.swift
+index 97a6c81..10265c6 100644
+--- a/Sources/DMGMaker/DMGEngine.swift
++++ b/Sources/DMGMaker/DMGEngine.swift
+@@ -72 +72 @@ class DMGEngine: ObservableObject {
+-            let bgImage = generateBackground(appName: outputName, size: NSSize(width: 600, height: 600), customBackgroundURL: backgroundURL)
++            let bgImage = generateBackground(appName: appURL.deletingPathExtension().lastPathComponent, size: NSSize(width: 600, height: 600), customBackgroundURL: backgroundURL)
+diff --git a/Sources/DMGMaker/DMGMakerApp.swift b/Sources/DMGMaker/DMGMakerApp.swift
+index 9c88f99..56cf453 100644
+--- a/Sources/DMGMaker/DMGMakerApp.swift
++++ b/Sources/DMGMaker/DMGMakerApp.swift
+@@ -19,0 +20,6 @@ struct DMGMakerApp: App {
++            let backgroundURL: URL?
++            if let backgroundIdx = args.firstIndex(of: "--background"), backgroundIdx + 1 < args.count {
++                backgroundURL = URL(fileURLWithPath: args[backgroundIdx + 1])
++            } else {
++                backgroundURL = nil
++            }
+@@ -24 +30 @@ struct DMGMakerApp: App {
+-                engine.createDMG(appURL: appURL, backgroundURL: nil, outputName: dmgName)
++                engine.createDMG(appURL: appURL, backgroundURL: backgroundURL, outputName: dmgName)
