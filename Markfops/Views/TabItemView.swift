@@ -485,9 +485,8 @@ struct DocumentTabView: View {
                 HStack(spacing: 5) {
                     faviconView
 
-                    // Title / rename field — fills remaining space. A fixed trailing clearance
-                    // reserves room for the close button so its fade ends at the button's
-                    // leading edge instead of extending to the pill's right edge.
+                    // Title / rename field — fills remaining space. The fade runs up to the
+                    // close button's leading edge; the close slot keeps its own footprint.
                     Group {
                         if isRenaming {
                             TextField("", text: $renameText)
@@ -503,12 +502,11 @@ struct DocumentTabView: View {
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.trailing, fadeClearance)
                                 .mask(
                                     LinearGradient(
                                         stops: [
                                             .init(color: .black, location: 0),
-                                            .init(color: .black, location: 0.88),
+                                            .init(color: .black, location: 0.92),
                                             .init(color: .clear,  location: 1.00),
                                         ],
                                         startPoint: .leading, endPoint: .trailing
@@ -602,10 +600,6 @@ struct DocumentTabView: View {
         if isHovered { return Color(NSColor.quaternaryLabelColor) }
         return Color.clear
     }
-
-    /// Fixed trailing clearance on the title so its fade lands at the close button's
-    /// leading edge, regardless of hover state. Matches closeSlot's 16pt width.
-    private var fadeClearance: CGFloat { 18 }
 
     private var closeSlot: some View {
         ZStack {
