@@ -29,13 +29,51 @@ final class DocumentStore {
 
     private(set) var documents: [Document] = []
     var activeID: UUID? {
+        willSet {
+            guard newValue != activeID,
+                  let newValue,
+                  let document = documents.first(where: { $0.id == newValue }) else { return }
+            TabSwitchProfiler.beginSwitch(windowID: windowID, from: activeID, to: document)
+        }
         didSet {
             guard activeID != oldValue else { return }
+            let activationSignpost = activeDocument.map {
+                TabSwitchProfiler.beginInterval("Document Activation", document: $0, active: true)
+            }
+            defer {
+                if let activationSignpost {
+                    TabSwitchProfiler.endInterval(
+                        "Document Activation",
+                        signpostID: activationSignpost
+                    )
+                }
+            }
             if let oldValue {
                 documents.first(where: { $0.id == oldValue })?.stopWatching()
             }
-            activeDocument?.reloadFromDiskIfChanged()
-            activeDocument?.reconcileActiveHeadingWithCurrentContent()
+            if let document = activeDocument {
+                let reloadSignpost = TabSwitchProfiler.beginInterval(
+                    "Document Reload Check",
+                    document: document,
+                    active: true
+                )
+                document.reloadFromDiskIfChanged()
+                TabSwitchProfiler.endInterval(
+                    "Document Reload Check",
+                    signpostID: reloadSignpost
+                )
+
+                let headingSignpost = TabSwitchProfiler.beginInterval(
+                    "Heading Reconcile",
+                    document: document,
+                    active: true
+                )
+                document.reconcileActiveHeadingWithCurrentContent()
+                TabSwitchProfiler.endInterval(
+                    "Heading Reconcile",
+                    signpostID: headingSignpost
+                )
+            }
             refreshWindowAppearance()
             scheduleRecoverySave()
         }

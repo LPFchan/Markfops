@@ -32,6 +32,14 @@ open Markfops.xcodeproj  # then press ⌘R
 
 > **First run:** Xcode will resolve Swift Package dependencies (libcmark_gfm, swift-collections) automatically. This requires an internet connection on the first build.
 
+### Profiling tab switches
+
+1. In Xcode, choose **Product → Profile** and select the **Points of Interest** template.
+2. Start recording, switch between the large documents a few times, then stop.
+3. Filter the signpost track for the `com.markfops.Markfops` subsystem.
+
+The outer `Tab Switch` interval measures selection through the next main-loop turn after the native surface updates. Nested intervals separate document activation, editor creation or update, editor configuration, large-text comparison and synchronization, syntax highlighting, preview cache checks, Markdown rendering, preview loading, and preview DOM updates. `Surface Selected` also reports whether the tab was already warm.
+
 ## Keyboard Shortcuts
 
 | Action | Shortcut |
@@ -60,6 +68,7 @@ open Markfops.xcodeproj  # then press ⌘R
 ```
 Markfops/
 ├── App/           — Entry point, AppDelegate
+├── Diagnostics/   — Instruments signposts for performance profiling
 ├── State/         — Document, DocumentStore, EditMode, HeadingNode
 ├── Views/         — All SwiftUI views (sidebar, tab bar, editor container…)
 ├── Editor/        — NSTextView subclass + syntax highlighter

@@ -47,10 +47,12 @@ struct EditorContainerView: View {
             .focusedValue(\.editorBridge, editorBridge)
 
             PreviewView(
+                document: document,
                 pageHTML: htmlContent,
                 bodyHTML: bodyHTML,
                 themeKey: colorScheme == .dark ? "dark" : "light",
                 bridge: bridge,
+                isActive: isSelected && document.mode == .preview,
                 onScrollChange: { ratio in
                     guard isSelected, document.mode == .preview else { return }
                     document.scrollRatio = ratio
@@ -167,16 +169,34 @@ struct EditorContainerView: View {
     @discardableResult
     private func refreshPreview(from text: String) -> Bool {
         let themeKey = colorScheme == .dark ? "dark" : "light"
-        guard renderedDocumentID != document.id
-                || renderedText != text
-                || renderedThemeKey != themeKey
-                || bodyHTML.isEmpty else {
+        let cacheCheckSignpost = TabSwitchProfiler.beginInterval(
+            "Preview Cache Check",
+            document: document,
+            active: isSelected
+        )
+        let needsRender = renderedDocumentID != document.id
+            || renderedText != text
+            || renderedThemeKey != themeKey
+            || bodyHTML.isEmpty
+        TabSwitchProfiler.endInterval(
+            "Preview Cache Check",
+            signpostID: cacheCheckSignpost
+        )
+        guard needsRender else {
             return false
         }
 
         renderedDocumentID = document.id
         renderedText = text
         renderedThemeKey = themeKey
+        let signpostID = TabSwitchProfiler.beginInterval(
+            "Markdown Render",
+            document: document,
+            active: isSelected
+        )
+        defer {
+            TabSwitchProfiler.endInterval("Markdown Render", signpostID: signpostID)
+        }
         let fragment = MarkdownRenderer.renderHTML(from: text)
         bodyHTML = fragment
         let page = HTMLTemplate.currentPage(body: fragment, colorScheme: colorScheme)

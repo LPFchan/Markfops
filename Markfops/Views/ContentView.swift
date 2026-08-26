@@ -300,6 +300,12 @@ struct DocumentSurfaceStack: View {
             mountedDocumentIDs.insert(activeID)
         }
         .onChange(of: activeID) { _, newID in
+            if let document = documents.first(where: { $0.id == newID }) {
+                TabSwitchProfiler.selected(
+                    document: document,
+                    wasMounted: mountedDocumentIDs.contains(newID)
+                )
+            }
             mountedDocumentIDs.insert(newID)
         }
     }

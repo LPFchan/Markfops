@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import os.signpost
 
 // MARK: - Bridge
 
@@ -127,14 +128,24 @@ struct PreviewScrollReport {
 
 /// Read-only rendered preview surface for the current markdown document.
 struct PreviewView: NSViewRepresentable {
+    let document: Document
     let pageHTML: String
     let bodyHTML: String
     let themeKey: String
     let bridge: PreviewBridge
+    var isActive = true
     var onScrollChange: ((Double) -> Void)?
     var onUserScroll: (() -> Void)?
 
     func makeNSView(context: Context) -> WKWebView {
+        let signpostID = TabSwitchProfiler.beginInterval(
+            "Preview Make",
+            document: document,
+            active: isActive
+        )
+        defer {
+            TabSwitchProfiler.endInterval("Preview Make", signpostID: signpostID)
+        }
         let userContent = WKUserContentController()
         userContent.add(context.coordinator, name: "scrollChanged")
 
@@ -146,6 +157,8 @@ struct PreviewView: NSViewRepresentable {
         webView.allowsMagnification = true
 
         context.coordinator.webView = webView
+        context.coordinator.document = document
+        context.coordinator.isActive = isActive
         context.coordinator.onScrollChange = onScrollChange
         context.coordinator.onUserScroll = onUserScroll
         // Setting coordinator triggers didSet, which forwards any buffered scroll ratio.
@@ -155,6 +168,16 @@ struct PreviewView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
+        let signpostID = TabSwitchProfiler.beginInterval(
+            "Preview Update",
+            document: document,
+            active: isActive
+        )
+        defer {
+            TabSwitchProfiler.endInterval("Preview Update", signpostID: signpostID)
+        }
+        context.coordinator.document = document
+        context.coordinator.isActive = isActive
         context.coordinator.onScrollChange = onScrollChange
         context.coordinator.onUserScroll = onUserScroll
 
@@ -164,11 +187,17 @@ struct PreviewView: NSViewRepresentable {
             context.coordinator.isPageReady = false
             context.coordinator.lastThemeKey = themeKey
             context.coordinator.lastRenderedBodyHTML = bodyHTML
+            context.coordinator.beginPageLoadSignpost()
             webView.loadHTMLString(pageHTML, baseURL: nil)
             return
         }
 
-        guard bodyHTML != context.coordinator.lastRenderedBodyHTML else { return }
+        guard bodyHTML != context.coordinator.lastRenderedBodyHTML else {
+            if isActive {
+                TabSwitchProfiler.finishSwitch(documentID: document.id, surface: "preview")
+            }
+            return
+        }
         context.coordinator.lastRenderedBodyHTML = bodyHTML
         context.coordinator.updateBodyHTML(bodyHTML)
     }
@@ -185,6 +214,8 @@ struct PreviewView: NSViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         weak var webView: WKWebView?
+        weak var document: Document?
+        var isActive = false
         var lastThemeKey: String = ""
         var lastRenderedBodyHTML: String = ""
         var isPageReady = false
@@ -198,9 +229,30 @@ struct PreviewView: NSViewRepresentable {
         var pendingMorphSourceLine: Int?
         private var lastReportedUserScrollGesture = 0
         private var isBodyUpdateInFlight = false
+        private var pageLoadSignpostID: OSSignpostID?
 
         func teardown() {
+            finishPageLoadSignpost()
             webView = nil
+        }
+
+        func beginPageLoadSignpost() {
+            finishPageLoadSignpost()
+            guard let document else { return }
+            pageLoadSignpostID = TabSwitchProfiler.beginInterval(
+                "Preview Page Load",
+                document: document,
+                active: isActive
+            )
+        }
+
+        private func finishPageLoadSignpost() {
+            guard let pageLoadSignpostID else { return }
+            TabSwitchProfiler.endInterval(
+                "Preview Page Load",
+                signpostID: pageLoadSignpostID
+            )
+            self.pageLoadSignpostID = nil
         }
 
         @discardableResult
@@ -372,7 +424,14 @@ struct PreviewView: NSViewRepresentable {
 
         func updateBodyHTML(_ html: String) {
             guard let webView,
+                  let document,
                   let encodedHTML = Self.javaScriptStringLiteral(html) else { return }
+
+            let signpostID = TabSwitchProfiler.beginInterval(
+                "Preview DOM Update",
+                document: document,
+                active: isActive
+            )
 
             let sourceLine = pendingMorphSourceLine.map(String.init) ?? "null"
             let requestedViewportSourceLine = pendingViewportSourceLine
@@ -395,6 +454,10 @@ struct PreviewView: NSViewRepresentable {
             """
 
             webView.evaluateJavaScript(js) { [weak self] _, error in
+                TabSwitchProfiler.endInterval(
+                    "Preview DOM Update",
+                    signpostID: signpostID
+                )
                 guard let self else { return }
                 self.isBodyUpdateInFlight = false
                 if error == nil {
@@ -404,6 +467,9 @@ struct PreviewView: NSViewRepresentable {
                     self.pendingScrollRatio = requestedScrollRatio
                 }
                 self.applyPendingViewportRestoreIfReady()
+                if self.isActive {
+                    TabSwitchProfiler.finishSwitch(documentID: document.id, surface: "preview")
+                }
             }
         }
 
@@ -784,7 +850,13 @@ struct PreviewView: NSViewRepresentable {
                 }, { passive: true });
             })();
             """
-            webView.evaluateJavaScript(js)
+            webView.evaluateJavaScript(js) { [weak self] _, _ in
+                guard let self else { return }
+                self.finishPageLoadSignpost()
+                if self.isActive, let document = self.document {
+                    TabSwitchProfiler.finishSwitch(documentID: document.id, surface: "preview")
+                }
+            }
             isPageReady = true
             lastReportedUserScrollGesture = 0
 

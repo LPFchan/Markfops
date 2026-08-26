@@ -406,6 +406,17 @@ struct EditorView: NSViewRepresentable {
     var isActive = true
 
     func makeNSView(context: Context) -> NSScrollView {
+        let signpostID = TabSwitchProfiler.beginInterval(
+            "Editor Make",
+            document: document,
+            active: isActive
+        )
+        defer {
+            TabSwitchProfiler.endInterval("Editor Make", signpostID: signpostID)
+            if isActive {
+                TabSwitchProfiler.finishSwitch(documentID: document.id, surface: "editor")
+            }
+        }
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
@@ -456,7 +467,16 @@ struct EditorView: NSViewRepresentable {
 
         // Initial highlight
         if isActive, let storage = textView.textStorage, !text.isEmpty {
+            let highlightSignpost = TabSwitchProfiler.beginInterval(
+                "Syntax Highlight",
+                document: document,
+                active: true
+            )
             context.coordinator.highlighter.highlightAll(in: storage)
+            TabSwitchProfiler.endInterval(
+                "Syntax Highlight",
+                signpostID: highlightSignpost
+            )
         }
 
         context.coordinator.scheduleScrollRestoration(to: document.scrollRatio)
@@ -479,6 +499,17 @@ struct EditorView: NSViewRepresentable {
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        let signpostID = TabSwitchProfiler.beginInterval(
+            "Editor Update",
+            document: document,
+            active: isActive
+        )
+        defer {
+            TabSwitchProfiler.endInterval("Editor Update", signpostID: signpostID)
+            if isActive {
+                TabSwitchProfiler.finishSwitch(documentID: document.id, surface: "editor")
+            }
+        }
         guard let textView = scrollView.documentView as? MarkdownNSTextView else { return }
         if context.coordinator.document.id != document.id {
             guard context.coordinator.prepareForDocumentSwitch(to: document, textView: textView) else {
@@ -490,22 +521,71 @@ struct EditorView: NSViewRepresentable {
         context.coordinator.highlighter.isEnabled = isActive
         context.coordinator.isActive = isActive
         let highlightingConfigurationChanged = context.coordinator.highlighter.updateConfiguration(configuration)
+        let configurationSignpost = TabSwitchProfiler.beginInterval(
+            "Editor Configuration",
+            document: document,
+            active: isActive
+        )
         textView.configuration = configuration
+        TabSwitchProfiler.endInterval(
+            "Editor Configuration",
+            signpostID: configurationSignpost
+        )
 
-        if textView.string != text {
+        let comparisonSignpost = TabSwitchProfiler.beginInterval(
+            "Editor Text Compare",
+            document: document,
+            active: isActive
+        )
+        let textNeedsSync = textView.string != text
+        TabSwitchProfiler.endInterval(
+            "Editor Text Compare",
+            signpostID: comparisonSignpost
+        )
+
+        if textNeedsSync {
+            let textSyncSignpost = TabSwitchProfiler.beginInterval(
+                "Editor Text Sync",
+                document: document,
+                active: isActive
+            )
+            defer {
+                TabSwitchProfiler.endInterval(
+                    "Editor Text Sync",
+                    signpostID: textSyncSignpost
+                )
+            }
             let sel = textView.selectedRange()
             context.coordinator.highlighter.isEnabled = false
             textView.setPlainTextWithoutUndo(text)
             context.coordinator.highlighter.isEnabled = isActive
             if isActive, let storage = textView.textStorage, !text.isEmpty {
+                let highlightSignpost = TabSwitchProfiler.beginInterval(
+                    "Syntax Highlight",
+                    document: document,
+                    active: true
+                )
                 context.coordinator.highlighter.highlightAll(in: storage)
+                TabSwitchProfiler.endInterval(
+                    "Syntax Highlight",
+                    signpostID: highlightSignpost
+                )
             }
             let safe = NSRange(location: min(sel.location, textView.string.count), length: 0)
             textView.setSelectedRange(safe)
         } else if isActive && (context.coordinator.highlighter.needsFullHighlight || highlightingConfigurationChanged),
                   let storage = textView.textStorage,
                   storage.length > 0 {
+            let highlightSignpost = TabSwitchProfiler.beginInterval(
+                "Syntax Highlight",
+                document: document,
+                active: true
+            )
             context.coordinator.highlighter.highlightAll(in: storage)
+            TabSwitchProfiler.endInterval(
+                "Syntax Highlight",
+                signpostID: highlightSignpost
+            )
         }
 
         // Scroll to specific line if requested
