@@ -1,11 +1,12 @@
-# Markfops
+<p align="center">
+  <img src=".github/assets/icon.png" width="128" alt="Markfops" />
+</p>
 
-A fast, native macOS Markdown editor and reader. No Electron — just Swift, SwiftUI, and AppKit.
+<h1 align="center">Markfops</h1>
 
 <p align="center">
-  <video src="https://github.com/LPFchan/Markfops/raw/main/.github/assets/demo.mp4" width="620" controls muted loop playsinline>
-    <a href="https://github.com/LPFchan/Markfops/raw/main/.github/assets/demo.mp4">Watch the demo</a>
-  </video>
+  A fast, native macOS Markdown editor and reader.<br />
+  No Electron — just Swift, SwiftUI, and AppKit.
 </p>
 
 ## Install
