@@ -607,6 +607,25 @@ final class UndoManagerTests: XCTestCase {
         XCTAssertEqual(document.userContentScrollGeneration, 2)
     }
 
+    func testSidebarRestoreKeepsValidSourceDerivedHeadingWhenScrollRatioDisagrees() {
+        let text = """
+        # Document
+        ## Earlier
+        Body
+        ## Remembered
+        More body
+        """
+        let document = Document(rawText: text)
+        document.headings = HeadingParser.parseHeadings(in: text)
+        let rememberedHeading = document.tocHeadings.last!
+
+        document.scrollRatio = 0
+        document.syncActiveHeading(toSourceLine: rememberedHeading.lineNumber)
+        document.reconcileActiveHeadingWithCurrentContent()
+
+        XCTAssertEqual(document.activeHeadingID, rememberedHeading.id)
+    }
+
     func testEditorUserScrollReattachesAfterIdleWhenEndNotificationIsMissing() {
         let document = Document(rawText: longDocument(prefix: "Idle fallback"))
         let editor = makeEditor(for: document)

@@ -98,6 +98,14 @@ enum SidebarScrollPhysics {
 }
 
 enum SidebarDocumentModel {
+    static func mountsTableOfContentsSection(
+        documentID: UUID,
+        activeDocumentID: UUID?,
+        mountedDocumentIDs: Set<UUID>
+    ) -> Bool {
+        documentID == activeDocumentID || mountedDocumentIDs.contains(documentID)
+    }
+
     static func showsTableOfContents(
         isExpanded: Bool,
         hasHeadings: Bool,
@@ -237,6 +245,10 @@ struct SidebarView: View {
 
     /// Per-document TOC visibility — collapses on deselect, restores on reselect.
     @State private var tocVisible: [UUID: Bool] = [:]
+    /// Keep a stable Section for documents that have been selected. Unvisited documents remain
+    /// plain lazy rows, while visited documents can animate their TOC contents without replacing
+    /// the section header subtree.
+    @State private var mountedTOCSectionIDs: Set<UUID> = []
     /// Index before which the accent insertion line is shown during a tab reorder.
     @State private var dropInsertionIndex: Int? = nil
     @State private var scrollContext = SidebarScrollContext()
@@ -258,7 +270,7 @@ struct SidebarView: View {
                             if let scrollView = scrollContext.scrollView {
                                 installScrollObserverIfNeeded(for: scrollView)
                             }
-                            store.activeDocument?.syncActiveHeadingToScrollPosition()
+                            store.activeDocument?.reconcileActiveHeadingWithCurrentContent()
                             scheduleScrollToActiveHeading(force: true)
                         }
                     )
@@ -286,7 +298,8 @@ struct SidebarView: View {
                 // Restore incoming document's TOC
                 if let new = newID,
                    let doc = store.documents.first(where: { $0.id == new }) {
-                    doc.syncActiveHeadingToScrollPosition()
+                    mountedTOCSectionIDs.insert(new)
+                    doc.reconcileActiveHeadingWithCurrentContent()
                     scrollContext.lastTargetY = nil
                     scrollContext.suppressTOCFollowUntil = CACurrentMediaTime() + Self.documentPinSuppressFollowDuration
                     scrollContext.resumeAutomaticFollowing()
@@ -322,6 +335,9 @@ struct SidebarView: View {
             }
         }
         .onAppear {
+            if let activeID = store.activeID {
+                mountedTOCSectionIDs.insert(activeID)
+            }
             if let activeDocument = store.activeDocument, activeDocument.isTOCExpanded {
                 tocVisible = [activeDocument.id: true]
             } else {
@@ -339,13 +355,19 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func documentEntry(document: Document, index: Int) -> some View {
-        if SidebarDocumentModel.showsTableOfContents(
-            isExpanded: tocVisible[document.id] ?? false,
-            hasHeadings: !document.headings.isEmpty,
-            isDragging: TabDragState.shared.draggingDocumentID == document.id
+        if SidebarDocumentModel.mountsTableOfContentsSection(
+            documentID: document.id,
+            activeDocumentID: store.activeID,
+            mountedDocumentIDs: mountedTOCSectionIDs
         ) {
             Section {
-                tableOfContents(for: document)
+                if SidebarDocumentModel.showsTableOfContents(
+                    isExpanded: tocVisible[document.id] ?? false,
+                    hasHeadings: !document.headings.isEmpty,
+                    isDragging: TabDragState.shared.draggingDocumentID == document.id
+                ) {
+                    tableOfContents(for: document)
+                }
             } header: {
                 sectionHeader(document: document, index: index)
             }
@@ -645,7 +667,7 @@ struct SidebarView: View {
             guard store.activeID == documentID,
                   let document = store.activeDocument else { return }
 
-            document.syncActiveHeadingToScrollPosition()
+            document.reconcileActiveHeadingWithCurrentContent()
             scheduleScrollToActiveHeading(force: true)
 
             guard attemptsRemaining > 1,

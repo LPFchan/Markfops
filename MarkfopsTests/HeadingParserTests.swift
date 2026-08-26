@@ -151,6 +151,29 @@ final class HeadingParserTests: XCTestCase {
         ))
     }
 
+    func testSidebarKeepsVisitedDocumentsMountedForTOCAnimation() {
+        let activeID = UUID()
+        let visitedInactiveID = UUID()
+        let unvisitedInactiveID = UUID()
+        let mountedIDs: Set<UUID> = [visitedInactiveID]
+
+        XCTAssertTrue(SidebarDocumentModel.mountsTableOfContentsSection(
+            documentID: activeID,
+            activeDocumentID: activeID,
+            mountedDocumentIDs: mountedIDs
+        ))
+        XCTAssertTrue(SidebarDocumentModel.mountsTableOfContentsSection(
+            documentID: visitedInactiveID,
+            activeDocumentID: activeID,
+            mountedDocumentIDs: mountedIDs
+        ))
+        XCTAssertFalse(SidebarDocumentModel.mountsTableOfContentsSection(
+            documentID: unvisitedInactiveID,
+            activeDocumentID: activeID,
+            mountedDocumentIDs: mountedIDs
+        ))
+    }
+
     @MainActor
     func testMarkdownFileIconsShareOneWorkspaceLookup() {
         let cache = DocumentFileIconCache()
