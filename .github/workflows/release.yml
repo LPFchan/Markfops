@@ -44,8 +44,8 @@ jobs:
           echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
 
       # Ad-hoc signing (CODE_SIGN_IDENTITY="-") seals the bundle and its embedded Sparkle
-      # XPC services. An entirely unsigned bundle reports "no usable signature", which some
-      # macOS versions refuse to launch and which breaks Sparkle's update validation.
+      # XPC services. The release-only entitlement permits the hardened app to load Sparkle
+      # because ad-hoc signatures do not provide a shared Apple Team ID.
       - name: Build & Archive
         run: |
           xcodebuild archive \
@@ -55,18 +55,35 @@ jobs:
             -archivePath "$RUNNER_TEMP/Markfops.xcarchive" \
             MARKETING_VERSION="$APP_VERSION" \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            MARKFOPS_CODE_SIGN_ENTITLEMENTS=Packaging/MarkfopsAdHoc.entitlements \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=YES \
             CODE_SIGNING_ALLOWED=YES
 
-      - name: Verify signature and version
+      - name: Verify signature, entitlement, version, and launch
         run: |
           set -euo pipefail
           APP=$(find "$RUNNER_TEMP/Markfops.xcarchive" -name "Markfops.app" | head -1)
           codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign --display --xml --entitlements - "$APP" > "$RUNNER_TEMP/Markfops.entitlements"
+          test "$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.cs.disable-library-validation" "$RUNNER_TEMP/Markfops.entitlements")" = "true"
           ACTUAL=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist")
           test "$ACTUAL" = "$APP_VERSION" || { echo "::error::bundle version $ACTUAL != tag $APP_VERSION"; exit 1; }
+          LAUNCH_LOG="$RUNNER_TEMP/Markfops-launch.log"
+          "$APP/Contents/MacOS/Markfops" >"$LAUNCH_LOG" 2>&1 &
+          APP_PID=$!
+          for _ in {1..10}; do
+            sleep 0.5
+            if ! kill -0 "$APP_PID" 2>/dev/null; then
+              wait "$APP_PID" || true
+              cat "$LAUNCH_LOG"
+              echo "::error::Markfops exited during the launch smoke test."
+              exit 1
+            fi
+          done
+          kill "$APP_PID"
+          wait "$APP_PID" || true
 
       - name: Build DMG (DMGMaker)
         run: |

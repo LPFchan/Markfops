@@ -63,17 +63,12 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "5.0"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
-        CODE_SIGN_ENTITLEMENTS: Markfops/Resources/Markfops.entitlements
+        CODE_SIGN_ENTITLEMENTS: $(MARKFOPS_CODE_SIGN_ENTITLEMENTS)
+        MARKFOPS_CODE_SIGN_ENTITLEMENTS: Markfops/Resources/Markfops.entitlements
         ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: ""
         CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: YES
-    entitlements:
-      path: Markfops/Resources/Markfops.entitlements
-      properties:
-        com.apple.security.app-sandbox: false
-        com.apple.security.files.user-selected.read-write: true
-        com.apple.security.network.client: true
     info:
       path: Markfops/Resources/Info.plist
       properties:
