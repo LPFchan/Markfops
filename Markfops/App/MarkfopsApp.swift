@@ -68,20 +68,27 @@ private final class DocumentWindowIdentity: ObservableObject {
 private struct DocumentWindowAccessor: NSViewRepresentable {
     let onResolve: (NSWindow) -> Void
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        resolveWindow(for: view)
+    func makeNSView(context: Context) -> DocumentWindowProbeView {
+        let view = DocumentWindowProbeView(frame: .zero)
+        view.onResolve = onResolve
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        resolveWindow(for: nsView)
+    func updateNSView(_ nsView: DocumentWindowProbeView, context: Context) {
+        nsView.onResolve = onResolve
+    }
+}
+
+private final class DocumentWindowProbeView: NSView {
+    var onResolve: ((NSWindow) -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        resolveWindow()
     }
 
-    private func resolveWindow(for view: NSView) {
-        DispatchQueue.main.async {
-            guard let window = view.window else { return }
-            onResolve(window)
-        }
+    func resolveWindow() {
+        guard let window else { return }
+        onResolve?(window)
     }
 }

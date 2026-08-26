@@ -326,6 +326,45 @@ final class HeadingParserTests: XCTestCase {
         XCTAssertEqual(coordinator.lastActiveWindowID, second.id)
     }
 
+    func testWindowRegistrationReplaysPendingFocusOnce() {
+        let coordinator = makeTestCoordinator()
+        let session = coordinator.session(for: UUID())!
+        let document = session.store.newDocument()
+        let targetWindow = CoordinatorFocusTestWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        defer { targetWindow.orderOut(nil) }
+
+        coordinator.focus(sessionID: session.id, documentID: document.id)
+        XCTAssertNil(session.window)
+        XCTAssertEqual(coordinator.pendingWindowFocus[session.id]?.documentID, document.id)
+
+        coordinator.registerWindow(id: session.id, window: targetWindow)
+        XCTAssertNil(coordinator.pendingWindowFocus[session.id])
+        XCTAssertTrue(targetWindow.isVisible)
+        XCTAssertEqual(session.store.activeID, document.id)
+
+        coordinator.registerWindow(id: session.id, window: targetWindow)
+        XCTAssertNil(coordinator.pendingWindowFocus[session.id])
+    }
+
+    func testClosingWindowlessSessionClearsPendingFocus() {
+        let coordinator = makeTestCoordinator()
+        let session = coordinator.session(for: UUID())!
+        let document = session.store.newDocument()
+
+        coordinator.focus(sessionID: session.id, documentID: document.id)
+        XCTAssertNotNil(coordinator.pendingWindowFocus[session.id])
+
+        coordinator.closeWindow(id: session.id)
+
+        XCTAssertNil(coordinator.sessions[session.id])
+        XCTAssertNil(coordinator.pendingWindowFocus[session.id])
+    }
+
     func testConcurrentSceneBootstrapDoesNotReuseTabCatalog() {
         let coordinator = makeTestCoordinator()
 
@@ -385,4 +424,8 @@ final class HeadingParserTests: XCTestCase {
             .appendingPathComponent("MarkfopsTests-\(UUID().uuidString)", isDirectory: true)
         return DocumentCoordinator(recoveryDirectoryURL: directory)
     }
+}
+
+private final class CoordinatorFocusTestWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
 }

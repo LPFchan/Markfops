@@ -86,9 +86,27 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
 
     @discardableResult
     func focusTextView() -> Bool {
-        guard let textView else { return false }
+        guard isActive,
+              let textView,
+              textView.isDocumentActive else { return false }
         textView.window?.makeFirstResponder(textView)
         return textView.window?.firstResponder === textView
+    }
+
+    func scheduleFocusIfAppropriate() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.isActive,
+                  let textView = self.textView,
+                  textView.isDocumentActive,
+                  let window = textView.window else { return }
+
+            if let fieldEditor = window.firstResponder as? NSTextView,
+               !(fieldEditor is MarkdownNSTextView) {
+                return
+            }
+            _ = self.focusTextView()
+        }
     }
 
     func selectedText() -> String? {

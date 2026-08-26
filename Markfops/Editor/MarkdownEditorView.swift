@@ -141,11 +141,6 @@ final class EditorBridge {
         coordinator?.scrollToRatio(ratio)
     }
 
-    @discardableResult
-    func focus() -> Bool {
-        coordinator?.focusTextView() ?? false
-    }
-
     func selectedText() -> String? {
         coordinator?.selectedText()
     }
@@ -166,6 +161,22 @@ final class EditorBridge {
 // MARK: - NSTextView subclass
 
 final class MarkdownNSTextView: NSTextView {
+    var onWindowAttachment: (() -> Void)?
+
+    var isDocumentActive = true {
+        didSet {
+            guard !isDocumentActive,
+                  let window,
+                  let responderView = window.firstResponder as? NSView,
+                  responderView === self || responderView.isDescendant(of: self) else { return }
+            window.makeFirstResponder(nil)
+        }
+    }
+
+    override var acceptsFirstResponder: Bool {
+        isDocumentActive && super.acceptsFirstResponder
+    }
+
     /// Immediately re-wraps the text at the current frame width after a slide freeze.
     /// Without this the container stays pinned at the pre-slide width until AppKit
     /// happens to deliver another resize (~540ms later) — the end-of-slide stall.
@@ -229,6 +240,9 @@ final class MarkdownNSTextView: NSTextView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         applyConfiguration()
+        if window != nil {
+            onWindowAttachment?()
+        }
     }
 
     private func applyConfiguration() {
@@ -418,6 +432,7 @@ struct EditorView: NSViewRepresentable {
             }
         }
         let scrollView = NSScrollView()
+        scrollView.isHidden = !isActive
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
@@ -455,9 +470,13 @@ struct EditorView: NSViewRepresentable {
         context.coordinator.highlighter.updateConfiguration(configuration)
         context.coordinator.highlighter.isEnabled = isActive
         context.coordinator.isActive = isActive
+        textView.isDocumentActive = isActive
         textView.textStorage?.delegate = context.coordinator.highlighter
         context.coordinator.textView = textView
         context.coordinator.attach(scrollView: scrollView)
+        textView.onWindowAttachment = { [weak coordinator = context.coordinator] in
+            coordinator?.scheduleFocusIfAppropriate()
+        }
         editorBridge?.coordinator = context.coordinator
 
         scrollView.documentView = textView
@@ -477,7 +496,6 @@ struct EditorView: NSViewRepresentable {
         }
 
         context.coordinator.scheduleScrollRestoration(to: document.scrollRatio)
-
         // Track scroll position for mode-switch sync
         NotificationCenter.default.addObserver(
             context.coordinator,
@@ -508,6 +526,8 @@ struct EditorView: NSViewRepresentable {
             }
         }
         guard let textView = scrollView.documentView as? MarkdownNSTextView else { return }
+        scrollView.isHidden = !isActive
+        let becameActive = isActive && !context.coordinator.isActive
         if context.coordinator.document.id != document.id {
             guard context.coordinator.prepareForDocumentSwitch(to: document, textView: textView) else {
                 return
@@ -517,6 +537,10 @@ struct EditorView: NSViewRepresentable {
         }
         context.coordinator.highlighter.isEnabled = isActive
         context.coordinator.isActive = isActive
+        textView.isDocumentActive = isActive
+        if becameActive {
+            context.coordinator.scheduleFocusIfAppropriate()
+        }
         let highlightingConfigurationChanged = context.coordinator.highlighter.updateConfiguration(configuration)
         let configurationSignpost = TabSwitchProfiler.beginInterval(
             "Editor Configuration",
@@ -565,6 +589,7 @@ struct EditorView: NSViewRepresentable {
         coordinator.teardown()
 
         if let textView = scrollView.documentView as? MarkdownNSTextView {
+            textView.onWindowAttachment = nil
             if textView.textStorage?.delegate === coordinator.highlighter {
                 textView.textStorage?.delegate = nil
             }

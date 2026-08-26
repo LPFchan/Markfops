@@ -37,11 +37,6 @@ final class PreviewBridge {
         coord.extractText(completion: completion)
     }
 
-    @discardableResult
-    func focus() -> Bool {
-        coordinator?.focusWebView() ?? false
-    }
-
     func find(_ query: String, forward: Bool, completion: @escaping (Bool) -> Void) {
         coordinator?.find(query, forward: forward, completion: completion) ?? completion(false)
     }
@@ -127,6 +122,31 @@ struct PreviewScrollReport {
 // MARK: - View
 
 /// Read-only rendered preview surface for the current markdown document.
+final class MarkfopsPreviewWebView: WKWebView {
+    var onWindowAttachment: (() -> Void)?
+
+    var isDocumentActive = true {
+        didSet {
+            guard !isDocumentActive,
+                  let window,
+                  let responderView = window.firstResponder as? NSView,
+                  responderView === self || responderView.isDescendant(of: self) else { return }
+            window.makeFirstResponder(nil)
+        }
+    }
+
+    override var acceptsFirstResponder: Bool {
+        isDocumentActive && super.acceptsFirstResponder
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil {
+            onWindowAttachment?()
+        }
+    }
+}
+
 struct PreviewView: NSViewRepresentable {
     let document: Document
     let pageHTML: String
@@ -138,7 +158,7 @@ struct PreviewView: NSViewRepresentable {
     var onScrollChange: ((Double) -> Void)?
     var onUserScroll: (() -> Void)?
 
-    func makeNSView(context: Context) -> WKWebView {
+    func makeNSView(context: Context) -> MarkfopsPreviewWebView {
         let signpostID = TabSwitchProfiler.beginInterval(
             "Preview Make",
             document: document,
@@ -153,22 +173,27 @@ struct PreviewView: NSViewRepresentable {
         let config = WKWebViewConfiguration()
         config.userContentController = userContent
 
-        let webView = WKWebView(frame: .zero, configuration: config)
+        let webView = MarkfopsPreviewWebView(frame: .zero, configuration: config)
+        webView.isHidden = !isActive
         webView.navigationDelegate = context.coordinator
         webView.allowsMagnification = true
+        webView.isDocumentActive = isActive
 
         context.coordinator.webView = webView
         context.coordinator.document = document
         context.coordinator.isActive = isActive
         context.coordinator.onScrollChange = onScrollChange
         context.coordinator.onUserScroll = onUserScroll
+        webView.onWindowAttachment = { [weak coordinator = context.coordinator] in
+            coordinator?.scheduleFocusIfAppropriate()
+        }
         // Setting coordinator triggers didSet, which forwards any buffered scroll ratio.
         bridge.coordinator = context.coordinator
 
         return webView
     }
 
-    func updateNSView(_ webView: WKWebView, context: Context) {
+    func updateNSView(_ webView: MarkfopsPreviewWebView, context: Context) {
         let signpostID = TabSwitchProfiler.beginInterval(
             "Preview Update",
             document: document,
@@ -177,8 +202,14 @@ struct PreviewView: NSViewRepresentable {
         defer {
             TabSwitchProfiler.endInterval("Preview Update", signpostID: signpostID)
         }
+        let becameActive = isActive && !context.coordinator.isActive
+        webView.isHidden = !isActive
         context.coordinator.document = document
         context.coordinator.isActive = isActive
+        webView.isDocumentActive = isActive
+        if becameActive {
+            context.coordinator.scheduleFocusIfAppropriate()
+        }
         context.coordinator.onScrollChange = onScrollChange
         context.coordinator.onUserScroll = onUserScroll
 
@@ -207,7 +238,8 @@ struct PreviewView: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+    static func dismantleNSView(_ webView: MarkfopsPreviewWebView, coordinator: Coordinator) {
+        webView.onWindowAttachment = nil
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "scrollChanged")
         webView.navigationDelegate = nil
         coordinator.teardown()
@@ -216,7 +248,7 @@ struct PreviewView: NSViewRepresentable {
     // MARK: - Coordinator
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
-        weak var webView: WKWebView?
+        weak var webView: MarkfopsPreviewWebView?
         weak var document: Document?
         var isActive = false
         var lastThemeKey: String = ""
@@ -261,9 +293,27 @@ struct PreviewView: NSViewRepresentable {
 
         @discardableResult
         func focusWebView() -> Bool {
-            guard let webView else { return false }
+            guard isActive,
+                  let webView,
+                  webView.isDocumentActive else { return false }
             webView.window?.makeFirstResponder(webView)
             return webView.window?.firstResponder === webView
+        }
+
+        func scheduleFocusIfAppropriate() {
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      self.isActive,
+                      let webView = self.webView,
+                      webView.isDocumentActive,
+                      let window = webView.window else { return }
+
+                if let fieldEditor = window.firstResponder as? NSTextView,
+                   !(fieldEditor is MarkdownNSTextView) {
+                    return
+                }
+                _ = self.focusWebView()
+            }
         }
 
         func find(_ query: String, forward: Bool, completion: @escaping (Bool) -> Void) {

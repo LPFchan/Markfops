@@ -116,10 +116,6 @@ struct EditorContainerView: View {
                 ViewportAnchorSync.capture(context: anchorContext) { anchor in
                     guard document.mode == .edit else { return }
                     ViewportAnchorSync.restore(anchor, context: anchorContext)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        guard document.mode == .edit else { return }
-                        _ = editorBridge.focus()
-                    }
                 }
             } else if newMode == .preview {
                 // Capture the editor center anchor and carry it into the preview.
@@ -133,11 +129,6 @@ struct EditorContainerView: View {
                     sourceLine: anchor.sourceLine,
                     ratio: anchor.ratio
                 )
-                let documentID = document.id
-                DispatchQueue.main.async {
-                    guard document.id == documentID, document.mode == .preview else { return }
-                    _ = bridge.focus()
-                }
             }
         }
         .onChange(of: document.id) { _, _ in

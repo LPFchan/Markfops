@@ -563,6 +563,10 @@ final class DocumentWindowSession {
 /// document-local editing operations, while this object handles ownership-changing operations.
 @Observable
 final class DocumentCoordinator: NSObject, NSWindowDelegate {
+    struct PendingWindowFocus {
+        let documentID: UUID?
+    }
+
     static let documentWindowIdentifierPrefix = "Markfops.DocumentWindow."
 
     @ObservationIgnored private(set) var sessions: [UUID: DocumentWindowSession] = [:]
@@ -572,6 +576,7 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
     @ObservationIgnored private var didLoadRecovery = false
     @ObservationIgnored private var pendingURLs: [URL] = []
     @ObservationIgnored private var pendingPresentationIDs: [UUID] = []
+    @ObservationIgnored private(set) var pendingWindowFocus: [UUID: PendingWindowFocus] = [:]
     @ObservationIgnored private var reservedSceneIDs: Set<UUID> = []
     @ObservationIgnored private var openWindowRequest: ((UUID) -> Void)?
     @ObservationIgnored private var closingWindowIDs: Set<UUID> = []
@@ -650,6 +655,9 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
         // owned by NSWindow.didBecomeKeyNotification.
         if isNewWindowRegistration, window.isKeyWindow {
             touch(sessionID: id)
+        }
+        if let pendingFocus = pendingWindowFocus.removeValue(forKey: id) {
+            focus(sessionID: id, documentID: pendingFocus.documentID)
         }
         flushPendingURLs()
     }
@@ -740,7 +748,11 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
         if let documentID { session.store.activeID = documentID }
         session.store.refreshWindowAppearance()
         touch(sessionID: sessionID)
-        guard let window = session.window else { return }
+        guard let window = session.window else {
+            pendingWindowFocus[sessionID] = PendingWindowFocus(documentID: documentID)
+            return
+        }
+        pendingWindowFocus.removeValue(forKey: sessionID)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
     }
@@ -956,6 +968,7 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
 
     private func deregister(sessionID id: UUID) {
         guard let session = sessions.removeValue(forKey: id) else { return }
+        pendingWindowFocus.removeValue(forKey: id)
         session.store.managedWindow = nil
         session.store.documents.forEach { $0.stopWatching(); $0.onStateChange = nil }
         if lastActiveWindowID == id { lastActiveWindowID = sessions.keys.first }

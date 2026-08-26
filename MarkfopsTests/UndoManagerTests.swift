@@ -128,7 +128,7 @@ final class UndoManagerTests: XCTestCase {
         let selection = HostedTabSelection(documents: [first, second], activeID: first.id)
         let hostingView = NSHostingView(rootView: HostedTabContent(selection: selection))
         hostingView.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
-        let window = NSWindow(
+        let window = FocusTestWindow(
             contentRect: hostingView.frame,
             styleMask: [.borderless],
             backing: .buffered,
@@ -143,12 +143,20 @@ final class UndoManagerTests: XCTestCase {
         XCTAssertEqual(initialTextViews.count, 1)
         let firstTextView = initialTextViews.first { $0.textStorage === first.textStorage }
         XCTAssertNotNil(firstTextView)
+        XCTAssertTrue(firstTextView?.acceptsFirstResponder == true)
+        XCTAssertFalse(firstTextView?.enclosingScrollView?.isHidden == true)
+        XCTAssertIdentical(window.firstResponder, firstTextView)
 
         selection.activeID = second.id
         settle(hostingView)
         let selectedTextViews = findTextViews(in: hostingView)
         let secondTextView = selectedTextViews.first { $0.textStorage === second.textStorage }
         XCTAssertNotNil(secondTextView)
+        XCTAssertFalse(firstTextView?.acceptsFirstResponder == true)
+        XCTAssertTrue(firstTextView?.enclosingScrollView?.isHidden == true)
+        XCTAssertTrue(secondTextView?.acceptsFirstResponder == true)
+        XCTAssertFalse(secondTextView?.enclosingScrollView?.isHidden == true)
+        XCTAssertIdentical(window.firstResponder, secondTextView)
 
         selection.activeID = first.id
         settle(hostingView)
@@ -156,6 +164,72 @@ final class UndoManagerTests: XCTestCase {
         let restoredTextViews = findTextViews(in: hostingView)
         XCTAssertTrue(restoredTextViews.contains { $0 === firstTextView })
         XCTAssertTrue(restoredTextViews.contains { $0 === secondTextView })
+        XCTAssertIdentical(window.firstResponder, firstTextView)
+        XCTAssertTrue(firstTextView?.acceptsFirstResponder == true)
+        XCTAssertFalse(secondTextView?.acceptsFirstResponder == true)
+    }
+
+    func testEditorFocusRetriesWhenHostJoinsWindowAfterMount() {
+        let document = Document(rawText: "Body")
+        let hostingView = NSHostingView(rootView: HostedDocumentContent(
+            selection: HostedDocumentSelection(document: document)
+        ))
+        hostingView.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+        settle(hostingView)
+        guard let textView = findTextView(in: hostingView) else {
+            return XCTFail("The detached host did not mount its editor")
+        }
+        XCTAssertNil(textView.window)
+
+        let window = FocusTestWindow(
+            contentRect: hostingView.frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hostingView
+        window.makeKeyAndOrderFront(nil)
+        defer { window.orderOut(nil) }
+        settle(hostingView)
+
+        XCTAssertIdentical(window.firstResponder, textView)
+    }
+
+    func testModeSwitchDoesNotStealFocusFromAFieldEditor() {
+        let document = Document(rawText: "Body")
+        let hostingView = NSHostingView(rootView: HostedDocumentContent(
+            selection: HostedDocumentSelection(document: document)
+        ))
+        hostingView.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+        let textField = NSTextField(string: "Find")
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 600, height: 400))
+        container.addSubview(hostingView)
+        container.addSubview(textField)
+        let window = FocusTestWindow(
+            contentRect: container.frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = container
+        window.makeKeyAndOrderFront(nil)
+        defer { window.orderOut(nil) }
+        settle(container)
+
+        XCTAssertTrue(window.makeFirstResponder(textField))
+        guard let fieldEditor = window.firstResponder as? NSTextView else {
+            return XCTFail("The text field did not install its field editor")
+        }
+        XCTAssertFalse(fieldEditor is MarkdownNSTextView)
+
+        document.mode = .preview
+        settle(container)
+        XCTAssertIdentical(window.firstResponder, fieldEditor)
+
+        document.mode = .edit
+        settle(container)
+
+        XCTAssertIdentical(window.firstResponder, fieldEditor)
     }
 
     func testToolbarLayoutChangesKeepMountedDocumentEditorsAlive() {
@@ -827,4 +901,8 @@ private struct HostedToolbarTabContent: View {
         )
         .modifier(DetailToolbarDefaultTitleRemoval(isCompact: selection.isCompact))
     }
+}
+
+private final class FocusTestWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
 }
