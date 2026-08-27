@@ -12,6 +12,8 @@ enum MarkdownRenderer {
         // Register GFM core extensions (tables, strikethrough, tasklists, autolinks)
         cmark_gfm_core_extensions_ensure_registered()
 
+        let previewMarkdown = maskingFrontMatter(in: markdown)
+
         let options: Int32 = CMARK_OPT_UNSAFE | CMARK_OPT_SMART | CMARK_OPT_SOURCEPOS
 
         guard let parser = cmark_parser_new(options) else {
@@ -28,7 +30,7 @@ enum MarkdownRenderer {
         }
 
         // Feed the source text
-        if let cStr = markdown.cString(using: .utf8) {
+        if let cStr = previewMarkdown.cString(using: .utf8) {
             cmark_parser_feed(parser, cStr, cStr.count - 1)
         }
 
@@ -46,6 +48,28 @@ enum MarkdownRenderer {
         free(htmlPtr)
         let htmlWithSourceLines = injectSourceLineAttributes(into: html)
         return injectHeadingIDs(into: htmlWithSourceLines, using: markdown)
+    }
+
+    /// Hides a leading YAML frontmatter block without changing its line count.
+    /// Preview source positions must continue to match the unmodified editor text.
+    private static func maskingFrontMatter(in markdown: String) -> String {
+        let lines = markdown.split(separator: "\n", omittingEmptySubsequences: false)
+        guard lines.first.map(delimiterText) == "---",
+              let closingIndex = lines.indices.dropFirst().first(where: {
+                  let delimiter = delimiterText(lines[$0])
+                  return delimiter == "---" || delimiter == "..."
+              }) else {
+            return markdown
+        }
+
+        return lines.enumerated().map { index, line in
+            guard index <= closingIndex else { return String(line) }
+            return String(line.map { $0 == "\r" ? "\r" : " " })
+        }.joined(separator: "\n")
+    }
+
+    private static func delimiterText(_ line: Substring) -> String {
+        String(line.last == "\r" ? line.dropLast() : line)
     }
 
     private static func injectSourceLineAttributes(into html: String) -> String {
