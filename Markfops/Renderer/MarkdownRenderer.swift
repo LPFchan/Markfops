@@ -4,6 +4,16 @@ import libcmark_gfm
 /// Converts raw Markdown text to an HTML fragment using cmark-gfm.
 enum MarkdownRenderer {
 
+    private struct PreviewSource {
+        let markdown: String
+        let frontMatter: String?
+    }
+
+    private struct FrontMatterRow {
+        let key: String
+        var valueLines: [String]
+    }
+
     private static let sourceLineAttributeRegex = try? NSRegularExpression(
         pattern: #"data-markfops-source-line=\"(\d+)\""#
     )
@@ -12,7 +22,7 @@ enum MarkdownRenderer {
         // Register GFM core extensions (tables, strikethrough, tasklists, autolinks)
         cmark_gfm_core_extensions_ensure_registered()
 
-        let previewMarkdown = maskingFrontMatter(in: markdown)
+        let previewSource = previewSource(from: markdown)
 
         let options: Int32 = CMARK_OPT_UNSAFE | CMARK_OPT_SMART | CMARK_OPT_SOURCEPOS
 
@@ -30,7 +40,7 @@ enum MarkdownRenderer {
         }
 
         // Feed the source text
-        if let cStr = previewMarkdown.cString(using: .utf8) {
+        if let cStr = previewSource.markdown.cString(using: .utf8) {
             cmark_parser_feed(parser, cStr, cStr.count - 1)
         }
 
@@ -47,29 +57,92 @@ enum MarkdownRenderer {
         let html = String(cString: htmlPtr)
         free(htmlPtr)
         let htmlWithSourceLines = injectSourceLineAttributes(into: html)
-        return injectHeadingIDs(into: htmlWithSourceLines, using: markdown)
+        let htmlWithFrontMatter: String
+        if let frontMatter = previewSource.frontMatter {
+            htmlWithFrontMatter = renderFrontMatterHTML(frontMatter) + htmlWithSourceLines
+        } else {
+            htmlWithFrontMatter = htmlWithSourceLines
+        }
+        return injectHeadingIDs(into: htmlWithFrontMatter, using: markdown)
     }
 
-    /// Hides a leading YAML frontmatter block without changing its line count.
-    /// Preview source positions must continue to match the unmodified editor text.
-    private static func maskingFrontMatter(in markdown: String) -> String {
+    /// Separates a complete leading YAML frontmatter block from the Markdown body.
+    /// Its source lines stay blank in the parser input so body anchors still match the editor.
+    private static func previewSource(from markdown: String) -> PreviewSource {
         let lines = markdown.split(separator: "\n", omittingEmptySubsequences: false)
         guard lines.first.map(delimiterText) == "---",
               let closingIndex = lines.indices.dropFirst().first(where: {
                   let delimiter = delimiterText(lines[$0])
                   return delimiter == "---" || delimiter == "..."
               }) else {
-            return markdown
+            return PreviewSource(markdown: markdown, frontMatter: nil)
         }
 
-        return lines.enumerated().map { index, line in
+        let frontMatter = lines[1..<closingIndex]
+            .map { String($0.last == "\r" ? $0.dropLast() : $0) }
+            .joined(separator: "\n")
+        let bodySource = lines.enumerated().map { index, line in
             guard index <= closingIndex else { return String(line) }
             return String(line.map { $0 == "\r" ? "\r" : " " })
         }.joined(separator: "\n")
+        return PreviewSource(markdown: bodySource, frontMatter: frontMatter)
     }
 
     private static func delimiterText(_ line: Substring) -> String {
         String(line.last == "\r" ? line.dropLast() : line)
+    }
+
+    private static func renderFrontMatterHTML(_ frontMatter: String) -> String {
+        let rows = frontMatterRows(from: frontMatter)
+        let body = rows.map { row in
+            let value = escapeHTML(row.valueLines.joined(separator: "\n"))
+            return "<tr><th scope=\"row\">\(escapeHTML(row.key))</th><td>\(value)</td></tr>"
+        }.joined(separator: "\n")
+
+        return """
+        <table class="markfops-frontmatter" data-markfops-source-line="0" aria-label="YAML frontmatter">
+        <thead><tr><th>Property</th><th>Value</th></tr></thead>
+        <tbody>
+        \(body)
+        </tbody>
+        </table>
+        """
+    }
+
+    /// Treats unindented `key: value` lines as top-level properties and keeps
+    /// indented or multiline YAML with the property that introduced it.
+    private static func frontMatterRows(from frontMatter: String) -> [FrontMatterRow] {
+        var rows: [FrontMatterRow] = []
+
+        for line in frontMatter.components(separatedBy: "\n") {
+            let startsAtTopLevel = line.first.map { !$0.isWhitespace } ?? false
+            if startsAtTopLevel,
+               !line.hasPrefix("#"),
+               let separator = line.firstIndex(of: ":") {
+                let key = line[..<separator].trimmingCharacters(in: .whitespaces)
+                if !key.isEmpty {
+                    let valueStart = line.index(after: separator)
+                    let value = line[valueStart...].trimmingCharacters(in: .whitespaces)
+                    rows.append(FrontMatterRow(key: key, valueLines: [value]))
+                    continue
+                }
+            }
+
+            if rows.isEmpty {
+                rows.append(FrontMatterRow(key: "", valueLines: [line]))
+            } else {
+                rows[rows.count - 1].valueLines.append(line)
+            }
+        }
+
+        return rows
+    }
+
+    private static func escapeHTML(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
     }
 
     private static func injectSourceLineAttributes(into html: String) -> String {

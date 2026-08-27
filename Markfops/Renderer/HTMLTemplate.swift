@@ -121,6 +121,20 @@ enum HTMLTemplate {
       font-size: 0.875em;
       line-height: 1.6;
     }
+    table.markfops-frontmatter {
+      margin: 0 0 2em;
+      table-layout: auto;
+    }
+    table.markfops-frontmatter tbody th {
+      width: 1%;
+      white-space: nowrap;
+      font-family: "SF Mono", Menlo, Monaco, "Courier New", monospace;
+      font-size: 0.875em;
+    }
+    table.markfops-frontmatter td {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
     blockquote {
       border-left: 4px solid var(--border);
       color: var(--blockquote);
@@ -239,6 +253,20 @@ enum HTMLTemplate {
       padding: 0;
       font-size: 0.875em;
       line-height: 1.6;
+    }
+    table.markfops-frontmatter {
+      margin: 0 0 2em;
+      table-layout: auto;
+    }
+    table.markfops-frontmatter tbody th {
+      width: 1%;
+      white-space: nowrap;
+      font-family: "SF Mono", Menlo, Monaco, "Courier New", monospace;
+      font-size: 0.875em;
+    }
+    table.markfops-frontmatter td {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
     blockquote {
       border-left: 4px solid var(--border);

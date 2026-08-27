@@ -48,7 +48,7 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertTrue(html.contains("正文"))
     }
 
-    func testLeadingYAMLFrontMatterIsHiddenFromPreview() {
+    func testLeadingYAMLFrontMatterRendersAsPropertyTable() {
         let markdown = """
         ---
         name: fleet
@@ -62,17 +62,21 @@ final class MarkdownRendererTests: XCTestCase {
         """
         let html = MarkdownRenderer.renderHTML(from: markdown)
 
-        XCTAssertFalse(html.contains("name: fleet"))
-        XCTAssertFalse(html.contains("Fleet topology"))
-        XCTAssertFalse(html.contains("audience: fleet"))
+        XCTAssertTrue(html.contains("<table class=\"markfops-frontmatter\""))
+        XCTAssertTrue(html.contains("<th>Property</th><th>Value</th>"))
+        XCTAssertTrue(html.contains("<th scope=\"row\">name</th><td>fleet</td>"))
+        XCTAssertTrue(html.contains("<th scope=\"row\">description</th><td>\"Fleet topology\"</td>"))
+        XCTAssertTrue(html.contains("<th scope=\"row\">tags</th><td>[fleet, ssh]</td>"))
+        XCTAssertTrue(html.contains("<th scope=\"row\">audience</th><td>fleet</td>"))
         XCTAssertTrue(html.contains("Fleet"))
         XCTAssertTrue(html.contains("Body"))
     }
 
-    func testFrontMatterMaskPreservesBodySourceLines() {
+    func testFrontMatterPreservesBodySourceLines() {
         let markdown = "---\ntitle: Example\n---\n# Heading"
         let html = MarkdownRenderer.renderHTML(from: markdown)
 
+        XCTAssertTrue(html.contains("data-markfops-source-line=\"0\""))
         XCTAssertTrue(html.contains("data-markfops-source-line=\"3\""))
         XCTAssertTrue(html.contains("id=\"markfops-heading-3-1\""))
     }
@@ -81,8 +85,25 @@ final class MarkdownRendererTests: XCTestCase {
         let markdown = "---\ntitle: Example\n...\nVisible"
         let html = MarkdownRenderer.renderHTML(from: markdown)
 
-        XCTAssertFalse(html.contains("title: Example"))
+        XCTAssertTrue(html.contains("<th scope=\"row\">title</th><td>Example</td>"))
         XCTAssertTrue(html.contains("Visible"))
+    }
+
+    func testFrontMatterContentIsHTMLEscaped() {
+        let markdown = "---\ntitle: <script>alert('nope')</script>\n---\nVisible"
+        let html = MarkdownRenderer.renderHTML(from: markdown)
+
+        XCTAssertFalse(html.contains("<script>"))
+        XCTAssertTrue(html.contains("&lt;script&gt;alert('nope')&lt;/script&gt;"))
+    }
+
+    func testFrontMatterKeepsIndentedYAMLWithItsTopLevelProperty() {
+        let markdown = "---\nauthor:\n  name: Fox\n  links:\n    - https://example.com\n---\nVisible"
+        let html = MarkdownRenderer.renderHTML(from: markdown)
+
+        XCTAssertTrue(html.contains("<th scope=\"row\">author</th>"))
+        XCTAssertTrue(html.contains("  name: Fox\n  links:\n    - https://example.com"))
+        XCTAssertEqual(html.components(separatedBy: "scope=\"row\"").count - 1, 1)
     }
 
     func testHorizontalRuleOutsideLeadingFrontMatterStillRenders() {
