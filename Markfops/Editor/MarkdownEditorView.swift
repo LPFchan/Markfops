@@ -162,6 +162,12 @@ final class EditorBridge {
 
 final class MarkdownNSTextView: NSTextView {
     var onWindowAttachment: (() -> Void)?
+    weak var syntaxHighlighter: MarkdownSyntaxHighlighter?
+    private(set) var isUpdatingMarkedText = false
+
+    var isComposingText: Bool {
+        isUpdatingMarkedText || hasMarkedText()
+    }
 
     var isDocumentActive = true {
         didSet {
@@ -175,6 +181,46 @@ final class MarkdownNSTextView: NSTextView {
 
     override var acceptsFirstResponder: Bool {
         isDocumentActive && super.acceptsFirstResponder
+    }
+
+    override func setMarkedText(
+        _ string: Any,
+        selectedRange: NSRange,
+        replacementRange: NSRange
+    ) {
+        isUpdatingMarkedText = true
+        defer { isUpdatingMarkedText = false }
+        super.setMarkedText(
+            string,
+            selectedRange: selectedRange,
+            replacementRange: replacementRange
+        )
+    }
+
+    override func unmarkText() {
+        let wasComposing = isComposingText
+        super.unmarkText()
+        if wasComposing {
+            scheduleDeferredHighlightFlush()
+        }
+    }
+
+    override func insertText(_ insertString: Any, replacementRange: NSRange) {
+        let wasComposing = isComposingText
+        super.insertText(insertString, replacementRange: replacementRange)
+        if wasComposing {
+            scheduleDeferredHighlightFlush()
+        }
+    }
+
+    private func scheduleDeferredHighlightFlush() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  !self.isComposingText,
+                  let storage = self.textStorage,
+                  self.syntaxHighlighter?.needsDeferredHighlight == true else { return }
+            self.syntaxHighlighter?.flushDeferredHighlight(in: storage)
+        }
     }
 
     /// Immediately re-wraps the text at the current frame width after a slide freeze.
@@ -469,6 +515,8 @@ struct EditorView: NSViewRepresentable {
         // Wire syntax highlighter
         context.coordinator.highlighter.updateConfiguration(configuration)
         context.coordinator.highlighter.isEnabled = isActive
+        context.coordinator.highlighter.textView = textView
+        textView.syntaxHighlighter = context.coordinator.highlighter
         context.coordinator.isActive = isActive
         textView.isDocumentActive = isActive
         textView.textStorage?.delegate = context.coordinator.highlighter
@@ -560,7 +608,7 @@ struct EditorView: NSViewRepresentable {
             context.coordinator.lastAppliedTextRevision = document.textRevision
         }
 
-        if isActive && (context.coordinator.highlighter.needsFullHighlight || highlightingConfigurationChanged),
+        if isActive && (context.coordinator.highlighter.needsDeferredHighlight || highlightingConfigurationChanged),
                   let storage = textView.textStorage,
                   storage.length > 0 {
             let highlightSignpost = TabSwitchProfiler.beginInterval(
@@ -568,7 +616,11 @@ struct EditorView: NSViewRepresentable {
                 document: document,
                 active: true
             )
-            context.coordinator.highlighter.highlightAll(in: storage)
+            if highlightingConfigurationChanged {
+                context.coordinator.highlighter.highlightAll(in: storage)
+            } else {
+                context.coordinator.highlighter.flushDeferredHighlight(in: storage)
+            }
             TabSwitchProfiler.endInterval(
                 "Syntax Highlight",
                 signpostID: highlightSignpost
@@ -590,6 +642,8 @@ struct EditorView: NSViewRepresentable {
 
         if let textView = scrollView.documentView as? MarkdownNSTextView {
             textView.onWindowAttachment = nil
+            textView.syntaxHighlighter = nil
+            coordinator.highlighter.textView = nil
             if textView.textStorage?.delegate === coordinator.highlighter {
                 textView.textStorage?.delegate = nil
             }

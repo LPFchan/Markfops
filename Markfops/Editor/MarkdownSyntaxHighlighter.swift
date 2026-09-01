@@ -5,8 +5,14 @@ final class MarkdownSyntaxHighlighter: NSObject, NSTextStorageDelegate {
 
     var configuration: EditorConfiguration = .default
     var isEnabled = true
+    weak var textView: MarkdownNSTextView?
     private(set) var needsFullHighlight = true
     private var isHighlighting = false
+    private var pendingCompositionRange: NSRange?
+
+    var needsDeferredHighlight: Bool {
+        needsFullHighlight || pendingCompositionRange != nil
+    }
 
     private enum RuleColor {
         case heading
@@ -67,14 +73,24 @@ final class MarkdownSyntaxHighlighter: NSObject, NSTextStorageDelegate {
             needsFullHighlight = true
             return
         }
+        guard textView?.isComposingText != true else {
+            rememberCompositionRange(in: textStorage, editedRange: editedRange)
+            return
+        }
         guard !isHighlighting else { return }
-        let fullRange = lineRange(in: textStorage.string, for: editedRange)
+        let combinedRange = pendingCompositionRange.map { NSUnionRange($0, editedRange) } ?? editedRange
+        pendingCompositionRange = nil
+        let fullRange = lineRange(in: textStorage.string, for: combinedRange)
         highlight(textStorage: textStorage, in: fullRange)
     }
 
     /// Public entry point for full re-highlight (e.g. after programmatic text replacement).
     func highlightAll(in storage: NSTextStorage) {
         guard isEnabled else { return }
+        guard textView?.isComposingText != true else {
+            needsFullHighlight = true
+            return
+        }
         let fullRange = NSRange(location: 0, length: storage.length)
         guard fullRange.length > 0 else {
             needsFullHighlight = false
@@ -82,6 +98,22 @@ final class MarkdownSyntaxHighlighter: NSObject, NSTextStorageDelegate {
         }
         highlight(textStorage: storage, in: fullRange)
         needsFullHighlight = false
+        pendingCompositionRange = nil
+    }
+
+    func flushDeferredHighlight(in storage: NSTextStorage) {
+        guard isEnabled, textView?.isComposingText != true else { return }
+        if needsFullHighlight {
+            highlightAll(in: storage)
+            return
+        }
+        guard let pendingCompositionRange else { return }
+        self.pendingCompositionRange = nil
+        let safeLocation = min(pendingCompositionRange.location, storage.length)
+        let safeEnd = min(NSMaxRange(pendingCompositionRange), storage.length)
+        let safeRange = NSRange(location: safeLocation, length: max(0, safeEnd - safeLocation))
+        let fullRange = lineRange(in: storage.string, for: safeRange)
+        highlight(textStorage: storage, in: fullRange)
     }
 
     private func lineRange(in string: String, for range: NSRange) -> NSRange {
@@ -93,6 +125,11 @@ final class MarkdownSyntaxHighlighter: NSObject, NSTextStorageDelegate {
         let lineStart = ns.lineRange(for: NSRange(location: safeRange.location, length: 0)).location
         let lineEnd = ns.lineRange(for: NSRange(location: NSMaxRange(safeRange), length: 0))
         return NSRange(location: lineStart, length: NSMaxRange(lineEnd) - lineStart)
+    }
+
+    private func rememberCompositionRange(in storage: NSTextStorage, editedRange: NSRange) {
+        let fullRange = lineRange(in: storage.string, for: editedRange)
+        pendingCompositionRange = pendingCompositionRange.map { NSUnionRange($0, fullRange) } ?? fullRange
     }
 
     private func highlight(textStorage: NSTextStorage, in range: NSRange) {
@@ -123,6 +160,12 @@ final class MarkdownSyntaxHighlighter: NSObject, NSTextStorageDelegate {
             let boldFont = NSFont.monospacedSystemFont(ofSize: configuration.fontSize, weight: .bold)
             textStorage.addAttribute(.font, value: boldFont, range: match.range)
         }
+
+        // The editor font does not contain every writing system. AppKit normally repairs
+        // unsupported font runs while processing a character edit, but this highlighter runs
+        // after that repair and replaces the font again. Repair the final attributes so Korean
+        // and other fallback glyphs remain visible.
+        textStorage.fixFontAttribute(in: range)
     }
 
     private func color(for ruleColor: RuleColor) -> NSColor {

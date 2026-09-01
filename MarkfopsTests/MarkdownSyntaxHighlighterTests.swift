@@ -110,9 +110,86 @@ final class MarkdownSyntaxHighlighterTests: XCTestCase {
         )
     }
 
+    func testHighlightingRepairsFallbackFontsForKoreanAndCJKText() {
+        let text = "Latin 한글 日本語 中文"
+        let (textView, _) = makeTextView(text: text)
+        let storage = try! XCTUnwrap(textView.textStorage)
+
+        for sample in ["한글", "日本語", "中文"] {
+            let range = (text as NSString).range(of: sample)
+            storage.enumerateAttribute(.font, in: range) { value, fontRange, _ in
+                guard let font = value as? NSFont else {
+                    return XCTFail("Missing font for \(sample) at \(fontRange)")
+                }
+                let run = (storage.string as NSString).substring(with: fontRange)
+                XCTAssertTrue(fontCanRender(run, font: font), "\(font.fontName) cannot render \(run)")
+            }
+        }
+    }
+
+    func testMarkedTextIsNotHighlightedUntilCompositionFinishes() {
+        let (textView, highlighter) = makeTextView(text: "")
+        let storage = try! XCTUnwrap(textView.textStorage)
+
+        textView.setMarkedText(
+            "ㅎ",
+            selectedRange: NSRange(location: 1, length: 0),
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+        textView.setMarkedText(
+            "하",
+            selectedRange: NSRange(location: 1, length: 0),
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+        textView.setMarkedText(
+            "한",
+            selectedRange: NSRange(location: 1, length: 0),
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+
+        XCTAssertTrue(textView.hasMarkedText())
+        XCTAssertEqual(textView.string, "한")
+        XCTAssertFalse(highlighter.needsFullHighlight)
+        XCTAssertTrue(highlighter.needsDeferredHighlight)
+
+        textView.unmarkText()
+        waitForMainQueue()
+
+        XCTAssertFalse(textView.hasMarkedText())
+        XCTAssertFalse(highlighter.needsFullHighlight)
+        XCTAssertFalse(highlighter.needsDeferredHighlight)
+        let font = try! XCTUnwrap(storage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+        XCTAssertTrue(fontCanRender("한", font: font))
+    }
+
+    func testCommittingMarkedTextAutomaticallyFlushesDeferredHighlighting() {
+        let (textView, highlighter) = makeTextView(text: "")
+        let storage = try! XCTUnwrap(textView.textStorage)
+
+        textView.setMarkedText(
+            "한",
+            selectedRange: NSRange(location: 1, length: 0),
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+        XCTAssertFalse(highlighter.needsFullHighlight)
+        XCTAssertTrue(highlighter.needsDeferredHighlight)
+
+        textView.insertText("한", replacementRange: NSRange(location: NSNotFound, length: 0))
+        waitForMainQueue()
+
+        XCTAssertFalse(textView.hasMarkedText())
+        XCTAssertEqual(textView.string, "한")
+        XCTAssertFalse(highlighter.needsFullHighlight)
+        XCTAssertFalse(highlighter.needsDeferredHighlight)
+        let font = try! XCTUnwrap(storage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+        XCTAssertTrue(fontCanRender("한", font: font))
+    }
+
     private func makeTextView(text: String) -> (MarkdownNSTextView, MarkdownSyntaxHighlighter) {
         let textView = MarkdownNSTextView()
         let highlighter = MarkdownSyntaxHighlighter()
+        highlighter.textView = textView
+        textView.syntaxHighlighter = highlighter
         textView.textStorage?.delegate = highlighter
         textView.string = text
         highlighter.updateConfiguration(.default)
@@ -120,5 +197,19 @@ final class MarkdownSyntaxHighlighterTests: XCTestCase {
             highlighter.highlightAll(in: storage)
         }
         return (textView, highlighter)
+    }
+
+    private func fontCanRender(_ text: String, font: NSFont) -> Bool {
+        var characters = Array(text.utf16)
+        var glyphs = Array(repeating: CGGlyph(), count: characters.count)
+        return CTFontGetGlyphsForCharacters(font, &characters, &glyphs, characters.count)
+    }
+
+    private func waitForMainQueue() {
+        let flushed = expectation(description: "main queue flushed")
+        DispatchQueue.main.async {
+            flushed.fulfill()
+        }
+        wait(for: [flushed], timeout: 1)
     }
 }
