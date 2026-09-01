@@ -1,6 +1,9 @@
+import Sparkle
 import SwiftUI
 
 struct MarkfopsCommands: Commands {
+    let updaterController: SPUStandardUpdaterController
+
     @FocusedValue(\.documentStore) private var store
     @FocusedValue(\.sidebarVisibility) private var sidebarVisibility
     @FocusedValue(\.findController) private var findController
@@ -21,7 +24,7 @@ struct MarkfopsCommands: Commands {
     var body: some Commands {
         CommandGroup(after: .appInfo) {
             Button("Check for Updates…") {
-                (NSApp.delegate as? AppDelegate)?.updaterController.checkForUpdates(nil)
+                updaterController.checkForUpdates(nil)
             }
         }
 

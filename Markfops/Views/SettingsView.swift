@@ -1,7 +1,9 @@
-import AppKit
+import Sparkle
 import SwiftUI
 
 struct SettingsView: View {
+    let updaterController: SPUStandardUpdaterController
+
     @AppStorage("editorFontSize") private var fontSize: Double = 15
     @AppStorage("editorFontFamily") private var fontFamily: String = "SF Mono"
 
@@ -12,13 +14,13 @@ struct SettingsView: View {
             settingsSection { Text("Updates") } content: {
                 HStack {
                     Button("Check for Updates…") {
-                        (NSApp.delegate as? AppDelegate)?.updaterController.checkForUpdates(nil)
+                        updaterController.checkForUpdates(nil)
                     }
                     Spacer()
                     // Sparkle persists this choice itself via SPUUpdater.
                     Toggle(isOn: Binding(
-                        get: { (NSApp.delegate as? AppDelegate)?.updaterController.updater.automaticallyChecksForUpdates ?? true },
-                        set: { (NSApp.delegate as? AppDelegate)?.updaterController.updater.automaticallyChecksForUpdates = $0 }
+                        get: { updaterController.updater.automaticallyChecksForUpdates },
+                        set: { updaterController.updater.automaticallyChecksForUpdates = $0 }
                     )) {
                         Text("Automatically check for updates")
                     }

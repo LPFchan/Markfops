@@ -10,10 +10,14 @@ struct MarkfopsApp: App {
             DocumentWindowScene(windowID: $windowID, coordinator: appDelegate.coordinator)
         }
         .windowToolbarStyle(.unified)
-        .commands { MarkfopsCommands() }
+        .commands {
+            MarkfopsCommands(updaterController: appDelegate.updaterController)
+        }
         .defaultSize(width: 660, height: 700)
 
-        Settings { SettingsView() }
+        Settings {
+            SettingsView(updaterController: appDelegate.updaterController)
+        }
     }
 }
 
