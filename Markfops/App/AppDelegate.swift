@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Sparkle 2 — feed URL and signing key live in `Info.plist` (`SUFeedURL`, `SUPublicEDKey`).
     let updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+    private var didFinishLaunching = false
 
     // MARK: - Launch
 
@@ -20,7 +21,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Scene registration owns per-window frame and proxy state. Recovery has already been
         // loaded in applicationWillFinishLaunching, but a scene may not exist yet.
+        didFinishLaunching = true
+        coordinator.finishLaunching()
         coordinator.restorePersistedSession()
+        presentInitialDocumentSceneIfNeeded()
     }
 
     // MARK: - Quit
@@ -47,6 +51,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         coordinator.open(urls: urls)
+        presentInitialDocumentSceneIfNeeded()
+    }
+
+    /// A document-open launch can discard SwiftUI's value-less typed scene before the Finder
+    /// event arrives. Invoke the app-owned command once launch is complete so it can use the
+    /// environment's `openWindow` action to create the UUID-addressed replacement.
+    private func presentInitialDocumentSceneIfNeeded() {
+        guard didFinishLaunching,
+              coordinator.needsInitialScenePresentation,
+              let newWindowItem = NSApp.mainMenu?.items
+                .compactMap(\.submenu)
+                .flatMap(\.items)
+                .first(where: {
+                    $0.keyEquivalent == "n"
+                        && $0.keyEquivalentModifierMask == [.command, .shift]
+                }),
+              let action = newWindowItem.action
+        else { return }
+
+        NSApp.sendAction(action, to: newWindowItem.target, from: newWindowItem)
     }
 
     // MARK: - Session persistence

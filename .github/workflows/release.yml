@@ -87,6 +87,7 @@ jobs:
           done
           kill "$APP_PID"
           wait "$APP_PID" || true
+          scripts/check-cold-finder-launch.sh "$APP"
 
       - name: Build DMG (DMGMaker)
         run: |

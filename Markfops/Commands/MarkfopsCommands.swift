@@ -2,8 +2,10 @@ import Sparkle
 import SwiftUI
 
 struct MarkfopsCommands: Commands {
+    let coordinator: DocumentCoordinator
     let updaterController: SPUStandardUpdaterController
 
+    @Environment(\.openWindow) private var openWindow
     @FocusedValue(\.documentStore) private var store
     @FocusedValue(\.sidebarVisibility) private var sidebarVisibility
     @FocusedValue(\.findController) private var findController
@@ -41,7 +43,7 @@ struct MarkfopsCommands: Commands {
             .keyboardShortcut("t", modifiers: .command)
 
             Button("New Window") {
-                store?.coordinator?.newWindow()
+                openDocumentWindow()
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
 
@@ -253,6 +255,17 @@ struct MarkfopsCommands: Commands {
                 NSApp.sendAction(#selector(NSTextView.pasteAsPlainText(_:)), to: nil, from: nil)
             }
             .keyboardShortcut("v", modifiers: [.command, .option, .shift])
+        }
+    }
+
+    private func openDocumentWindow() {
+        let present: (UUID) -> Void = { id in
+            openWindow(id: "document", value: id)
+        }
+        coordinator.install(openWindow: present)
+
+        if !coordinator.presentInitialSceneIfNeeded() {
+            coordinator.newWindow()
         }
     }
 

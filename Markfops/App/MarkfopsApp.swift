@@ -11,7 +11,10 @@ struct MarkfopsApp: App {
         }
         .windowToolbarStyle(.unified)
         .commands {
-            MarkfopsCommands(updaterController: appDelegate.updaterController)
+            MarkfopsCommands(
+                coordinator: appDelegate.coordinator,
+                updaterController: appDelegate.updaterController
+            )
         }
         .defaultSize(width: 660, height: 700)
 

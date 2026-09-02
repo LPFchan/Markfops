@@ -364,14 +364,91 @@ final class HeadingParserTests: XCTestCase {
         coordinator.focus(sessionID: session.id, documentID: document.id)
         XCTAssertNil(session.window)
         XCTAssertEqual(coordinator.pendingWindowFocus[session.id]?.documentID, document.id)
+        XCTAssertEqual(coordinator.pendingInitialWindowID, session.id)
+        XCTAssertTrue(coordinator.needsInitialScenePresentation)
 
         coordinator.registerWindow(id: session.id, window: targetWindow)
         XCTAssertNil(coordinator.pendingWindowFocus[session.id])
+        XCTAssertNil(coordinator.pendingInitialWindowID)
+        XCTAssertFalse(coordinator.needsInitialScenePresentation)
         XCTAssertTrue(targetWindow.isVisible)
         XCTAssertEqual(session.store.activeID, document.id)
 
         coordinator.registerWindow(id: session.id, window: targetWindow)
         XCTAssertNil(coordinator.pendingWindowFocus[session.id])
+    }
+
+    func testColdOpenWithoutSessionRequestsEmptyInitialScene() throws {
+        let coordinator = makeTestCoordinator()
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("markfops-cold-open-\(UUID().uuidString).md")
+        try "# Cold Open".write(to: fileURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        coordinator.open(urls: [fileURL])
+
+        XCTAssertTrue(coordinator.sessions.isEmpty)
+        XCTAssertTrue(coordinator.needsInitialScenePresentation)
+
+        var requestedIDs: [UUID] = []
+        coordinator.install(openWindow: { requestedIDs.append($0) })
+        XCTAssertTrue(coordinator.presentInitialSceneIfNeeded())
+
+        let session = try XCTUnwrap(coordinator.sessions.values.first)
+        XCTAssertTrue(session.store.documents.isEmpty)
+        XCTAssertFalse(coordinator.needsInitialScenePresentation)
+        XCTAssertEqual(requestedIDs, [session.id])
+
+        XCTAssertFalse(coordinator.presentInitialSceneIfNeeded())
+        XCTAssertEqual(requestedIDs, [session.id])
+
+        let window = CoordinatorFocusTestWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        coordinator.registerWindow(id: session.id, window: window)
+
+        XCTAssertEqual(session.store.documents.count, 1)
+        XCTAssertEqual(session.store.activeDocument?.displayTitle, "Cold Open")
+        XCTAssertTrue(window.isVisible)
+    }
+
+    func testPendingPresentationIsNotRequestedTwiceWhenOpenWindowIsInstalled() {
+        let coordinator = makeTestCoordinator()
+        let session = coordinator.newWindow(withNewDocument: false)
+        coordinator.focus(sessionID: session.id)
+
+        var requestedIDs: [UUID] = []
+        coordinator.install(openWindow: { requestedIDs.append($0) })
+        XCTAssertTrue(coordinator.presentInitialSceneIfNeeded())
+
+        XCTAssertEqual(requestedIDs, [session.id])
+    }
+
+    func testTransientLaunchWindowClosePreservesItsSession() {
+        let coordinator = makeTestCoordinator()
+        let session = coordinator.session(for: UUID())!
+        let window = CoordinatorFocusTestWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        coordinator.registerWindow(id: session.id, window: window)
+
+        NotificationCenter.default.post(name: NSWindow.willCloseNotification, object: window)
+
+        XCTAssertNotNil(coordinator.sessions[session.id])
+        XCTAssertNil(session.window)
+
+        coordinator.finishLaunching()
+        coordinator.registerWindow(id: session.id, window: window)
+        NotificationCenter.default.post(name: NSWindow.willCloseNotification, object: window)
+
+        XCTAssertNil(coordinator.sessions[session.id])
     }
 
     func testClosingWindowlessSessionClearsPendingFocus() {

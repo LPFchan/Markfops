@@ -576,14 +576,28 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
     @ObservationIgnored private var didLoadRecovery = false
     @ObservationIgnored private var pendingURLs: [URL] = []
     @ObservationIgnored private var pendingPresentationIDs: [UUID] = []
+    @ObservationIgnored private var requestedPresentationIDs: Set<UUID> = []
     @ObservationIgnored private(set) var pendingWindowFocus: [UUID: PendingWindowFocus] = [:]
     @ObservationIgnored private var reservedSceneIDs: Set<UUID> = []
     @ObservationIgnored private var openWindowRequest: ((UUID) -> Void)?
     @ObservationIgnored private var closingWindowIDs: Set<UUID> = []
     @ObservationIgnored private var notificationTokens: [NSObjectProtocol] = []
+    @ObservationIgnored private var isLaunching = true
+
+    var pendingInitialWindowID: UUID? {
+        pendingWindowFocus.keys.first(where: { sessions[$0]?.window == nil })
+    }
+
+    var needsInitialScenePresentation: Bool {
+        pendingInitialWindowID != nil || (sessions.isEmpty && !pendingURLs.isEmpty)
+    }
 
     init(recoveryDirectoryURL: URL? = nil) {
-        self.recoveryStore = RecoveryStore(directoryURL: recoveryDirectoryURL)
+        let environmentOverride = ProcessInfo.processInfo.environment["MARKFOPS_RECOVERY_DIRECTORY"]
+            .map { URL(fileURLWithPath: $0, isDirectory: true) }
+        self.recoveryStore = RecoveryStore(
+            directoryURL: recoveryDirectoryURL ?? environmentOverride
+        )
         super.init()
         let center = NotificationCenter.default
         notificationTokens.append(center.addObserver(
@@ -638,9 +652,14 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
         flushPendingURLs()
     }
 
+    func finishLaunching() {
+        isLaunching = false
+    }
+
     func registerWindow(id: UUID, window: NSWindow) {
         guard let session = session(for: id) else { return }
         reservedSceneIDs.remove(id)
+        requestedPresentationIDs.remove(id)
         let isNewWindowRegistration = session.window !== window
         session.window = window
         session.store.managedWindow = window
@@ -794,9 +813,22 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
     }
 
     private func requestScene(id: UUID) {
-        guard !pendingPresentationIDs.contains(id) else { return }
+        guard requestedPresentationIDs.insert(id).inserted else { return }
         pendingPresentationIDs.append(id)
         presentPendingScenes()
+    }
+
+    /// Presents the window needed to complete a queued external open or pending focus request.
+    /// Returns false when the command should create an ordinary new document window instead.
+    @discardableResult
+    func presentInitialSceneIfNeeded() -> Bool {
+        if let id = pendingInitialWindowID {
+            requestScene(id: id)
+            return true
+        }
+        guard sessions.isEmpty, !pendingURLs.isEmpty else { return false }
+        _ = newWindow(withNewDocument: false)
+        return true
     }
 
     private func presentPendingScenes() {
@@ -848,6 +880,7 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
         // The first WindowGroup scene consumes the first value-less session; all additional
         // restored sessions are explicitly opened by their stable UUID values.
         pendingPresentationIDs = sessions.keys.filter { sessions[$0]?.window == nil }.dropFirst().map { $0 }
+        requestedPresentationIDs.formUnion(pendingPresentationIDs)
     }
 
     func persistSession() {
@@ -963,11 +996,18 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
 
     private func deregister(window: NSWindow) {
         guard let id = sessions.first(where: { $0.value.window === window })?.key else { return }
+        if isLaunching, let session = sessions[id] {
+            session.window = nil
+            session.store.managedWindow = nil
+            return
+        }
         deregister(sessionID: id)
     }
 
     private func deregister(sessionID id: UUID) {
         guard let session = sessions.removeValue(forKey: id) else { return }
+        pendingPresentationIDs.removeAll(where: { $0 == id })
+        requestedPresentationIDs.remove(id)
         pendingWindowFocus.removeValue(forKey: id)
         session.store.managedWindow = nil
         session.store.documents.forEach { $0.stopWatching(); $0.onStateChange = nil }

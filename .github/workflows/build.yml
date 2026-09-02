@@ -43,3 +43,9 @@ jobs:
               -destination 'platform=macOS' \
               CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
           fi
+
+      - name: Verify cold Finder launch
+        run: |
+          APP=$(find "$HOME/Library/Developer/Xcode/DerivedData" -path '*/Build/Products/Debug/Markfops.app' -print -quit)
+          test -n "$APP"
+          scripts/check-cold-finder-launch.sh "$APP"
