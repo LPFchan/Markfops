@@ -35,8 +35,8 @@ Markfops is a working native macOS Markdown app with XcodeGen project generation
 - Goal: turn the accepted native-reader direction into shipped engine slices
 - Status: `in progress`
 - Why this matters now: the repo has enough accepted research to move from exploration toward execution
-- Current work: the reader view is decided to go native (`DEC-20260909-001`) and `PLANS.md` now sequences three slices: character kind map, native reader styling, measured-position morph; a standalone spike (`RSH-20260909-001`) validated the morph technique
-- Exit criteria: slice 1 lands in the app with tests
+- Current work: slice 1 landed: `MarkdownSourceMap` derives per-character syntax/content runs and headings from the cmark-gfm parse, and the old heading line scanner is gone; the regex syntax highlighter still runs independently and will consume the map later. Slice 2 (native reader mode) is next
+- Exit criteria: slice 2 lands with a native reader mode reachable from the mode switch
 - Dependencies: `RSH-20260402-007` through `RSH-20260402-013`, `RSH-20260909-001`
 - Risks: native rendering of tables, images, and code highlighting is real work that gates removing the web reader; per-glyph morphing may not scale without a per-word split
 - Related ids: `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260909-001`, `RSH-20260909-001`, `IBX-20260409-001`, `IBX-20260409-002`, `IBX-20260409-003`, `IBX-20260409-004`

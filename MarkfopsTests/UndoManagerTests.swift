@@ -362,7 +362,7 @@ final class UndoManagerTests: XCTestCase {
         let longWrappedLine = Array(repeating: "wrapped content", count: 2_000).joined(separator: " ")
         let text = "## First\n\(linesBeforeTarget)\n## Target\n\(longWrappedLine)"
         let document = Document(rawText: text)
-        document.headings = HeadingParser.parseHeadings(in: text)
+        document.headings = MarkdownSourceMap.parse(text).headings
         guard let targetHeading = document.tocHeadings.last else {
             return XCTFail("The target heading was not parsed")
         }
@@ -582,7 +582,7 @@ final class UndoManagerTests: XCTestCase {
     func testEditorUserScrollReattachesOncePerGestureWithoutHeadingChange() {
         let text = "## One long section\n" + Array(repeating: "Body", count: 200).joined(separator: "\n")
         let document = Document(rawText: text)
-        document.headings = HeadingParser.parseHeadings(in: text)
+        document.headings = MarkdownSourceMap.parse(text).headings
         document.syncActiveHeading(toSourceLine: 1)
         let originalHeadingID = document.activeHeadingID
 
@@ -616,7 +616,7 @@ final class UndoManagerTests: XCTestCase {
         More body
         """
         let document = Document(rawText: text)
-        document.headings = HeadingParser.parseHeadings(in: text)
+        document.headings = MarkdownSourceMap.parse(text).headings
         let rememberedHeading = document.tocHeadings.last!
 
         document.scrollRatio = 0
@@ -652,7 +652,7 @@ final class UndoManagerTests: XCTestCase {
 
     func testProgrammaticEditorScrollingDoesNotRegisterUserGesture() {
         let document = Document(rawText: longDocument(prefix: "Restore"))
-        document.headings = HeadingParser.parseHeadings(in: document.rawText)
+        document.headings = MarkdownSourceMap.parse(document.rawText).headings
         let editor = makeEditor(for: document)
         let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 600, height: 300))
         editor.textView.frame = NSRect(x: 0, y: 0, width: 600, height: 3_000)

@@ -224,7 +224,7 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         headingDebounceItem?.cancel()
         let headingItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            let headings = HeadingParser.parseHeadings(in: newText)
+            let headings = MarkdownSourceMap.parse(newText).headings
             DispatchQueue.main.async {
                 self.document.headings = headings
                 self.document.reconcileActiveHeadingWithCurrentContent()

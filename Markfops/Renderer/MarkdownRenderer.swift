@@ -69,27 +69,10 @@ enum MarkdownRenderer {
     /// Separates a complete leading YAML frontmatter block from the Markdown body.
     /// Its source lines stay blank in the parser input so body anchors still match the editor.
     private static func previewSource(from markdown: String) -> PreviewSource {
-        let lines = markdown.split(separator: "\n", omittingEmptySubsequences: false)
-        guard lines.first.map(delimiterText) == "---",
-              let closingIndex = lines.indices.dropFirst().first(where: {
-                  let delimiter = delimiterText(lines[$0])
-                  return delimiter == "---" || delimiter == "..."
-              }) else {
+        guard let frontMatter = MarkdownFrontMatter.extract(from: markdown) else {
             return PreviewSource(markdown: markdown, frontMatter: nil)
         }
-
-        let frontMatter = lines[1..<closingIndex]
-            .map { String($0.last == "\r" ? $0.dropLast() : $0) }
-            .joined(separator: "\n")
-        let bodySource = lines.enumerated().map { index, line in
-            guard index <= closingIndex else { return String(line) }
-            return String(line.map { $0 == "\r" ? "\r" : " " })
-        }.joined(separator: "\n")
-        return PreviewSource(markdown: bodySource, frontMatter: frontMatter)
-    }
-
-    private static func delimiterText(_ line: Substring) -> String {
-        String(line.last == "\r" ? line.dropLast() : line)
+        return PreviewSource(markdown: frontMatter.bodySource, frontMatter: frontMatter.value)
     }
 
     private static func renderFrontMatterHTML(_ frontMatter: String) -> String {
@@ -195,7 +178,7 @@ enum MarkdownRenderer {
     }
 
     private static func injectHeadingIDs(into html: String, using markdown: String) -> String {
-        let headings = HeadingParser.parseHeadings(in: markdown)
+        let headings = MarkdownSourceMap.parse(markdown).headings
         guard !headings.isEmpty,
               let regex = try? NSRegularExpression(
                   pattern: #"<h([1-6])([^>]*)>(.*?)</h\1>"#,

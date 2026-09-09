@@ -84,7 +84,7 @@ final class Document: Identifiable {
     @ObservationIgnored lazy var sharedPreviewBridge = PreviewBridge()
 
     init(id: UUID = UUID(), fileURL: URL? = nil, rawText: String = "") {
-        let initialH1Title = HeadingParser.firstH1Title(in: rawText)
+        let initialH1Title = MarkdownSourceMap.parse(rawText).firstH1Title
         let presentationMetadata = Self.presentationMetadata(
             h1Title: initialH1Title,
             fileURL: fileURL
@@ -284,7 +284,7 @@ final class Document: Identifiable {
             updateTextMetrics()
             savedText = text
             clearUndoHistory()
-            headings = HeadingParser.parseHeadings(in: text)
+            headings = MarkdownSourceMap.parse(text).headings
             reconcileActiveHeadingWithCurrentContent()
         }
         lastKnownFileSignature = Self.fileSignature(for: url)

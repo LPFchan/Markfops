@@ -126,7 +126,7 @@ final class DocumentStore {
         let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         let doc = Document(fileURL: url, rawText: text)
         observe(doc)
-        doc.headings = HeadingParser.parseHeadings(in: text)
+        doc.headings = MarkdownSourceMap.parse(text).headings
         documents.append(doc)
         if activate { activeID = doc.id }
         if recordRecent {
@@ -272,7 +272,7 @@ final class DocumentStore {
             document.updateTextMetrics()
             document.isDirty = false
             document.clearUndoHistory()
-            document.headings = HeadingParser.parseHeadings(in: text)
+            document.headings = MarkdownSourceMap.parse(text).headings
             document.reconcileActiveHeadingWithCurrentContent()
         }
     }
@@ -1050,7 +1050,7 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
             document.activeHeadingID = snapshot.activeHeadingID
             document.isTOCExpanded = usesLegacyTOCDefault ? true : snapshot.isTOCExpanded
             document.collapsedHeadingIDs = snapshot.collapsedHeadingIDs
-            document.headings = HeadingParser.parseHeadings(in: rawText)
+            document.headings = MarkdownSourceMap.parse(rawText).headings
             return document
         }
         guard let rawText = snapshot.rawText, !rawText.isEmpty || snapshot.isDirty else { return nil }
@@ -1062,7 +1062,7 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
         document.activeHeadingID = snapshot.activeHeadingID
         document.isTOCExpanded = usesLegacyTOCDefault ? true : snapshot.isTOCExpanded
         document.collapsedHeadingIDs = snapshot.collapsedHeadingIDs
-        document.headings = HeadingParser.parseHeadings(in: rawText)
+        document.headings = MarkdownSourceMap.parse(rawText).headings
         return document
     }
 }

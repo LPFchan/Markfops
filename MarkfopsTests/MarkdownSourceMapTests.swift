@@ -2,7 +2,142 @@ import AppKit
 import XCTest
 @testable import Markfops
 
-final class HeadingParserTests: XCTestCase {
+final class MarkdownSourceMapTests: XCTestCase {
+    func testInlineSourcePositionsConvertUTF8ColumnsToUTF16Ranges() throws {
+        let text = "# 안녕 🦊 e\u{301}\n"
+        let map = MarkdownSourceMap.parse(text)
+        let titleRange = try XCTUnwrap(range(of: "안녕 🦊 e\u{301}", in: text))
+        let titleSpan = try XCTUnwrap(map.span(at: titleRange.location))
+
+        XCTAssertEqual(titleSpan.kind, .text)
+        XCTAssertEqual(titleSpan.role, .content)
+        XCTAssertEqual(titleSpan.range, titleRange)
+        XCTAssertEqual(map.headings.first?.title, "안녕 🦊 e\u{301}")
+
+        let fullRange = NSRange(location: 0, length: (text as NSString).length)
+        let runs = map.runs(in: fullRange)
+        XCTAssertEqual(runs.first?.range.location, 0)
+        XCTAssertEqual(runs.last.map { NSMaxRange($0.range) }, (text as NSString).length)
+        XCTAssertEqual(runs.map(\.range).reduce(0) { $0 + $1.length }, fullRange.length)
+    }
+
+    func testRunsClassifyHeadingsAndInlineConstructs() throws {
+        let text = "# *em* and **bold**\n\nUse `code`, [link](https://example.test \"title\"), ![alt](image.png).\n"
+        let map = MarkdownSourceMap.parse(text)
+
+        XCTAssertEqual(map.headings.first?.title, "em and bold")
+        try assertRun("# ", kind: .heading(level: 1), role: .syntax, in: map, text: text)
+        try assertRun("*", kind: .emphasis, role: .syntax, in: map, text: text)
+        try assertRun("em", kind: .text, role: .content, in: map, text: text)
+        try assertRun("**", kind: .strong, role: .syntax, in: map, text: text)
+        try assertRun("bold", kind: .text, role: .content, in: map, text: text)
+        try assertRun("`", kind: .codeSpan, role: .syntax, in: map, text: text)
+        try assertRun("code", kind: .codeSpan, role: .content, in: map, text: text)
+        let codeMarkerRange = try XCTUnwrap(range(of: "`", in: text))
+        XCTAssertEqual(map.span(at: codeMarkerRange.location)?.kind, .codeSpan)
+        XCTAssertEqual(map.span(at: codeMarkerRange.location)?.role, .syntax)
+        try assertRun("[", kind: .link, role: .syntax, in: map, text: text)
+        try assertRun("](https://example.test \"title\")", kind: .link, role: .syntax, in: map, text: text)
+        try assertRun("![", kind: .image, role: .syntax, in: map, text: text)
+        try assertRun("](image.png)", kind: .image, role: .syntax, in: map, text: text)
+    }
+
+    func testRunsClassifyStrikethroughAutolinkListsQuotesAndFences() throws {
+        let text = "- [x] checked\n1. ordered\n> quoted\n\n~~removed~~ https://example.test <https://angle.test>\n```swift info\n# not a heading\n```\n"
+        let map = MarkdownSourceMap.parse(text)
+
+        try assertRun("- [x] ", kind: .listItem(ordered: false, taskState: .checked), role: .syntax, in: map, text: text)
+        try assertRun("1. ", kind: .listItem(ordered: true, taskState: nil), role: .syntax, in: map, text: text)
+        try assertRun("> ", kind: .blockQuote, role: .syntax, in: map, text: text)
+        try assertRun("~~", kind: .strikethrough, role: .syntax, in: map, text: text)
+        try assertRun("<", kind: .autolink, role: .syntax, in: map, text: text)
+        try assertRun("```swift info", kind: .codeBlock(fenced: true), role: .syntax, in: map, text: text)
+        try assertRun("# not a heading\n", kind: .codeBlock(fenced: true), role: .content, in: map, text: text)
+        try assertRun("```", kind: .codeBlock(fenced: true), role: .syntax, in: map, text: text)
+
+        XCTAssertTrue(map.headings.isEmpty)
+    }
+
+    func testLeadingFrontMatterIsOneSyntaxSpanAndBodyPositionsRemainStable() throws {
+        let text = "---\ntitle: 🦊\n---\n# Heading\n"
+        let map = MarkdownSourceMap.parse(text)
+        let frontMatterText = "---\ntitle: 🦊\n---"
+        let frontMatterRange = try XCTUnwrap(range(of: frontMatterText, in: text))
+        let frontMatterSpan = try XCTUnwrap(map.span(at: 0))
+
+        XCTAssertEqual(frontMatterSpan.kind, .frontMatter)
+        XCTAssertEqual(frontMatterSpan.role, .syntax)
+        XCTAssertEqual(frontMatterSpan.range, frontMatterRange)
+        try assertRun(frontMatterText, kind: .frontMatter, role: .syntax, in: map, text: text)
+
+        let headingRange = try XCTUnwrap(range(of: "# ", in: text))
+        XCTAssertEqual(map.span(at: headingRange.location)?.kind, .heading(level: 1))
+        XCTAssertEqual(map.headings, [HeadingNode(level: 1, title: "Heading", lineNumber: 3)])
+    }
+
+    func testSetextHeadingsUseTheTextLineAndStripInlineMarks() {
+        let text = "Title **bold**\n======\n\nSubtitle\n------\n"
+        let headings = MarkdownSourceMap.parse(text).headings
+
+        XCTAssertEqual(headings, [
+            HeadingNode(level: 1, title: "Title bold", lineNumber: 0),
+            HeadingNode(level: 2, title: "Subtitle", lineNumber: 3),
+        ])
+    }
+
+    func testSetextUnderlinesAreHeadingSyntaxEvenBeforeBlankLines() throws {
+        let text = "Title\n=====\n\nSubtitle\n-----\n\nTail\n"
+        let map = MarkdownSourceMap.parse(text)
+
+        try assertRun("=====", kind: .heading(level: 1), role: .syntax, in: map, text: text)
+        try assertRun("-----", kind: .heading(level: 2), role: .syntax, in: map, text: text)
+        try assertRun("Title", kind: .text, role: .content, in: map, text: text)
+        let tail = try XCTUnwrap(range(of: "Tail", in: text))
+        XCTAssertEqual(map.span(at: tail.location)?.kind, .text)
+        let blank = try XCTUnwrap(range(of: "\n\n", in: text))
+        XCTAssertEqual(map.span(at: blank.location + 1)?.kind, .text)
+    }
+
+    func testBlockSpansEndingBeforeBlankLinesRemainInMap() throws {
+        let text = "- item\n\n---\n\nAfter\n"
+        let map = MarkdownSourceMap.parse(text)
+
+        try assertRun("- ", kind: .listItem(ordered: false, taskState: nil), role: .syntax, in: map, text: text)
+        try assertRun("---", kind: .thematicBreak, role: .syntax, in: map, text: text)
+    }
+
+    func testHeadingLikeTextInsideFencedCodeIsNotExtracted() {
+        let text = "```markdown\n# not a heading\n```\n# actual heading\n"
+        let headings = MarkdownSourceMap.parse(text).headings
+
+        XCTAssertEqual(headings, [HeadingNode(level: 1, title: "actual heading", lineNumber: 3)])
+    }
+
+    func testParsePerformanceForRoughly200KBDocument() {
+        let prose = String(repeating: "This sentence keeps the sample representative of an editor document with ordinary prose, links, and Unicode notes. ", count: 600)
+        let sample = """
+        # Heading with **bold** and *emphasis*
+        A paragraph with [a link](https://example.com), `inline code`, and ~~strike~~. \(prose)
+        - [x] checked task
+        > quoted text with https://example.com
+        ```swift info
+        let value = 42
+        ```
+
+        """
+        let repetitions = (200_000 / sample.utf8.count) + 1
+        let text = String(repeating: sample, count: repetitions)
+
+        let start = CFAbsoluteTimeGetCurrent()
+        let map = MarkdownSourceMap.parse(text)
+        let elapsedMilliseconds = (CFAbsoluteTimeGetCurrent() - start) * 1_000
+
+        print("MarkdownSourceMap 200 KB parse: \(elapsedMilliseconds) ms")
+        XCTAssertGreaterThanOrEqual(text.utf8.count, 200_000)
+        XCTAssertFalse(map.headings.isEmpty)
+        XCTAssertLessThan(elapsedMilliseconds, 30)
+    }
+
     func testDocumentTextRevisionAdvancesOnlyWhenContentChanges() {
         let document = Document(rawText: "Initial")
 
@@ -18,17 +153,17 @@ final class HeadingParserTests: XCTestCase {
 
     func testFirstH1Title() {
         let text = "# Hello World\n\nSome text\n\n## Section"
-        XCTAssertEqual(HeadingParser.firstH1Title(in: text), "Hello World")
+        XCTAssertEqual(MarkdownSourceMap.parse(text).firstH1Title, "Hello World")
     }
 
     func testFirstH1TitleIgnoresH2() {
         let text = "## Not H1\n\n# Actual H1"
-        XCTAssertEqual(HeadingParser.firstH1Title(in: text), "Actual H1")
+        XCTAssertEqual(MarkdownSourceMap.parse(text).firstH1Title, "Actual H1")
     }
 
     func testFirstH1LetterUppercase() {
         let text = "# my document"
-        XCTAssertEqual(HeadingParser.firstH1Letter(in: text), "M")
+        XCTAssertEqual(MarkdownSourceMap.parse(text).firstH1Letter, "M")
     }
 
     func testParseHeadings() {
@@ -39,7 +174,7 @@ final class HeadingParserTests: XCTestCase {
         ### Subsection
         ## Section Two
         """
-        let headings = HeadingParser.parseHeadings(in: text)
+        let headings = MarkdownSourceMap.parse(text).headings
         XCTAssertEqual(headings.count, 4)
         XCTAssertEqual(headings[0].level, 1)
         XCTAssertEqual(headings[0].title, "Title")
@@ -50,9 +185,9 @@ final class HeadingParserTests: XCTestCase {
     }
 
     func testEmptyDocument() {
-        XCTAssertNil(HeadingParser.firstH1Title(in: ""))
-        XCTAssertNil(HeadingParser.firstH1Letter(in: ""))
-        XCTAssertTrue(HeadingParser.parseHeadings(in: "").isEmpty)
+        XCTAssertNil(MarkdownSourceMap.parse("").firstH1Title)
+        XCTAssertNil(MarkdownSourceMap.parse("").firstH1Letter)
+        XCTAssertTrue(MarkdownSourceMap.parse("").headings.isEmpty)
     }
 
     func testDocumentTableOfContentsStartsExpanded() {
@@ -68,7 +203,7 @@ final class HeadingParserTests: XCTestCase {
         XCTAssertTrue(document.hasH1)
 
         document.rawText = "# Revised Notes\nBody"
-        document.headings = HeadingParser.parseHeadings(in: document.rawText)
+        document.headings = MarkdownSourceMap.parse(document.rawText).headings
 
         XCTAssertEqual(document.displayTitle, "Revised Notes")
         XCTAssertEqual(document.sidebarDisplayTitle, "Revised Notes")
@@ -102,13 +237,13 @@ final class HeadingParserTests: XCTestCase {
     }
 
     func testSidebarTOCRowsComputeVisibilityAndChildrenInOnePass() {
-        let headings = HeadingParser.parseHeadings(in: """
+        let headings = MarkdownSourceMap.parse("""
         # Document
         ## First
         ### First child
         ## Second
         ### Second child
-        """)
+        """).headings
         guard let first = headings.first(where: { $0.title == "First" }) else {
             return XCTFail("The first TOC heading was not parsed")
         }
@@ -193,7 +328,7 @@ final class HeadingParserTests: XCTestCase {
         let url = directory.appendingPathComponent("Document.md")
         try "# Original\nBody".write(to: url, atomically: true, encoding: .utf8)
         let document = Document(fileURL: url, rawText: "# Original\nBody")
-        document.headings = HeadingParser.parseHeadings(in: document.rawText)
+        document.headings = MarkdownSourceMap.parse(document.rawText).headings
 
         document.reloadFromDiskIfChanged()
         XCTAssertEqual(document.rawText, "# Original\nBody")
@@ -207,7 +342,7 @@ final class HeadingParserTests: XCTestCase {
 
     func testHeadingLineNumbers() {
         let text = "Intro\n# Title\nBody\n## Sub"
-        let headings = HeadingParser.parseHeadings(in: text)
+        let headings = MarkdownSourceMap.parse(text).headings
         XCTAssertEqual(headings[0].lineNumber, 1)
         XCTAssertEqual(headings[1].lineNumber, 3)
     }
@@ -484,7 +619,7 @@ final class HeadingParserTests: XCTestCase {
         let document = session.store.newDocument()
 
         document.rawText = "# Updated"
-        document.headings = HeadingParser.parseHeadings(in: document.rawText)
+        document.headings = MarkdownSourceMap.parse(document.rawText).headings
         document.isDirty = true
 
         XCTAssertEqual(window.title, "Updated")
@@ -523,6 +658,31 @@ final class HeadingParserTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("MarkfopsTests-\(UUID().uuidString)", isDirectory: true)
         return DocumentCoordinator(recoveryDirectoryURL: directory)
+    }
+
+    private func range(of needle: String, in text: String) -> NSRange? {
+        let range = (text as NSString).range(of: needle)
+        return range.location == NSNotFound ? nil : range
+    }
+
+    private func assertRun(
+        _ needle: String,
+        kind: MarkdownSourceMap.Kind,
+        role: MarkdownSourceMap.Role,
+        in map: MarkdownSourceMap,
+        text: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let needleRange = try XCTUnwrap(range(of: needle, in: text), file: file, line: line)
+        XCTAssertTrue(
+            map.runs(in: needleRange).contains {
+                $0.range == needleRange && $0.kind == kind && $0.role == role
+            },
+            "Expected a \(role) \(kind) run for \(needle.debugDescription)",
+            file: file,
+            line: line
+        )
     }
 }
 

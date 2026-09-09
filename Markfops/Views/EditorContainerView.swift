@@ -210,7 +210,7 @@ struct EditorContainerView: View {
                 document.fileURL = url
                 document.isDirty = false
                 document.clearUndoHistory()
-                document.headings = HeadingParser.parseHeadings(in: text)
+                document.headings = MarkdownSourceMap.parse(text).headings
                 document.reconcileActiveHeadingWithCurrentContent()
             }
         }

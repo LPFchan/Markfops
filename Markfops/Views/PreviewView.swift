@@ -393,7 +393,7 @@ struct PreviewView: NSViewRepresentable {
                     document.rawText = updatedText
                     document.updateTextMetrics()
                     document.isDirty = updatedText != document.savedText
-                    document.headings = HeadingParser.parseHeadings(in: updatedText)
+                    document.headings = MarkdownSourceMap.parse(updatedText).headings
                     document.reconcileActiveHeadingWithCurrentContent()
                 }
             }
