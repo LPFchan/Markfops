@@ -17,25 +17,6 @@ Rules:
 
 ## Active Capture
 
-### IBX-20260409-001
-
-- Opened: `2026-04-09 05-22-59 KST`
-- Recorded by agent: `codex-markfops-repo-template-migration-20260409`
-- Source: migrated from the retired research workspace file `open-questions.md`
-- Source / capture ids: legacy `open-questions.md`
-- Capture packet: implementation-framing questions about semantic parse and invalidation
-- Received: unresolved engine-design questions from the research program
-- Summary: decide what semantic parse and invalidation layer should replace today's split heading parsing and whole-document preview rendering
-- Confidence: `high`
-- Triage status: `in review`
-- Triage decision: `research`
-- Suggested destination: `PLANS.md` plus future `DEC-*`
-- Related ids: `RSH-20260402-002`, `RSH-20260402-008`, `RSH-20260402-009`, `RSH-20260402-010`
-- Notes:
-  - Which richer structural pass should replace the split between `HeadingParser.parseHeadings(in:)` and `MarkdownRenderer.renderHTML(from:)`?
-  - What minimum invalidation pipeline removes full preview body replacement from the hot path?
-  - Does Markfops need a schema-level dual parse or serialize specification, or would that overfit the wrong architecture?
-
 ### IBX-20260409-002
 
 - Opened: `2026-04-09 05-22-59 KST`
@@ -55,26 +36,6 @@ Rules:
   - Should Markfops adopt a `SourceSpan`-style parser coordinate model and layer durable ids above it?
   - Where is the line between navigational anchors and durable semantic identity?
   - How should durable block identity survive Markdown-first editing without making blocks the canonical model?
-
-### IBX-20260409-003
-
-- Opened: `2026-04-09 05-22-59 KST`
-- Recorded by agent: `codex-markfops-repo-template-migration-20260409`
-- Source: migrated from the retired research workspace file `open-questions.md`
-- Source / capture ids: legacy `open-questions.md`
-- Capture packet: implementation-framing questions about dual-view viewport anchors and drift correction
-- Received: unresolved synchronization questions from the research program
-- Summary: decide the first hybrid viewport-anchor model and the drift-correction behavior for editor and preview
-- Confidence: `high`
-- Triage status: `in review`
-- Triage decision: `research`
-- Suggested destination: `PLANS.md` plus future `DEC-*`
-- Related ids: `RSH-20260402-007`, `RSH-20260402-008`, `RSH-20260402-009`, `RSH-20260402-011`, `RSH-20260402-013`
-- Notes:
-  - What should be the primary viewport anchor: source line, block identity, layout fragment identity, semantic span identity, or a hybrid?
-  - Should Markfops standardize on a dual-anchor model of shared ratio plus durable semantic block identity?
-  - How should scroll drift be detected and corrected when editor and preview layouts diverge?
-  - How early should preview-to-editor feedback channels become mandatory?
 
 ### IBX-20260409-004
 

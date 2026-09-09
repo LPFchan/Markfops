@@ -62,7 +62,7 @@ Each slice must end with something visible in the app and its own tests.
 ### Near Term
 
 - Initiative: tune the morph by eye on real documents: swap window, duration, per-word threshold, and how decorations (capsules, panels, bars) enter and leave
-  - Why now: the mechanics landed untested by a human; the feel is the product
+  - Why now: the feel is the product; the operator's first look on 2026-09-10 fixed a snapped animation, an empty first frame, and oversized paragraph gaps, and the remaining dials are still untouched
   - Dependencies: none
   - Related ids: `RSH-20260909-001`
 

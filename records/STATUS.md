@@ -6,11 +6,11 @@ Do not use it as a transcript or a scratchpad.
 
 ## Snapshot
 
-- Last updated: 2026-09-09
+- Last updated: 2026-09-10
 - Overall posture: `active`
 - Current focus: the native reader engine slices are on main; the next release ships formatted mode as native text with the mode morph
 - Highest-priority blocker: none; the public `1.1.2` DMG and Sparkle update are verified
-- Next operator decision needed: try the morph on real documents and decide what to tune before a release
+- Next operator decision needed: keep tuning the morph by eye on real documents and decide when it is release-ready
 - Related decisions: `DEC-20260409-001`, `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260410-001`, `DEC-20260909-001`, `DEC-20260909-002`
 
 ## Current State Summary
@@ -38,7 +38,7 @@ Markfops is a working native macOS Markdown app with XcodeGen project generation
 - Current work: all planned slices landed. `MarkdownSourceMap` derives per-character syntax/content runs from the cmark-gfm parse; formatted mode is a native read-only text view built from it; switching modes morphs every visible glyph between the two stylings through Core Animation. Next: tune the morph by eye, then the formatted-mode gap list
 - Exit criteria: the morph feels right on real documents and a release ships it
 - Dependencies: `RSH-20260402-007` through `RSH-20260402-013`, `RSH-20260909-001`
-- Risks: the morph is verified to animate offscreen but not tuned by eye; formatted mode still shows tables and HTML as raw source, has no code highlighting, and no find or heading commands
+- Risks: the operator's first look at the morph produced two fixes the tests had missed, so more may follow; formatted mode still shows tables and HTML as raw source, has no code highlighting, and no find or heading commands
 - Related ids: `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260909-001`, `RSH-20260909-001`, `IBX-20260409-001`, `IBX-20260409-002`, `IBX-20260409-003`, `IBX-20260409-004`
 
 ## Recent Changes To Project Reality
