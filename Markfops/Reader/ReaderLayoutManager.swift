@@ -140,12 +140,23 @@ final class ReaderLayoutManager: NSLayoutManager {
                 let font = self.font(at: characterIndex, in: storage)
                 let horizontalPadding = font.pointSize * 0.25
                 let verticalPadding = font.pointSize * 0.1
+                // The last code character carries a kern that makes room for the
+                // capsule's right padding. The bounding rect includes that kern, so
+                // it must come off again or the capsule swallows the following space.
+                let lastCharacterIndex = self.characterIndexForGlyph(
+                    at: NSMaxRange(intersection) - 1
+                )
+                let trailingKern = (storage.attribute(
+                    .kern,
+                    at: lastCharacterIndex,
+                    effectiveRange: nil
+                ) as? CGFloat) ?? 0
                 // Layout coordinates are flipped: the ascender sits above the baseline
                 // at smaller y, the descender below it at larger y.
                 let capsule = NSRect(
                     x: inkRect.minX - horizontalPadding,
                     y: baseline - font.ascender - verticalPadding,
-                    width: inkRect.width + horizontalPadding * 2,
+                    width: inkRect.width - trailingKern + horizontalPadding * 2,
                     height: font.ascender - font.descender + verticalPadding * 2
                 )
 
