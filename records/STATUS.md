@@ -6,7 +6,7 @@ Do not use it as a transcript or a scratchpad.
 
 ## Snapshot
 
-- Last updated: 2026-09-02
+- Last updated: 2026-09-09
 - Overall posture: `active`
 - Current focus: keep the published `1.1.2` baseline stable while the next release accumulates
 - Highest-priority blocker: none; the public `1.1.2` DMG and Sparkle update are verified
@@ -35,13 +35,18 @@ Markfops is a working native macOS Markdown app with XcodeGen project generation
 - Goal: convert completed archaeology into an implementation-ready architecture and first spike
 - Status: `in progress`
 - Why this matters now: the repo has enough accepted research to move from exploration toward execution
-- Current work: complete the roadmap, transition coverage, morphing strategy, risk framing, and first-spike selection
+- Current work: complete the roadmap, transition coverage, morphing strategy, risk framing, and first-spike selection; a standalone glyph-morph spike (`RSH-20260909-001`) has shown that measured-position morphing works natively and that the open cost is pairing and scale, not motion
 - Exit criteria: implementation framing docs are filled in and the first concrete spike is chosen
-- Dependencies: `RSH-20260402-007` through `RSH-20260402-013`
+- Dependencies: `RSH-20260402-007` through `RSH-20260402-013`, `RSH-20260909-001`
 - Risks: unresolved questions around semantic identity, invalidation, and synchronization can still create drift in early implementation choices
 - Related ids: `DEC-20260409-002`, `DEC-20260409-003`, `IBX-20260409-001`, `IBX-20260409-002`, `IBX-20260409-003`, `IBX-20260409-004`
 
 ## Recent Changes To Project Reality
+
+- Date: 2026-09-09
+  - Change: a throwaway spike under `spikes/torph-glyph-morph/` reproduced torph-style text morphing with TextKit-measured glyph positions and Core Animation layers
+  - Why it matters: the morphing research no longer depends on a font that can interpolate between monospace and proportional forms; the remaining questions are character pairing through the parser and how the layer count scales to a full viewport
+  - Related ids: `RSH-20260909-001`
 
 - Date: 2026-09-02
   - Change: `1.1.2` shipped immediate cold Finder file opens with preserved restored sessions, with the signed DMG and Sparkle update published publicly
