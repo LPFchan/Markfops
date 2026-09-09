@@ -44,8 +44,8 @@ Markfops is a working native macOS Markdown app with XcodeGen project generation
 ## Recent Changes To Project Reality
 
 - Date: 2026-09-10
-  - Change: the mode morph now uses explicit Core Animation animations; the first build snapped straight to the end state because freshly added layers get no implicit animation
-  - Why it matters: the morph is visible at all; a container-level test now checks that glyph layers are mid-fade partway through a switch
+  - Change: the mode morph now uses explicit Core Animation animations and starts inside the overlay's layout pass; empty source lines in formatted mode collapse instead of reading as a full body line
+  - Why it matters: the first build snapped straight to the end state because freshly added layers get no implicit animation, flashed an empty canvas for one frame on the way into formatted mode, and left oversized gaps between paragraphs; a container-level test now checks that glyph layers are mid-travel after a switch
   - Related ids: `RSH-20260909-001`
 
 - Date: 2026-09-09

@@ -385,14 +385,29 @@ final class ModeMorphContainerTests: XCTestCase {
         pump(seconds: 0.3)
 
         document.mode = .preview
-        pump(seconds: 0.12)
+        // The morph must be live in the same run-loop turn that first shows the
+        // overlay (its layout pass), or the canvas flashes empty for a frame.
+        var started: ModeMorphOverlay?
+        for _ in 0..<50 where started == nil {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.001))
+            started = overlay(in: hosting)
+        }
+        let startedOverlay = try XCTUnwrap(started, "overlay should appear")
+        XCTAssertTrue(startedOverlay.lastOutcome.hasPrefix("animating"), startedOverlay.lastOutcome)
+        XCTAssertGreaterThan(startedOverlay.layer?.sublayers?.count ?? 0, 0)
+        XCTAssertEqual(document.sharedEditorBridge.morphTextView()?.layer?.opacity, 0)
+
+        pump(seconds: 0.08)
         let running = try XCTUnwrap(overlay(in: hosting), "overlay should still exist mid-morph")
         XCTAssertTrue(running.lastOutcome.hasPrefix("animating"), running.lastOutcome)
-        let midOpacities = (running.layer?.sublayers ?? []).compactMap { $0.presentation()?.opacity }
-        XCTAssertFalse(midOpacities.isEmpty)
-        XCTAssertTrue(
-            midOpacities.contains { $0 > 0.05 && $0 < 0.95 },
-            "glyph layers should be mid-fade, not snapped to their end state"
+        let travelling = (running.layer?.sublayers ?? []).filter { layer in
+            guard let presented = layer.presentation() else { return false }
+            return abs(presented.position.x - layer.position.x) > 0.5
+                || abs(presented.position.y - layer.position.y) > 0.5
+        }
+        XCTAssertFalse(
+            travelling.isEmpty,
+            "glyph layers should be between their start and end positions, not snapped to the end"
         )
 
         pump(seconds: 0.6)

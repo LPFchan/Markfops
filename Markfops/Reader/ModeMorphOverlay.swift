@@ -78,19 +78,43 @@ final class ModeMorphOverlay: NSView {
     let readerBridge: ReaderBridge
     private let onFinished: (UUID) -> Void
 
+    /// A new request starts during this view's next layout pass, which SwiftUI
+    /// runs in the same Core Animation commit that first shows the incoming
+    /// surface. Starting one run-loop pass later left a frame where the reader
+    /// covered the editor with only its background. The async hop is a fallback
+    /// for a request that arrives without a layout pass following it.
     var request: ModeMorphRequest? {
         didSet {
             guard request?.id != oldValue?.id, let request else { return }
             cancelRunningMorph()
             pendingRequestGeneration &+= 1
             let generation = pendingRequestGeneration
+            pendingRequestID = request.id
+            needsLayout = true
             DispatchQueue.main.async { [weak self] in
-                guard let self,
-                      self.pendingRequestGeneration == generation,
-                      self.request?.id == request.id else { return }
-                self.start(request)
+                guard let self, self.pendingRequestGeneration == generation else { return }
+                self.startPendingRequestIfReady()
             }
         }
+    }
+
+    private var pendingRequestID: UUID?
+
+    override func layout() {
+        super.layout()
+        startPendingRequestIfReady()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        startPendingRequestIfReady()
+    }
+
+    private func startPendingRequestIfReady() {
+        guard let request, request.id == pendingRequestID,
+              window != nil, !bounds.isEmpty else { return }
+        pendingRequestID = nil
+        start(request)
     }
 
     private struct ActiveRenderable {
@@ -146,6 +170,7 @@ final class ModeMorphOverlay: NSView {
 
     func finishImmediatelyForCurrentRequest() {
         pendingRequestGeneration &+= 1
+        pendingRequestID = nil
         if let activeRequest {
             finishSurfaceState(for: activeRequest.to)
         } else if let request {

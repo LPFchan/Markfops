@@ -376,4 +376,29 @@ final class ReaderPresentationTests: XCTestCase {
             view.layoutSubtreeIfNeeded()
         }
     }
+
+    func testEmptySourceLinesCollapseBetweenBlocks() {
+        let text = "First paragraph.\n\nSecond paragraph.\n\n\n# Heading\n"
+        let presentation = ReaderPresentation.build(
+            text: text,
+            sourceMap: MarkdownSourceMap.parse(text),
+            theme: .default,
+            baseURL: nil
+        )
+        let rendered = presentation.attributedString
+        let output = rendered.string as NSString
+
+        // Every empty source line survives as a newline so line pairing holds.
+        XCTAssertTrue(output.contains("First paragraph.\n\nSecond paragraph.\n\n\n"))
+
+        let blankOffset = output.range(of: "\n\nSecond").location + 1
+        let blank = rendered.attribute(.paragraphStyle, at: blankOffset, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual(blank?.maximumLineHeight, ReaderTheme.default.bodyFontSize * 0.25)
+        XCTAssertEqual(blank?.paragraphSpacing, 0)
+        XCTAssertEqual(blank?.paragraphSpacingBefore, 0)
+
+        let body = rendered.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual(body?.maximumLineHeight, 0)
+        XCTAssertGreaterThan(body?.paragraphSpacing ?? 0, 0)
+    }
 }

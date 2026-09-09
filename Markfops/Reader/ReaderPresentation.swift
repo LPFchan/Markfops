@@ -370,12 +370,21 @@ private final class ReaderPresentationBuilder {
                 length: localRange.length
             )
             let lineContext = self.context(at: absoluteRange.location)
+            let line = source.substring(with: localRange)
+            let isBlankLine = line == "\n"
+                && lineContext.blockKind == nil
+                && (absoluteRange.location == 0
+                    || text.character(at: absoluteRange.location - 1) == 0x0A)
             append(
-                source.substring(with: localRange),
+                line,
                 sourceRange: absoluteRange,
                 kind: kind,
                 role: role,
-                attributes: attributes(for: kind, context: lineContext)
+                attributes: attributes(
+                    for: kind,
+                    context: lineContext,
+                    blankLine: isBlankLine
+                )
             )
             localStart = localEnd
         }
@@ -904,7 +913,8 @@ private final class ReaderPresentationBuilder {
         context: ReaderSemanticContext,
         raw: Bool = false,
         thematicBreak: Bool = false,
-        blockLine: (isFirst: Bool, isLast: Bool)? = nil
+        blockLine: (isFirst: Bool, isLast: Bool)? = nil,
+        blankLine: Bool = false
     ) -> [NSAttributedString.Key: Any] {
         let blockKind = context.blockKind
         let codeSpan = context.inlineKinds.contains(.codeSpan)
@@ -959,12 +969,14 @@ private final class ReaderPresentationBuilder {
             italic: italic,
             monospaced: isCode
         )
-        let paragraphStyle = paragraphStyle(
-            for: blockKind,
-            thematicBreak: thematicBreak,
-            blockLine: blockLine,
-            listDepth: context.listDepth
-        )
+        let paragraphStyle = blankLine
+            ? blankLineParagraphStyle()
+            : paragraphStyle(
+                for: blockKind,
+                thematicBreak: thematicBreak,
+                blockLine: blockLine,
+                listDepth: context.listDepth
+            )
 
         var attributes: [NSAttributedString.Key: Any] = [
             .font: font,
@@ -1097,6 +1109,19 @@ private final class ReaderPresentationBuilder {
         default:
             break
         }
+        return style
+    }
+
+    /// An empty source line stays in the reader text so source and reader lines
+    /// keep pairing, but it must not read as a full body line. The neighbours'
+    /// own paragraph spacing is the visible gap; the line itself collapses.
+    private func blankLineParagraphStyle() -> NSParagraphStyle {
+        let style = NSMutableParagraphStyle()
+        style.lineHeightMultiple = 1
+        style.minimumLineHeight = theme.bodyFontSize * 0.25
+        style.maximumLineHeight = theme.bodyFontSize * 0.25
+        style.paragraphSpacingBefore = 0
+        style.paragraphSpacing = 0
         return style
     }
 
