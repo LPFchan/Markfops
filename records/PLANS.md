@@ -30,6 +30,15 @@ Do not put raw brainstorms or untriaged intake here.
 - Earliest likely start: landed
 - Related ids: `DEC-20260909-001`, `RSH-20260909-001`, `RSH-20260402-012`
 
+### Source-Mapped Formatted Editing
+
+- Outcome: formatted mode is editable. Edits route through the reader's source map to the exact Markdown range, syntax reveals around the text cursor Typora-style, the cursor carries across mode switches, and revealed syntax morphs like other characters.
+- Why this is accepted: the operator's original March goal, made safe by the per-character source map the native reader now has; see `DEC-20260910-001`.
+- Expected value: writing in the formatted view without the innerText corruption that forced the April read-only decision; shared undo with monospace mode.
+- Preconditions: none; the native reader and morph are on main.
+- Earliest likely start: in progress
+- Related ids: `DEC-20260910-001`, `DEC-20260909-001`, `RSH-20260909-001`
+
 ### Deferred But Accepted: Block-Aware Native Editing
 
 - Outcome: Markfops introduces more explicit block-aware editing only after the native reader and morphing foundations prove out.
@@ -61,6 +70,15 @@ Each slice must end with something visible in the app and its own tests.
 
 ### Near Term
 
+- Slice 4a: typing and deleting in formatted mode through the source map
+  - Done when: the reader text view accepts input; every change maps to a source range by character records, applies as a normal source edit with shared undo, and the reader rebuilds with the cursor restored and no scroll jump; the syntax of the inline construct or heading under the cursor is shown in place and hides when the cursor leaves; edits touching substituted or omitted constructs are refused; Korean composition commits through the same path; tests assert the exact source edit for each case
+  - Related ids: `DEC-20260910-001`
+- Slice 4b: the cursor crosses the morph
+  - Done when: a mode switch captures the source cursor from the outgoing surface, the incoming surface lands with its cursor at the same source position and keyboard focus, the reader is built with the arriving cursor's reveal before the morph plan so revealed syntax pairs with editor syntax, and Command-B and Command-I wrap the selection in formatted mode
+  - Related ids: `DEC-20260910-001`, `RSH-20260909-001`
+- Slice 5: structural edits in formatted mode
+  - Done when: Enter continues lists, deleting a bullet removes its marker, heading commands work, and images, frontmatter, and thematic breaks either route or stay refused with a visible reason
+  - Related ids: `DEC-20260910-001`
 - Initiative: tune the morph by eye on real documents: swap window, duration, per-word threshold, and how decorations (capsules, panels, bars) enter and leave
   - Why now: the feel is the product; the operator's first look on 2026-09-10 fixed a snapped animation, an empty first frame, and oversized paragraph gaps, and the remaining dials are still untouched
   - Dependencies: none
@@ -76,6 +94,6 @@ Each slice must end with something visible in the app and its own tests.
 ### Deferred But Accepted
 
 - Initiative: broader block-aware editing affordances
-  - Why deferred: it should follow a proven native reader and morphing, not precede them
-  - Revisit trigger: slices 1 through 3 land and stay stable
+  - Why deferred: source-mapped editing (slices 4 and 5) comes first; block objects only if routing through the map proves insufficient
+  - Revisit trigger: slice 5 lands and a construct cannot be routed cleanly
   - Related ids: `DEC-20260409-003`

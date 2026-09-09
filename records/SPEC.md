@@ -44,7 +44,7 @@ A Markdown document backed by canonical raw text in `Document.rawText`, presente
   - What must remain true: editing stays AppKit-first and Markdown source remains trustworthy.
 - Capability: faithful preview and document navigation
   - Why it exists: users need to inspect rendered structure and move quickly through long documents.
-  - What must remain true: preview stays read-only, TOC stays derived from source, and navigation does not corrupt content.
+  - What must remain true: formatted-mode edits reach the source only through the per-character source map as explicit source edits, TOC stays derived from source, and navigation does not corrupt content.
 - Capability: file-centric macOS workflows
   - Why it exists: Markdown files should behave like local documents, not opaque app-owned data.
   - What must remain true: drag and drop, open/save flows, proxy icon behavior, and document typing stay first-class.
@@ -65,7 +65,7 @@ A Markdown document backed by canonical raw text in `Document.rawText`, presente
 
 The accepted engine trajectory is a Markdown-canonical native editing system with a derived semantic block graph, durable block and inline-region identity, shared source-span mapping, a synchronization coordinator, and a transition coordinator.
 
-The goal is not "make the preview editable." The goal is a native macOS writing surface that can move progressively from source editing toward richer semantic presentation while preserving Markdown round-trip fidelity.
+The goal is a native macOS writing surface that can move progressively from source editing toward richer semantic presentation while preserving Markdown round-trip fidelity. Formatted mode is editable, but only by routing each edit through the source map to an exact Markdown range (`DEC-20260910-001`); the displayed text is never written back as the source.
 
 The transition program is expected to support:
 
@@ -98,6 +98,6 @@ Accepted direction lives in `PLANS.md`; durable rationale lives in `DEC-20260409
 ## Success Criteria
 
 - Markfops remains a fast, trustworthy native Markdown app for macOS.
-- Markdown round-trip fidelity and read-only preview safety remain intact.
+- Markdown round-trip fidelity remains intact: no surface writes its displayed text back as the source.
 - The future native WYSIWYG engine can be developed incrementally without abandoning the current product architecture.
 - Editor/preview synchronization and mode-switch motion can be evaluated against stable semantic anchors rather than ad hoc pixels, headings, or scroll ratios alone.

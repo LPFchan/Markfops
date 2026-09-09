@@ -8,10 +8,10 @@ Do not use it as a transcript or a scratchpad.
 
 - Last updated: 2026-09-10
 - Overall posture: `active`
-- Current focus: the native reader engine slices are on main; the next release ships formatted mode as native text with the mode morph
+- Current focus: formatted mode becomes editable through the source map (`DEC-20260910-001`); slice 4a is in progress
 - Highest-priority blocker: none; the public `1.1.2` DMG and Sparkle update are verified
-- Next operator decision needed: keep tuning the morph by eye on real documents and decide when it is release-ready
-- Related decisions: `DEC-20260409-001`, `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260410-001`, `DEC-20260909-001`, `DEC-20260909-002`
+- Next operator decision needed: none pending; try slice 4a when it lands and report how syntax reveal feels
+- Related decisions: `DEC-20260409-001`, `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260410-001`, `DEC-20260909-001`, `DEC-20260909-002`, `DEC-20260910-001`
 
 ## Current State Summary
 
@@ -35,13 +35,18 @@ Markfops is a working native macOS Markdown app with XcodeGen project generation
 - Goal: turn the accepted native-reader direction into shipped engine slices
 - Status: `in progress`
 - Why this matters now: the repo has enough accepted research to move from exploration toward execution
-- Current work: all planned slices landed. `MarkdownSourceMap` derives per-character syntax/content runs from the cmark-gfm parse; formatted mode is a native read-only text view built from it; switching modes morphs every visible glyph between the two stylings through Core Animation. Next: tune the morph by eye, then the formatted-mode gap list
-- Exit criteria: the morph feels right on real documents and a release ships it
+- Current work: slices 1 through 3 landed (source map, native reader, morph). Slice 4a makes formatted mode editable through the source map with cursor-local syntax reveal; 4b carries the cursor across the morph; 5 handles structural edits
+- Exit criteria: writing in formatted mode is safe and feels right, the morph feels right, and a release ships both
 - Dependencies: `RSH-20260402-007` through `RSH-20260402-013`, `RSH-20260909-001`
 - Risks: the operator's first look at the morph produced two fixes the tests had missed, so more may follow; formatted mode still shows tables and HTML as raw source, has no code highlighting, and no find or heading commands
 - Related ids: `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260909-001`, `RSH-20260909-001`, `IBX-20260409-001`, `IBX-20260409-002`, `IBX-20260409-003`, `IBX-20260409-004`
 
 ## Recent Changes To Project Reality
+
+- Date: 2026-09-10
+  - Change: the operator accepted `DEC-20260910-001`: formatted mode becomes editable again, with edits routed through the source map, Typora-style syntax reveal at the cursor, and the cursor carried across mode switches
+  - Why it matters: this reverses the April read-only decision on the basis that removed its risk; the displayed text never becomes the source
+  - Related ids: `DEC-20260910-001`
 
 - Date: 2026-09-10
   - Change: the mode morph now uses explicit Core Animation animations and starts inside the overlay's layout pass; empty source lines in formatted mode collapse instead of reading as a full body line
