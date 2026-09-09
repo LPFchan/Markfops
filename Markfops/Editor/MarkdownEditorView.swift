@@ -124,6 +124,14 @@ final class EditorBridge {
     /// Releases a slide-time text-wrap freeze immediately (re-wraps at the final width).
     func releaseWrapFreeze() { coordinator?.textView?.releaseWrapFreeze() }
 
+    func morphTextView() -> MarkdownNSTextView? {
+        coordinator?.textView
+    }
+
+    func morphScrollView() -> NSScrollView? {
+        coordinator?.textView?.enclosingScrollView
+    }
+
     func currentSourceLineAtViewportCenter() -> Int? {
         coordinator?.currentSourceLineAtViewportCenter()
     }
@@ -303,7 +311,8 @@ final class MarkdownNSTextView: NSTextView {
         typingAttributes = [
             .font: configuration.font,
             .foregroundColor: configuration.textColor,
-            .paragraphStyle: style
+            .paragraphStyle: style,
+            .ligature: 0,
         ]
     }
 
@@ -464,6 +473,7 @@ struct EditorView: NSViewRepresentable {
     var scrollToLine: Int?
     var editorBridge: EditorBridge?
     var isActive = true
+    var isVisible: Bool? = nil
 
     func makeNSView(context: Context) -> NSScrollView {
         let signpostID = TabSwitchProfiler.beginInterval(
@@ -478,7 +488,7 @@ struct EditorView: NSViewRepresentable {
             }
         }
         let scrollView = NSScrollView()
-        scrollView.isHidden = !isActive
+        scrollView.isHidden = !(isVisible ?? isActive)
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
@@ -511,6 +521,8 @@ struct EditorView: NSViewRepresentable {
             height: .greatestFiniteMagnitude
         )
         textView.configuration = configuration
+        scrollView.drawsBackground = true
+        scrollView.backgroundColor = configuration.backgroundColor
 
         // Wire syntax highlighter
         context.coordinator.highlighter.updateConfiguration(configuration)
@@ -574,7 +586,7 @@ struct EditorView: NSViewRepresentable {
             }
         }
         guard let textView = scrollView.documentView as? MarkdownNSTextView else { return }
-        scrollView.isHidden = !isActive
+        scrollView.isHidden = !(isVisible ?? isActive)
         let becameActive = isActive && !context.coordinator.isActive
         if context.coordinator.document.id != document.id {
             guard context.coordinator.prepareForDocumentSwitch(to: document, textView: textView) else {
@@ -586,6 +598,8 @@ struct EditorView: NSViewRepresentable {
         context.coordinator.highlighter.isEnabled = isActive
         context.coordinator.isActive = isActive
         textView.isDocumentActive = isActive
+        scrollView.drawsBackground = true
+        scrollView.backgroundColor = textView.backgroundColor
         if becameActive {
             context.coordinator.scheduleFocusIfAppropriate()
         }

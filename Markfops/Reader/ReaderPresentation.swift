@@ -657,12 +657,14 @@ private final class ReaderPresentationBuilder {
             .font: keyFont,
             .foregroundColor: theme.secondaryColor,
             .paragraphStyle: paragraphStyle,
+            .ligature: 0,
             .readerFrontMatter: true,
         ]
         let valueAttributes: [NSAttributedString.Key: Any] = [
             .font: valueFont,
             .foregroundColor: theme.bodyColor,
             .paragraphStyle: paragraphStyle,
+            .ligature: 0,
             .readerFrontMatter: true,
         ]
 
@@ -714,6 +716,7 @@ private final class ReaderPresentationBuilder {
                 monospaced: false
             ),
             .paragraphStyle: imageParagraph,
+            .ligature: 0,
         ], range: NSRange(location: 0, length: rendered.length))
 
         let source = text.substring(with: sourceRange)
@@ -731,6 +734,7 @@ private final class ReaderPresentationBuilder {
                 ),
                 .foregroundColor: theme.secondaryColor,
                 .paragraphStyle: altParagraph,
+                .ligature: 0,
             ]))
         }
         rendered.append(NSAttributedString(string: "\n", attributes: [
@@ -741,6 +745,7 @@ private final class ReaderPresentationBuilder {
                 monospaced: false
             ),
             .paragraphStyle: imageParagraph,
+            .ligature: 0,
         ]))
 
         append(
@@ -964,7 +969,10 @@ private final class ReaderPresentationBuilder {
         var attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: color,
-            .paragraphStyle: paragraphStyle
+            .paragraphStyle: paragraphStyle,
+            // TextKit must expose one glyph position per UTF-16 character while
+            // the morph is pairing source and reader offsets.
+            .ligature: 0,
         ]
 
         if codeSpan {

@@ -65,6 +65,22 @@ final class ReaderBridge {
             applyImmediately: applyImmediately
         )
     }
+
+    func prepareForMorph(themeKey: String) {
+        coordinator?.prepareForMorph(themeKey: themeKey)
+    }
+
+    func morphTextView() -> ReaderNSTextView? {
+        coordinator?.textView
+    }
+
+    func morphScrollView() -> NSScrollView? {
+        coordinator?.scrollView
+    }
+
+    func morphPresentation() -> ReaderPresentation? {
+        coordinator?.presentation
+    }
 }
 
 final class ReaderNSTextView: NSTextView {
@@ -125,10 +141,11 @@ struct ReaderView: NSViewRepresentable {
     let themeKey: String
     let readerBridge: ReaderBridge
     var isActive = true
+    var isVisible: Bool? = nil
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
-        scrollView.isHidden = !isActive
+        scrollView.isHidden = !(isVisible ?? isActive)
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
@@ -155,6 +172,8 @@ struct ReaderView: NSViewRepresentable {
         textView.isIncrementalSearchingEnabled = false
         textView.drawsBackground = true
         textView.backgroundColor = theme.backgroundColor
+        scrollView.drawsBackground = true
+        scrollView.backgroundColor = theme.backgroundColor
         textView.minSize = NSSize(width: 0, height: scrollView.contentSize.height)
         textView.maxSize = NSSize(
             width: CGFloat.greatestFiniteMagnitude,
@@ -205,7 +224,7 @@ struct ReaderView: NSViewRepresentable {
         guard let textView = scrollView.documentView as? ReaderNSTextView else { return }
         let becameActive = isActive && !context.coordinator.isActive
 
-        scrollView.isHidden = !isActive
+        scrollView.isHidden = !(isVisible ?? isActive)
         context.coordinator.document = document
         context.coordinator.isActive = isActive
         context.coordinator.theme = theme
@@ -213,6 +232,8 @@ struct ReaderView: NSViewRepresentable {
         textView.readerTheme = theme
         (textView.layoutManager as? ReaderLayoutManager)?.theme = theme
         textView.backgroundColor = theme.backgroundColor
+        scrollView.drawsBackground = true
+        scrollView.backgroundColor = theme.backgroundColor
         textView.updateReaderLayoutMetrics()
 
         if isActive {
@@ -308,6 +329,16 @@ struct ReaderView: NSViewRepresentable {
                 }
                 self.applyPendingViewportIfReady()
             }
+        }
+
+        /// Builds the native reader synchronously when a mode morph needs the
+        /// incoming text and offset map before SwiftUI's next update settles.
+        func prepareForMorph(themeKey: String) {
+            let wasActive = isActive
+            isActive = true
+            rebuildIfNeeded(themeKey: themeKey)
+            applyPendingViewportIfReady()
+            isActive = wasActive
         }
 
         func setPendingViewportRestore(

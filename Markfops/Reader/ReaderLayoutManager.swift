@@ -2,6 +2,24 @@ import AppKit
 
 final class ReaderLayoutManager: NSLayoutManager {
     var theme: ReaderTheme = .default
+    var morphGlyphOpacity: CGFloat = 1
+
+    override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
+        guard morphGlyphOpacity > 0 else { return }
+        if morphGlyphOpacity >= 1 {
+            super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
+            return
+        }
+
+        guard let context = NSGraphicsContext.current?.cgContext else {
+            super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
+            return
+        }
+        context.saveGState()
+        context.setAlpha(morphGlyphOpacity)
+        super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
+        context.restoreGState()
+    }
 
     override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
         super.drawBackground(forGlyphRange: glyphsToShow, at: origin)

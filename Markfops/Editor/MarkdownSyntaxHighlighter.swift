@@ -143,6 +143,7 @@ final class MarkdownSyntaxHighlighter: NSObject, NSTextStorageDelegate {
 
         textStorage.addAttribute(.foregroundColor, value: configuration.textColor, range: range)
         textStorage.addAttribute(.font, value: configuration.font, range: range)
+        textStorage.addAttribute(.ligature, value: 0, range: range)
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineHeightMultiple = configuration.lineHeightMultiple
         textStorage.addAttribute(.paragraphStyle, value: paragraphStyle, range: range)

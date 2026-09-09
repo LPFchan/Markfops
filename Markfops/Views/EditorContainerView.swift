@@ -8,6 +8,7 @@ struct EditorContainerView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var isDragTargeted = false
+    @State private var morphRequest: ModeMorphRequest?
     private var editorBridge: EditorBridge { document.sharedEditorBridge }
     private var readerBridge: ReaderBridge { document.sharedReaderBridge }
     @State private var findController = FindController()
@@ -18,6 +19,7 @@ struct EditorContainerView: View {
     }
 
     var body: some View {
+        let isMorphing = morphRequest != nil
         ZStack(alignment: .top) {
             EditorView(
                 text: $document.rawText,
@@ -25,13 +27,14 @@ struct EditorContainerView: View {
                 configuration: configuration,
                 scrollToLine: scrollToHeading?.lineNumber,
                 editorBridge: editorBridge,
-                isActive: isSelected && document.mode == .edit
+                isActive: isSelected && document.mode == .edit,
+                isVisible: isSelected && (isMorphing || document.mode == .edit)
             )
             .id(document.id)
             .padding(.top, findOverlayReservedTopInset)
-            .opacity(document.mode == .edit ? 1 : 0)
-            .allowsHitTesting(document.mode == .edit)
-            .accessibilityHidden(document.mode != .edit)
+            .opacity(isMorphing || document.mode == .edit ? 1 : 0)
+            .allowsHitTesting(!isMorphing && document.mode == .edit)
+            .accessibilityHidden(isMorphing || document.mode != .edit)
             .focusedValue(\.editorBridge, editorBridge)
 
             ReaderView(
@@ -39,14 +42,32 @@ struct EditorContainerView: View {
                 theme: ReaderTheme.default,
                 themeKey: colorScheme == .dark ? "dark" : "light",
                 readerBridge: readerBridge,
-                isActive: isSelected && document.mode == .preview
+                isActive: isSelected && document.mode == .preview,
+                isVisible: isSelected && (isMorphing || document.mode == .preview)
             )
             .id(document.id)
             .padding(.top, findOverlayReservedTopInset)
-            .opacity(document.mode == .preview ? 1 : 0)
-            .allowsHitTesting(document.mode == .preview)
-            .accessibilityHidden(document.mode != .preview)
+            .opacity(isMorphing || document.mode == .preview ? 1 : 0)
+            .allowsHitTesting(!isMorphing && document.mode == .preview)
+            .accessibilityHidden(isMorphing || document.mode != .preview)
             .focusedValue(\.readerBridge, readerBridge)
+
+            if let morphRequest {
+                ModeMorphOverlayRepresentable(
+                    request: morphRequest,
+                    document: document,
+                    themeKey: colorScheme == .dark ? "dark" : "light",
+                    editorBridge: editorBridge,
+                    readerBridge: readerBridge,
+                    onFinished: { finishedID in
+                        guard self.morphRequest?.id == finishedID else { return }
+                        self.morphRequest = nil
+                    }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+                .zIndex(1)
+            }
 
             if findController.isVisible {
                 FindReplaceBar(controller: findController)
@@ -87,7 +108,29 @@ struct EditorContainerView: View {
                 context: context,
                 surface: sourceSurface
             )
-            ViewportAnchorSync.restore(anchor, context: context)
+            let shouldMorph = ModeMorphPolicy.canMorph(
+                sourceLength: document.textStorage.length
+            )
+            if shouldMorph {
+                morphRequest = ModeMorphRequest(
+                    documentID: document.id,
+                    from: oldMode,
+                    to: newMode,
+                    anchor: anchor
+                )
+            } else {
+                morphRequest = nil
+                ModeMorphOverlay.resetSurfaceState(
+                    editorBridge: editorBridge,
+                    readerBridge: readerBridge,
+                    mode: newMode
+                )
+            }
+            ViewportAnchorSync.restore(
+                anchor,
+                context: context,
+                editorDelay: shouldMorph ? 0 : 0.05
+            )
         }
         .onChange(of: scrollToHeading) { _, heading in
             guard document.mode == .preview, let heading else { return }

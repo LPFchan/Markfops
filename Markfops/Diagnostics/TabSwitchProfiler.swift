@@ -113,6 +113,35 @@ enum TabSwitchProfiler {
         os_signpost(.end, log: log, name: name, signpostID: signpostID)
     }
 
+    static func beginMorphPlan(characterCount: Int) -> OSSignpostID {
+        let signpostID = OSSignpostID(log: log)
+        os_signpost(
+            .begin,
+            log: log,
+            name: "Mode Morph Plan",
+            signpostID: signpostID,
+            "sourceChars=%{public}ld",
+            characterCount
+        )
+        return signpostID
+    }
+
+    static func endMorphPlan(
+        signpostID: OSSignpostID,
+        pairedCharacters: Int,
+        layerCount: Int
+    ) {
+        os_signpost(
+            .end,
+            log: log,
+            name: "Mode Morph Plan",
+            signpostID: signpostID,
+            "paired=%{public}ld layers=%{public}ld",
+            pairedCharacters,
+            layerCount
+        )
+    }
+
     static func selected(document: Document, wasMounted: Bool, mountedCount: Int) {
         os_signpost(
             .event,

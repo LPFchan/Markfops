@@ -24,10 +24,10 @@ Do not put raw brainstorms or untriaged intake here.
 ### Measured-Position Text Morphing
 
 - Outcome: switching between editor and reader stylings animates each visible glyph from its position in one styling to its position in the other, driven by Core Animation, following the approach validated in `RSH-20260909-001`.
-- Why this is accepted: the spike showed the motion is cheap and looks right; the remaining questions are pairing through source spans and how far per-glyph splitting can scale.
+- Why this is accepted: the spike showed the motion is cheap and looks right, and the landed slice confirmed pairing through source spans works on the real views.
 - Expected value: the continuity the research program set out to achieve, without a font that interpolates between monospace and proportional forms.
-- Preconditions: the native reader styling exists and the kind map identifies which source characters survive into it.
-- Earliest likely start: after the native reader styling lands
+- Preconditions: none; landed as slice 3.
+- Earliest likely start: landed
 - Related ids: `DEC-20260909-001`, `RSH-20260909-001`, `RSH-20260402-012`
 
 ### Deferred But Accepted: Block-Aware Native Editing
@@ -43,7 +43,7 @@ Do not put raw brainstorms or untriaged intake here.
 
 Each slice must end with something visible in the app and its own tests.
 
-### Near Term
+### Landed
 
 - Slice 1: derive a per-character kind map from the existing cmark-gfm parse
   - Why now: cmark already exposes start and end positions for every node, including inline nodes, so this is the cheapest possible source of "which characters are syntax and which construct owns them"
@@ -54,10 +54,17 @@ Each slice must end with something visible in the app and its own tests.
   - Visual polish landed: inline-code capsules, code block panels, quote bars, heading rules, nested list indents, frontmatter property list, local images, and a centered 780 pt column
   - Remaining gaps, in priority order: code syntax highlighting; tables; remote images; find in formatted mode; heading commands in formatted mode
   - Related ids: `DEC-20260909-001`, `DEC-20260909-002`, `RSH-20260402-012`
-- Slice 3: morph between the two stylings
-  - Why last: it needs both stylings and the kind map for pairing
-  - Done when: a mode switch animates the visible region with no dropped frames on a document of a few thousand visible characters, using Core Animation, and the per-glyph versus per-word split is measured and chosen
+- Slice 3: morph between the two stylings (landed)
+  - Done: a mode switch measures every visible character in both text views, pairs them through the reader offset map, and slides one Core Animation layer per glyph from one styling to the other with a short glyph crossfade; syntax fades out, substituted markers fade in; beyond 1,500 paired characters the planner groups prose into per-word layers away from the viewport center; Reduce Motion, empty documents, and measurement failures fall back to the instant switch
+  - Measured: planning a 4,000-character viewport takes about 40 ms in the debug test build; the 6,000-character case stays within the 3,000-layer budget
   - Related ids: `RSH-20260909-001`, `RSH-20260402-011`
+
+### Near Term
+
+- Initiative: tune the morph by eye on real documents: swap window, duration, per-word threshold, and how decorations (capsules, panels, bars) enter and leave
+  - Why now: the mechanics landed untested by a human; the feel is the product
+  - Dependencies: none
+  - Related ids: `RSH-20260909-001`
 
 ### Mid Term
 
