@@ -20,6 +20,10 @@ final class ReaderBridge {
                 coordinator.scrollToHeading(heading)
                 bufferedHeading = nil
             }
+            if let cursor = bufferedSourceCursor {
+                coordinator.receiveSourceCursor(cursor)
+                bufferedSourceCursor = nil
+            }
         }
     }
 
@@ -27,6 +31,7 @@ final class ReaderBridge {
         sourceLine: Int?, ratio: Double, applyImmediately: Bool
     )?
     private var bufferedHeading: HeadingNode?
+    private var bufferedSourceCursor: Int?
 
     func currentSourceLineAtViewportCenter() -> Int? {
         coordinator?.currentSourceLineAtViewportCenter()
@@ -68,8 +73,26 @@ final class ReaderBridge {
         )
     }
 
-    func prepareForMorph(themeKey: String) {
-        coordinator?.prepareForMorph(themeKey: themeKey)
+    /// The reader's text cursor as a source offset; a range selection collapses
+    /// to its start.
+    func currentSourceCursor() -> Int? {
+        coordinator?.currentSourceCursor()
+    }
+
+    /// Hands the reader a source cursor to place (with its syntax reveal):
+    /// now when the reader is already current, otherwise at its next build,
+    /// whether that build comes from SwiftUI or from a morph.
+    func setPendingSourceCursor(_ sourceCursor: Int) {
+        guard let coordinator else {
+            bufferedSourceCursor = sourceCursor
+            return
+        }
+        bufferedSourceCursor = nil
+        coordinator.receiveSourceCursor(sourceCursor)
+    }
+
+    func prepareForMorph(themeKey: String, sourceCursor: Int? = nil) {
+        coordinator?.prepareForMorph(themeKey: themeKey, sourceCursor: sourceCursor)
     }
 
     func morphTextView() -> ReaderNSTextView? {
@@ -102,6 +125,9 @@ final class ReaderNSTextView: NSTextView {
     /// Enter is decided by the coordinator: a paragraph break in prose, a
     /// single newline inside code, lists, quotes, and other line-based blocks.
     var onInsertNewline: (() -> Void)?
+    /// Command-B and Command-I wrap the selection's source range in Markdown
+    /// delimiters; the coordinator routes the edit like any other.
+    var onWrapSelection: ((_ prefix: String, _ suffix: String) -> Void)?
     private(set) var isUpdatingMarkedText = false
     private var isCommittingComposition = false
 
@@ -172,6 +198,25 @@ final class ReaderNSTextView: NSTextView {
             return
         }
         onInsertNewline()
+    }
+
+    /// Mirrors the editor's shortcuts so the same keys format in both modes.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard event.modifierFlags.contains(.command),
+              !event.modifierFlags.contains(.shift),
+              !event.modifierFlags.contains(.option) else {
+            return super.performKeyEquivalent(with: event)
+        }
+        switch event.charactersIgnoringModifiers {
+        case "b": wrapSelection(prefix: "**", suffix: "**"); return true
+        case "i": wrapSelection(prefix: "*", suffix: "*"); return true
+        default: return super.performKeyEquivalent(with: event)
+        }
+    }
+
+    func wrapSelection(prefix: String, suffix: String) {
+        guard !hasMarkedText() else { return }
+        onWrapSelection?(prefix, suffix)
     }
 
     /// An input method commits its composition through `insertText`. The
@@ -316,6 +361,9 @@ struct ReaderView: NSViewRepresentable {
         textView.onInsertNewline = { [weak coordinator = context.coordinator] in
             coordinator?.insertNewline()
         }
+        textView.onWrapSelection = { [weak coordinator = context.coordinator] prefix, suffix in
+            coordinator?.wrapSelection(prefix: prefix, suffix: suffix)
+        }
         readerBridge.coordinator = context.coordinator
         scrollView.documentView = textView
 
@@ -375,6 +423,7 @@ struct ReaderView: NSViewRepresentable {
             textView.onCompositionCommit = nil
             textView.onCompositionEnd = nil
             textView.onInsertNewline = nil
+            textView.onWrapSelection = nil
             if textView.delegate === coordinator {
                 textView.delegate = nil
             }
@@ -400,6 +449,9 @@ struct ReaderView: NSViewRepresentable {
         var pendingViewportSourceLine: Int?
         var pendingScrollRatio: Double?
         var pendingHeading: HeadingNode?
+        /// Source cursor arriving from a mode switch, placed (with its reveal)
+        /// by the next build so the morph plans against the revealed text.
+        var pendingSourceCursor: Int?
         /// Tests silence the refusal beep; the operator hears it in the app.
         var playsRefusalSound = true
         /// Count of edits refused because the map could not route them.
@@ -448,13 +500,21 @@ struct ReaderView: NSViewRepresentable {
                 || lastThemeKey != themeKey
                 || lastRevealedSourceRange != revealedSourceRange
                 || presentation == nil
+            let arrivingCursor = pendingSourceCursor
+            pendingSourceCursor = nil
             guard needsBuild else {
+                if let arrivingCursor {
+                    deliverSourceCursor(arrivingCursor, themeKey: themeKey)
+                }
                 applyPendingViewportIfReady()
                 return
             }
 
             let needsRatioScroll = documentChanged || presentation == nil
-            performRebuild(themeKey: themeKey, sourceCursor: nil)
+            performRebuild(themeKey: themeKey, sourceCursor: arrivingCursor)
+            if let arrivingCursor {
+                Self.log.debug("delivered source cursor \(arrivingCursor, privacy: .public) with a build")
+            }
 
             guard needsRatioScroll else { return }
             DispatchQueue.main.async { [weak self] in
@@ -471,12 +531,15 @@ struct ReaderView: NSViewRepresentable {
         /// Parses the source, builds the presentation with the reveal for
         /// `sourceCursor` (or the current reveal when nil), applies it to the
         /// storage as a minimal replacement, and places the caret at the cursor.
-        private func performRebuild(themeKey: String, sourceCursor: Int?) {
+        private func performRebuild(themeKey: String, sourceCursor requestedCursor: Int?) {
             let textUnchanged = lastDocumentID == document.id
                 && lastTextRevision == document.textRevision
             let map = textUnchanged && sourceMap != nil
                 ? sourceMap!
                 : MarkdownSourceMap.parse(document.rawText)
+            let sourceCursor = requestedCursor.map {
+                max(0, min($0, (document.rawText as NSString).length))
+            }
             if let sourceCursor {
                 revealedSourceRange = ReaderReveal.range(in: map, sourceCursor: sourceCursor)
             }
@@ -599,12 +662,62 @@ struct ReaderView: NSViewRepresentable {
 
         /// Builds the native reader synchronously when a mode morph needs the
         /// incoming text and offset map before SwiftUI's next update settles.
-        func prepareForMorph(themeKey: String) {
+        func prepareForMorph(themeKey: String, sourceCursor: Int? = nil) {
             let wasActive = isActive
             isActive = true
+            if let sourceCursor {
+                pendingSourceCursor = sourceCursor
+            }
             rebuildIfNeeded(themeKey: themeKey)
             applyPendingViewportIfReady()
             isActive = wasActive
+        }
+
+        /// Takes a cursor from a mode switch. SwiftUI may update the reader
+        /// before or after the container hands the cursor over, so a reader
+        /// that is already current takes it now and one that is not keeps it
+        /// for its next build.
+        func receiveSourceCursor(_ sourceCursor: Int) {
+            let isCurrent = isActive
+                && presentation != nil
+                && lastDocumentID == document.id
+                && lastTextRevision == document.textRevision
+            guard isCurrent, let themeKey = lastThemeKey else {
+                pendingSourceCursor = sourceCursor
+                return
+            }
+            pendingSourceCursor = nil
+            deliverSourceCursor(sourceCursor, themeKey: themeKey)
+        }
+
+        /// Places the caret for a source cursor on an already current build:
+        /// rebuilds when the cursor's reveal differs from the one shown,
+        /// otherwise only moves the selection.
+        private func deliverSourceCursor(_ sourceCursor: Int, themeKey: String) {
+            guard let textView, let sourceMap, let presentation else { return }
+            let bounded = max(0, min(sourceCursor, (document.rawText as NSString).length))
+            let reveal = ReaderReveal.range(in: sourceMap, sourceCursor: bounded)
+            if reveal != revealedSourceRange {
+                performRebuild(themeKey: themeKey, sourceCursor: bounded)
+                Self.log.debug("delivered source cursor \(bounded, privacy: .public) with a reveal rebuild")
+                return
+            }
+            let readerOffset = presentation.offsetMap.readerOffset(forSourceOffset: bounded)
+            isApplyingPresentation = true
+            textView.setSelectedRange(NSRange(location: readerOffset, length: 0))
+            isApplyingPresentation = false
+            Self.log.debug("delivered source cursor \(bounded, privacy: .public) to reader \(readerOffset, privacy: .public)")
+        }
+
+        /// The caret as a source offset, sticking to the visible character it
+        /// sits next to. A range selection collapses to its start.
+        func currentSourceCursor() -> Int? {
+            guard let textView, let presentation else { return nil }
+            let selection = textView.selectedRange()
+            guard selection.location != NSNotFound else { return nil }
+            let cursor = presentation.offsetMap.sourceInsertionOffset(forReaderOffset: selection.location)
+            Self.log.debug("captured source cursor \(cursor, privacy: .public) from reader \(selection.location, privacy: .public)")
+            return cursor
         }
 
         // MARK: - Source changes made elsewhere (undo, redo, reload)
@@ -694,8 +807,16 @@ struct ReaderView: NSViewRepresentable {
             return routeSourceEdit(sourceRange: sourceRange, replacement: replacement, readerRange: readerRange)
         }
 
+        /// `sourceSelection` is the selection to show after the rebuild, as a
+        /// source range; nil puts a caret after the replacement. Its start is
+        /// the cursor the reveal is computed for.
         @discardableResult
-        private func routeSourceEdit(sourceRange: NSRange, replacement: String, readerRange: NSRange) -> Bool {
+        private func routeSourceEdit(
+            sourceRange: NSRange,
+            replacement: String,
+            readerRange: NSRange,
+            sourceSelection: NSRange? = nil
+        ) -> Bool {
             guard let textView, let themeKey = lastThemeKey else {
                 refuse("reader not built")
                 return false
@@ -706,8 +827,16 @@ struct ReaderView: NSViewRepresentable {
                 refuse("editor unavailable for source \(sourceRange)")
                 return false
             }
-            let cursor = sourceRange.location + (replacement as NSString).length
+            let cursor = sourceSelection?.location
+                ?? sourceRange.location + (replacement as NSString).length
             performRebuild(themeKey: themeKey, sourceCursor: cursor)
+            if let sourceSelection, sourceSelection.length > 0, let presentation {
+                let start = presentation.offsetMap.readerOffset(forSourceOffset: sourceSelection.location)
+                let end = presentation.offsetMap.readerOffset(forSourceOffset: NSMaxRange(sourceSelection))
+                isApplyingPresentation = true
+                textView.setSelectedRange(NSRange(location: min(start, end), length: abs(end - start)))
+                isApplyingPresentation = false
+            }
             textView.scrollRangeToVisible(textView.selectedRange())
             Self.log.debug(
                 "routed reader \(readerRange.location, privacy: .public)+\(readerRange.length, privacy: .public) to source \(sourceRange.location, privacy: .public)+\(sourceRange.length, privacy: .public) replacement=\((replacement as NSString).length, privacy: .public)"
@@ -729,6 +858,34 @@ struct ReaderView: NSViewRepresentable {
             }
             let replacement = ReaderNewline.replacement(in: sourceMap, sourceOffset: sourceRange.location)
             routeSourceEdit(sourceRange: sourceRange, replacement: replacement, readerRange: readerRange)
+        }
+
+        /// Wraps the selection's source range in `prefix` and `suffix`. The
+        /// source text of the range is kept, so hidden syntax inside it
+        /// survives. The wrapped content stays selected afterwards; a collapsed
+        /// selection leaves the caret between the delimiters. There is no
+        /// toggle-off: wrapping bold text again nests the delimiters.
+        func wrapSelection(prefix: String, suffix: String) {
+            guard let textView, let presentation else {
+                refuse("no presentation for wrap")
+                return
+            }
+            let readerRange = textView.selectedRange()
+            guard let sourceRange = presentation.offsetMap.sourceRange(forReaderRange: readerRange) else {
+                refuse("reader \(readerRange) is not routable")
+                return
+            }
+            let inner = (document.rawText as NSString).substring(with: sourceRange)
+            let content = NSRange(
+                location: sourceRange.location + (prefix as NSString).length,
+                length: (inner as NSString).length
+            )
+            routeSourceEdit(
+                sourceRange: sourceRange,
+                replacement: prefix + inner + suffix,
+                readerRange: readerRange,
+                sourceSelection: content
+            )
         }
 
         private func refuse(_ reason: String) {

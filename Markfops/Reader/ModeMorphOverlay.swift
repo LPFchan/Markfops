@@ -126,6 +126,8 @@ final class ModeMorphOverlay: NSView {
     private static let log = Logger(subsystem: "plus.lost.Markfops", category: "morph")
     /// Human-readable record of what the last request did. Read by tests.
     private(set) var lastOutcome = "idle"
+    /// The plan the last animated request was built from. Read by tests.
+    private(set) var lastPlan: MorphPlan?
 
     private func record(_ outcome: String) {
         lastOutcome = outcome
@@ -192,7 +194,10 @@ final class ModeMorphOverlay: NSView {
         }
 
         restoreIncomingViewport(request)
-        readerBridge.prepareForMorph(themeKey: themeKey)
+        readerBridge.prepareForMorph(
+            themeKey: themeKey,
+            sourceCursor: request.to == .preview ? request.anchor.sourceCursor : nil
+        )
 
         guard let editorTextView = editorBridge.morphTextView(),
               let editorScrollView = editorBridge.morphScrollView(),
@@ -230,6 +235,7 @@ final class ModeMorphOverlay: NSView {
                 finishInstantly(request)
                 return
             }
+            lastPlan = plan
             record("animating: \(plan.renderables.count) renderables, overlay frame \(NSStringFromRect(frame)), window \(window != nil)")
             activeRequestID = request.id
             activeRequest = request

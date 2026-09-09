@@ -153,6 +153,23 @@ final class EditorBridge {
         coordinator?.selectedText()
     }
 
+    /// The editor's text cursor as a source offset; a range selection collapses
+    /// to its start.
+    func currentSourceCursor() -> Int? {
+        guard let textView = coordinator?.textView else { return nil }
+        let selection = textView.selectedRange()
+        guard selection.location != NSNotFound else { return nil }
+        return selection.location
+    }
+
+    /// Places a collapsed cursor at a source offset without scrolling: the
+    /// viewport anchor decides what is visible after a mode switch.
+    func setSourceCursor(_ sourceCursor: Int) {
+        guard let textView = coordinator?.textView else { return }
+        let bounded = max(0, min(sourceCursor, (textView.string as NSString).length))
+        textView.setSelectedRange(NSRange(location: bounded, length: 0))
+    }
+
     func find(_ query: String, forward: Bool) -> Bool {
         coordinator?.find(query, forward: forward) ?? false
     }
@@ -332,7 +349,7 @@ final class MarkdownNSTextView: NSTextView {
         }
         switch event.charactersIgnoringModifiers {
         case "b": wrapSelection(prefix: "**", suffix: "**"); return true
-        case "i": wrapSelection(prefix: "_", suffix: "_"); return true
+        case "i": wrapSelection(prefix: "*", suffix: "*"); return true
         default: return super.performKeyEquivalent(with: event)
         }
     }

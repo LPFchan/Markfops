@@ -47,9 +47,18 @@ final class ViewportAnchorSync {
 
     /// A captured center-of-viewport anchor. sourceLine is preferred because it
     /// survives reflow; ratio is the fallback for content with no clear line mapping.
+    /// sourceCursor is the text cursor as a source offset (a range selection is
+    /// collapsed to its start) so the incoming surface can place its own cursor there.
     struct Anchor {
         let sourceLine: Int?
         let ratio: Double
+        let sourceCursor: Int?
+
+        init(sourceLine: Int?, ratio: Double, sourceCursor: Int? = nil) {
+            self.sourceLine = sourceLine
+            self.ratio = ratio
+            self.sourceCursor = sourceCursor
+        }
     }
 
     // MARK: - Capture
@@ -64,12 +73,14 @@ final class ViewportAnchorSync {
         case .editor:
             return Anchor(
                 sourceLine: context.editorBridge.currentSourceLineAtViewportCenter(),
-                ratio: context.editorBridge.currentScrollRatio() ?? document.scrollRatio
+                ratio: context.editorBridge.currentScrollRatio() ?? document.scrollRatio,
+                sourceCursor: context.editorBridge.currentSourceCursor()
             )
         case .reader:
             return Anchor(
                 sourceLine: context.readerBridge.currentSourceLineAtViewportCenter(),
-                ratio: context.readerBridge.currentScrollRatio() ?? document.scrollRatio
+                ratio: context.readerBridge.currentScrollRatio() ?? document.scrollRatio,
+                sourceCursor: context.readerBridge.currentSourceCursor()
             )
         }
     }

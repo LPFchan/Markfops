@@ -108,6 +108,7 @@ struct EditorContainerView: View {
                 context: context,
                 surface: sourceSurface
             )
+            deliverCursor(anchor.sourceCursor, to: newMode)
             let shouldMorph = ModeMorphPolicy.canMorph(
                 sourceLength: document.textStorage.length
             )
@@ -135,6 +136,21 @@ struct EditorContainerView: View {
         .onChange(of: scrollToHeading) { _, heading in
             guard document.mode == .preview, let heading else { return }
             readerBridge.scrollToHeading(heading)
+        }
+    }
+
+    /// Hands the captured source cursor to the incoming surface so its first
+    /// frame and its focus already have the cursor. The editor takes it now
+    /// (its text view is always mounted). The reader takes it now when SwiftUI
+    /// has already rebuilt it for the new mode, otherwise at that build; the
+    /// order of this handler and the child updates is not guaranteed.
+    private func deliverCursor(_ sourceCursor: Int?, to mode: EditMode) {
+        guard let sourceCursor else { return }
+        switch mode {
+        case .edit:
+            editorBridge.setSourceCursor(sourceCursor)
+        case .preview:
+            readerBridge.setPendingSourceCursor(sourceCursor)
         }
     }
 

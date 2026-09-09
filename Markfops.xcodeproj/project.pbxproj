@@ -31,6 +31,7 @@
 		57A4E3783E6BDD7422375BFC /* HTMLTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DCA6FE1E92902863C9859DD /* HTMLTemplate.swift */; };
 		5F5AFA51A1E970047664EA95 /* DocumentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A38073AFAC4D127F4B5E82 /* DocumentStore.swift */; };
 		6172E1D5C4DA62D60D855851 /* TabPillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3658F01E16FD2DDB93ADA68 /* TabPillView.swift */; };
+		641F887E2C6B7778BFC212B2 /* ModeSwitchCursorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA6A27A4047CDCD5AC9A309B /* ModeSwitchCursorTests.swift */; };
 		67FE4B0CF38EF072113055C6 /* TabItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D734182DCCA9A09CFD0BEE8 /* TabItemView.swift */; };
 		6D2764E4E371C3796C9DBE7D /* MorphPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78BFE88CBC2DE848BDFF286A /* MorphPlanner.swift */; };
 		6F510D2C422BA6E3BBAF526F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01485A1CB5D8FFA84DCBA0D1 /* ContentView.swift */; };
@@ -124,6 +125,7 @@
 		DB3A9DA5DE76025CECDD51CF /* MarkdownFrontMatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFrontMatter.swift; sourceTree = "<group>"; };
 		DF2BCBDD65A92722203488B3 /* FindReplaceBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindReplaceBar.swift; sourceTree = "<group>"; };
 		E5A38073AFAC4D127F4B5E82 /* DocumentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStore.swift; sourceTree = "<group>"; };
+		EA6A27A4047CDCD5AC9A309B /* ModeSwitchCursorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeSwitchCursorTests.swift; sourceTree = "<group>"; };
 		F05D215E01EBC0B400953604 /* PDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExporter.swift; sourceTree = "<group>"; };
 		F0AF7585BE2B913F939DFAED /* Markfops.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Markfops.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F19180A88DDA8592F48908E7 /* ReaderLayoutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderLayoutManager.swift; sourceTree = "<group>"; };
@@ -281,6 +283,7 @@
 				624EACAE9726BE4EFD7BB173 /* MarkdownSourceMapTests.swift */,
 				0F05696E977748169F11526C /* MarkdownSyntaxHighlighterTests.swift */,
 				1718CA6749B071C9BE4C8CEB /* ModeMorphTests.swift */,
+				EA6A27A4047CDCD5AC9A309B /* ModeSwitchCursorTests.swift */,
 				A205B3BE50E306D74019122E /* ReaderPresentationTests.swift */,
 				6348872E85804164DA055A32 /* UndoManagerTests.swift */,
 			);
@@ -470,6 +473,7 @@
 				9BBACC6DCB309FC8D1BE33A5 /* MarkdownSourceMapTests.swift in Sources */,
 				466214DFDEBB82A2E8EF3C90 /* MarkdownSyntaxHighlighterTests.swift in Sources */,
 				8263A85081369DE9BE30BFCB /* ModeMorphTests.swift in Sources */,
+				641F887E2C6B7778BFC212B2 /* ModeSwitchCursorTests.swift in Sources */,
 				76305CD7E9F4BD1BFC276E6E /* ReaderPresentationTests.swift in Sources */,
 				811FB4FF89EC7F837A046C94 /* UndoManagerTests.swift in Sources */,
 			);

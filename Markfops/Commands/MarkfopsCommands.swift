@@ -319,9 +319,11 @@ struct MarkfopsCommands: Commands {
 extension NSTextView {
     @objc func wrapBold() {
         (self as? MarkdownNSTextView)?.wrapSelection(prefix: "**", suffix: "**")
+        (self as? ReaderNSTextView)?.wrapSelection(prefix: "**", suffix: "**")
     }
     @objc func wrapItalic() {
-        (self as? MarkdownNSTextView)?.wrapSelection(prefix: "_", suffix: "_")
+        (self as? MarkdownNSTextView)?.wrapSelection(prefix: "*", suffix: "*")
+        (self as? ReaderNSTextView)?.wrapSelection(prefix: "*", suffix: "*")
     }
     @objc func wrapCode() {
         (self as? MarkdownNSTextView)?.wrapSelection(prefix: "`", suffix: "`")

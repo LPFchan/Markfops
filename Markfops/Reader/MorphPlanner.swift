@@ -56,8 +56,13 @@ struct MorphPlan {
 }
 
 enum ModeMorphPolicy {
+    /// Tests set this to exercise the no-morph switch without Reduce Motion.
+    static var isDisabledForTesting = false
+
     static func canMorph(sourceLength: Int) -> Bool {
-        sourceLength > 0 && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        sourceLength > 0
+            && !isDisabledForTesting
+            && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
 }
 
