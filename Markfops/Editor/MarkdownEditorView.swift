@@ -164,6 +164,15 @@ final class EditorBridge {
     func replaceAll(find query: String, replace replacement: String) -> Int {
         coordinator?.replaceAll(find: query, replace: replacement) ?? 0
     }
+
+    /// Applies a source edit produced by formatted mode through the mounted
+    /// editor text view, the one path that registers undo with the document's
+    /// undo manager, keeps syntax highlighting current, and syncs `rawText`.
+    /// Returns false when no editor is mounted or the range is out of bounds.
+    @discardableResult
+    func applySourceEdit(in range: NSRange, with replacement: String) -> Bool {
+        coordinator?.textView?.applySourceEdit(in: range, with: replacement) ?? false
+    }
 }
 
 // MARK: - NSTextView subclass
@@ -369,6 +378,21 @@ final class MarkdownNSTextView: NSTextView {
         didChangeText()
         setSelectedRange(mutation.selection)
         scrollRangeToVisible(mutation.selection)
+    }
+
+    @discardableResult
+    func applySourceEdit(in range: NSRange, with replacement: String) -> Bool {
+        guard range.location != NSNotFound,
+              range.location >= 0,
+              NSMaxRange(range) <= (string as NSString).length,
+              shouldChangeText(in: range, replacementString: replacement) else { return false }
+        replaceCharacters(in: range, with: replacement)
+        didChangeText()
+        setSelectedRange(NSRange(
+            location: range.location + (replacement as NSString).length,
+            length: 0
+        ))
+        return true
     }
 
     func setPlainTextWithoutUndo(_ newText: String) {

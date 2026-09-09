@@ -68,11 +68,13 @@ Each slice must end with something visible in the app and its own tests.
   - Measured: planning a 4,000-character viewport takes about 40 ms in the debug test build; the 6,000-character case stays within the 3,000-layer budget
   - Related ids: `RSH-20260909-001`, `RSH-20260402-011`
 
+- Slice 4a: typing and deleting in formatted mode through the source map (landed)
+  - Done: the reader accepts input and refuses every direct change; each edit maps to a source range by character records and applies through the editor's own change path, so undo, highlighting, and the source sync are shared; the reader rebuilds by minimal replacement with the caret restored and no scroll jump; the syntax of the inline construct or heading at the caret shows in place and hides when the caret leaves; Enter starts a new paragraph in prose and a plain newline in code, lists, quotes, tables, HTML, and front matter; composition commits once on the same path; edits touching substituted constructs are refused with a beep
+  - Measured: a 10,000-character document rebuilds in about 44 ms on a reveal change and 48 ms on a keystroke in the debug build
+  - Related ids: `DEC-20260910-001`
+
 ### Near Term
 
-- Slice 4a: typing and deleting in formatted mode through the source map
-  - Done when: the reader text view accepts input; every change maps to a source range by character records, applies as a normal source edit with shared undo, and the reader rebuilds with the cursor restored and no scroll jump; the syntax of the inline construct or heading under the cursor is shown in place and hides when the cursor leaves; edits touching substituted or omitted constructs are refused; Korean composition commits through the same path; tests assert the exact source edit for each case
-  - Related ids: `DEC-20260910-001`
 - Slice 4b: the cursor crosses the morph
   - Done when: a mode switch captures the source cursor from the outgoing surface, the incoming surface lands with its cursor at the same source position and keyboard focus, the reader is built with the arriving cursor's reveal before the morph plan so revealed syntax pairs with editor syntax, and Command-B and Command-I wrap the selection in formatted mode
   - Related ids: `DEC-20260910-001`, `RSH-20260909-001`

@@ -1,0 +1,57 @@
+import Foundation
+
+/// Decides which source syntax the reader shows in place around the text cursor.
+enum ReaderReveal {
+    /// The source range whose hidden syntax should be visible for a cursor at
+    /// `sourceCursor`: every inline construct (emphasis, strong, strikethrough,
+    /// code span, link, autolink, image) that contains the cursor, including at
+    /// its end so a cursor right after a bold word reveals it, unioned with the
+    /// heading block the cursor's line belongs to. Nested constructs reveal
+    /// together through the outermost one. Other blocks reveal nothing.
+    static func range(in sourceMap: MarkdownSourceMap, sourceCursor: Int) -> NSRange? {
+        var result: NSRange?
+        collect(in: sourceMap.span, cursor: sourceCursor, into: &result)
+        return result
+    }
+
+    private static func collect(
+        in span: MarkdownSourceMap.Span,
+        cursor: Int,
+        into result: inout NSRange?
+    ) {
+        guard span.role == .content,
+              span.range.location <= cursor,
+              cursor <= NSMaxRange(span.range) else { return }
+
+        switch span.kind {
+        case .emphasis, .strong, .strikethrough, .codeSpan, .link, .autolink, .image:
+            union(spanRangeWithDelimiters(span), into: &result)
+            return
+        case .heading:
+            union(span.range, into: &result)
+        default:
+            break
+        }
+        for child in span.children {
+            collect(in: child, cursor: cursor, into: &result)
+        }
+    }
+
+    /// A code span's node range excludes its backticks, which sit in syntax
+    /// children just outside it. The revealed range must cover them too.
+    private static func spanRangeWithDelimiters(_ span: MarkdownSourceMap.Span) -> NSRange {
+        var range = span.range
+        for child in span.children where child.role == .syntax {
+            range = NSUnionRange(range, child.range)
+        }
+        return range
+    }
+
+    private static func union(_ range: NSRange, into result: inout NSRange?) {
+        if let current = result {
+            result = NSUnionRange(current, range)
+        } else {
+            result = range
+        }
+    }
+}

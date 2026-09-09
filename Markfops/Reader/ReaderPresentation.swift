@@ -43,6 +43,42 @@ struct ReaderOffsetMap {
         let kind: MarkdownSourceMap.Kind
         let role: MarkdownSourceMap.Role
         let isSubstitution: Bool
+        /// True for hidden syntax that opens an inline construct (`**`, `[`, a
+        /// backtick). An insertion point at its reader boundary lands after it,
+        /// next to the content; a closing delimiter keeps the point before it.
+        let isOpeningDelimiter: Bool
+
+        init(
+            sourceRange: NSRange,
+            readerRange: NSRange,
+            kind: MarkdownSourceMap.Kind,
+            role: MarkdownSourceMap.Role,
+            isSubstitution: Bool,
+            isOpeningDelimiter: Bool = false
+        ) {
+            self.sourceRange = sourceRange
+            self.readerRange = readerRange
+            self.kind = kind
+            self.role = role
+            self.isSubstitution = isSubstitution
+            self.isOpeningDelimiter = isOpeningDelimiter
+        }
+
+        /// One reader character per source character, so a reader range inside
+        /// this record maps to a source range by plain offset arithmetic.
+        var isOneToOne: Bool {
+            !isSubstitution && readerRange.length == sourceRange.length
+        }
+
+        var isInlineSyntax: Bool {
+            switch kind {
+            case .emphasis, .strong, .strikethrough, .codeSpan, .link, .image,
+                 .autolink, .inlineHTML, .lineBreak:
+                return true
+            default:
+                return false
+            }
+        }
     }
 
     let records: [Record]
@@ -104,23 +140,138 @@ struct ReaderOffsetMap {
             length: abs(readerEnd - readerStart)
         )
     }
+
+    /// Maps a reader range to the source range an edit of it must replace,
+    /// computed from the characters at both ends rather than from boundaries.
+    /// Hidden syntax strictly inside the range is part of the result; hidden
+    /// syntax at either boundary is not. Returns nil when either end character
+    /// is not mapped one-to-one or a substituted construct (list marker, image,
+    /// front matter, thematic break, raw HTML) lies inside the range.
+    func sourceRange(forReaderRange readerRange: NSRange) -> NSRange? {
+        guard readerRange.location >= 0,
+              NSMaxRange(readerRange) <= readerLength else { return nil }
+        guard readerRange.length > 0 else {
+            return NSRange(
+                location: sourceInsertionOffset(forReaderOffset: readerRange.location),
+                length: 0
+            )
+        }
+
+        guard let firstIndex = visibleRecordIndex(containingReaderOffset: readerRange.location),
+              let lastIndex = visibleRecordIndex(containingReaderOffset: NSMaxRange(readerRange) - 1) else {
+            return nil
+        }
+        let first = records[firstIndex]
+        let last = records[lastIndex]
+        guard first.isOneToOne, last.isOneToOne else { return nil }
+        for index in firstIndex...lastIndex
+        where records[index].readerRange.length > 0 && !records[index].isOneToOne {
+            return nil
+        }
+
+        let sourceStart = first.sourceRange.location
+            + (readerRange.location - first.readerRange.location)
+        let sourceEnd = last.sourceRange.location
+            + (NSMaxRange(readerRange) - 1 - last.readerRange.location) + 1
+        guard sourceEnd >= sourceStart else { return nil }
+        return NSRange(location: sourceStart, length: sourceEnd - sourceStart)
+    }
+
+    /// The source boundary where an insertion point at a reader boundary lands.
+    /// The point sticks to the visible character it sits next to: it stays
+    /// before a hidden closing delimiter, moves past a hidden opening
+    /// delimiter, and moves past hidden block syntax (`# `, `> `, fences) so
+    /// typing at the visual start of a heading or quote line stays inside it.
+    func sourceInsertionOffset(forReaderOffset readerOffset: Int) -> Int {
+        let offset = max(0, min(readerOffset, readerLength))
+        guard !records.isEmpty else { return sourceOffset(forReaderOffset: offset) }
+
+        var index = lowerBound(readerLocation: offset)
+        var source: Int?
+        if index > 0 {
+            let previous = records[index - 1]
+            if previous.readerRange.length > 0, NSMaxRange(previous.readerRange) == offset {
+                source = NSMaxRange(previous.sourceRange)
+            } else if previous.readerRange.length > 0, NSMaxRange(previous.readerRange) > offset {
+                // Inside a visible record.
+                return previous.isOneToOne
+                    ? previous.sourceRange.location + (offset - previous.readerRange.location)
+                    : sourceOffset(forReaderOffset: offset)
+            }
+        }
+
+        while index < records.count,
+              records[index].readerRange.location == offset,
+              records[index].readerRange.length == 0 {
+            let hidden = records[index]
+            if source == nil {
+                source = hidden.sourceRange.location
+            }
+            if hidden.isInlineSyntax {
+                if hidden.isOpeningDelimiter {
+                    source = NSMaxRange(hidden.sourceRange)
+                } else {
+                    break
+                }
+            } else {
+                source = NSMaxRange(hidden.sourceRange)
+            }
+            index += 1
+        }
+
+        if let source { return max(0, min(source, sourceLength)) }
+        if index < records.count, records[index].readerRange.location == offset {
+            return records[index].sourceRange.location
+        }
+        return sourceOffset(forReaderOffset: offset)
+    }
+
+    /// Index of the first record whose reader location is at or past `location`.
+    private func lowerBound(readerLocation location: Int) -> Int {
+        var low = 0
+        var high = records.count
+        while low < high {
+            let middle = (low + high) / 2
+            if records[middle].readerRange.location < location {
+                low = middle + 1
+            } else {
+                high = middle
+            }
+        }
+        return low
+    }
+
+    private func visibleRecordIndex(containingReaderOffset offset: Int) -> Int? {
+        var index = lowerBound(readerLocation: offset + 1)
+        while index > 0 {
+            index -= 1
+            let record = records[index]
+            guard record.readerRange.length > 0 else { continue }
+            return NSLocationInRange(offset, record.readerRange) ? index : nil
+        }
+        return nil
+    }
 }
 
 struct ReaderPresentation {
     let attributedString: NSAttributedString
     let offsetMap: ReaderOffsetMap
 
+    /// - Parameter revealedSourceRange: source range whose otherwise hidden
+    ///   syntax is emitted one-to-one, Typora-style, around the text cursor.
     static func build(
         text: String,
         sourceMap: MarkdownSourceMap,
         theme: ReaderTheme = .default,
-        baseURL: URL? = nil
+        baseURL: URL? = nil,
+        revealedSourceRange: NSRange? = nil
     ) -> ReaderPresentation {
         Builder(
             text: text,
             sourceMap: sourceMap,
             theme: theme,
-            baseURL: baseURL
+            baseURL: baseURL,
+            revealedSourceRange: revealedSourceRange
         ).build()
     }
 }
@@ -150,6 +301,7 @@ private final class ReaderPresentationBuilder {
     let sourceMap: MarkdownSourceMap
     let theme: ReaderTheme
     let baseURL: URL?
+    let revealedSourceRange: NSRange?
 
     var output = NSMutableAttributedString()
     var records: [ReaderOffsetMap.Record] = []
@@ -159,12 +311,24 @@ private final class ReaderPresentationBuilder {
     var sourceLineStarts: [Int] = [0]
     var handledImageRanges: [NSRange] = []
     var handledRawBlockRanges: [NSRange] = []
+    /// Fonts and paragraph styles repeat across thousands of runs; creating
+    /// them per run (italic goes through a descriptor lookup) dominated the
+    /// build time, which now runs on every keystroke in formatted mode.
+    private var fontCache: [String: NSFont] = [:]
+    private var paragraphStyleCache: [String: NSParagraphStyle] = [:]
 
-    init(text: String, sourceMap: MarkdownSourceMap, theme: ReaderTheme, baseURL: URL?) {
+    init(
+        text: String,
+        sourceMap: MarkdownSourceMap,
+        theme: ReaderTheme,
+        baseURL: URL?,
+        revealedSourceRange: NSRange? = nil
+    ) {
         self.text = text as NSString
         self.sourceMap = sourceMap
         self.theme = theme
         self.baseURL = baseURL
+        self.revealedSourceRange = revealedSourceRange
         self.sourceToReader = Array(repeating: -1, count: self.text.length + 1)
 
         for index in 0..<self.text.length where self.text.character(at: index) == 0x0A {
@@ -435,7 +599,7 @@ private final class ReaderPresentationBuilder {
                 emitImage(image, sourceRange: imageRange)
                 handledImageRanges.append(imageRange)
             } else {
-                markOmitted(run.range, kind: run.kind, role: run.role)
+                emitHiddenSyntax(run, context: context)
             }
         case .htmlBlock:
             if case .htmlBlock = context.blockKind {
@@ -469,8 +633,69 @@ private final class ReaderPresentationBuilder {
                 skipNewlineAt = NSMaxRange(run.range)
             }
         default:
-            markOmitted(run.range, kind: run.kind, role: run.role)
+            emitHiddenSyntax(run, context: context)
         }
+    }
+
+    /// Syntax the reader normally hides. Inside the revealed range it is emitted
+    /// one-to-one in the surrounding style, dimmed, so it can be edited in place.
+    private func emitHiddenSyntax(
+        _ run: MarkdownSourceMap.Run,
+        context: ReaderSemanticContext
+    ) {
+        if let revealedSourceRange,
+           revealedSourceRange.location <= run.range.location,
+           NSMaxRange(run.range) <= NSMaxRange(revealedSourceRange) {
+            var attributes = attributes(for: run.kind, context: context)
+            attributes[.foregroundColor] = theme.secondaryColor
+            attributes[.link] = nil
+            attributes[.strikethroughStyle] = nil
+            append(
+                text.substring(with: run.range),
+                sourceRange: run.range,
+                kind: run.kind,
+                role: run.role,
+                attributes: attributes
+            )
+            return
+        }
+        markOmitted(
+            run.range,
+            kind: run.kind,
+            role: run.role,
+            isOpeningDelimiter: isOpeningDelimiter(run)
+        )
+    }
+
+    /// Whether hidden inline syntax opens its construct. Delimiters sit at the
+    /// start of their span (`**`, `[`, `<`) or, for code spans, just before it.
+    private func isOpeningDelimiter(_ run: MarkdownSourceMap.Run) -> Bool {
+        switch run.kind {
+        case .emphasis, .strong, .strikethrough, .codeSpan, .link, .image, .autolink, .inlineHTML:
+            break
+        default:
+            return false
+        }
+        guard let span = innermostContentSpan(kind: run.kind, touching: run.range, in: sourceMap.span) else {
+            return false
+        }
+        return run.range.location <= span.range.location
+    }
+
+    private func innermostContentSpan(
+        kind: MarkdownSourceMap.Kind,
+        touching range: NSRange,
+        in span: MarkdownSourceMap.Span
+    ) -> MarkdownSourceMap.Span? {
+        let touches = span.range.location <= NSMaxRange(range)
+            && range.location <= NSMaxRange(span.range)
+        guard touches else { return nil }
+        for child in span.children {
+            if let found = innermostContentSpan(kind: kind, touching: range, in: child) {
+                return found
+            }
+        }
+        return span.role == .content && span.kind == kind ? span : nil
     }
 
     private func listMarker(
@@ -806,7 +1031,8 @@ private final class ReaderPresentationBuilder {
     private func markOmitted(
         _ sourceRange: NSRange,
         kind: MarkdownSourceMap.Kind,
-        role: MarkdownSourceMap.Role
+        role: MarkdownSourceMap.Role,
+        isOpeningDelimiter: Bool = false
     ) {
         let sourceEnd = NSMaxRange(sourceRange)
         guard sourceRange.location >= 0, sourceEnd <= text.length else { return }
@@ -819,7 +1045,8 @@ private final class ReaderPresentationBuilder {
             readerRange: NSRange(location: output.length, length: 0),
             kind: kind,
             role: role,
-            isSubstitution: false
+            isSubstitution: false,
+            isOpeningDelimiter: isOpeningDelimiter
         ))
     }
 
@@ -842,11 +1069,30 @@ private final class ReaderPresentationBuilder {
     }
 
     private func context(at offset: Int) -> ReaderSemanticContext {
-        findContext(
-            in: sourceMap.span,
-            at: offset,
-            current: .empty
-        ) ?? .empty
+        // Top-level blocks are sorted and do not overlap, so the block holding
+        // the offset is found by binary search instead of a walk over them all.
+        let root = sourceMap.span
+        let blocks = root.children
+        var low = 0
+        var high = blocks.count
+        while low < high {
+            let middle = (low + high) / 2
+            if NSMaxRange(blocks[middle].range) <= offset {
+                low = middle + 1
+            } else {
+                high = middle
+            }
+        }
+        var index = low
+        while index < blocks.count, blocks[index].range.location <= offset {
+            let block = blocks[index]
+            if block.range.length > 0, offset < NSMaxRange(block.range),
+               let found = findContext(in: block, at: offset, current: .empty) {
+                return found
+            }
+            index += 1
+        }
+        return .empty
     }
 
     private func findContext(
@@ -1034,6 +1280,19 @@ private final class ReaderPresentationBuilder {
         italic: Bool,
         monospaced: Bool
     ) -> NSFont {
+        let key = "\(size)|\(weight.rawValue)|\(italic)|\(monospaced)"
+        if let cached = fontCache[key] { return cached }
+        let font = buildFont(size: size, weight: weight, italic: italic, monospaced: monospaced)
+        fontCache[key] = font
+        return font
+    }
+
+    private func buildFont(
+        size: CGFloat,
+        weight: NSFont.Weight,
+        italic: Bool,
+        monospaced: Bool
+    ) -> NSFont {
         let base = monospaced
             ? NSFont.monospacedSystemFont(ofSize: size, weight: weight)
             : NSFont.systemFont(ofSize: size, weight: weight)
@@ -1046,6 +1305,24 @@ private final class ReaderPresentationBuilder {
     }
 
     private func paragraphStyle(
+        for blockKind: MarkdownSourceMap.Kind?,
+        thematicBreak: Bool,
+        blockLine: (isFirst: Bool, isLast: Bool)? = nil,
+        listDepth: Int = 0
+    ) -> NSParagraphStyle {
+        let key = "\(String(describing: blockKind))|\(thematicBreak)|\(blockLine?.isFirst ?? false)|\(blockLine?.isLast ?? false)|\(listDepth)"
+        if let cached = paragraphStyleCache[key] { return cached }
+        let style = buildParagraphStyle(
+            for: blockKind,
+            thematicBreak: thematicBreak,
+            blockLine: blockLine,
+            listDepth: listDepth
+        )
+        paragraphStyleCache[key] = style
+        return style
+    }
+
+    private func buildParagraphStyle(
         for blockKind: MarkdownSourceMap.Kind?,
         thematicBreak: Bool,
         blockLine: (isFirst: Bool, isLast: Bool)? = nil,
