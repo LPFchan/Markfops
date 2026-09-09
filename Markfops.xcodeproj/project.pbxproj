@@ -35,6 +35,7 @@
 		74709F87BE070284804A5C56 /* ReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51217755E9A6ADC1CB8AB13A /* ReaderView.swift */; };
 		76305CD7E9F4BD1BFC276E6E /* ReaderPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A205B3BE50E306D74019122E /* ReaderPresentationTests.swift */; };
 		811FB4FF89EC7F837A046C94 /* UndoManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6348872E85804164DA055A32 /* UndoManagerTests.swift */; };
+		8176515C3F34DA9FCE6D3746 /* ReaderLayoutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F19180A88DDA8592F48908E7 /* ReaderLayoutManager.swift */; };
 		85A2E520CE79438D27257E8B /* FaviconBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CF153CF61BA07386D4CD9AB /* FaviconBadge.swift */; };
 		928B97786537075AB7956F9B /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2138F5AC97A090E4B6272FB3 /* SidebarView.swift */; };
 		95B40AB0A6E715F4F419AB71 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68C64074880ABB02F29BF99B /* SettingsView.swift */; };
@@ -112,6 +113,7 @@
 		E5A38073AFAC4D127F4B5E82 /* DocumentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStore.swift; sourceTree = "<group>"; };
 		F05D215E01EBC0B400953604 /* PDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExporter.swift; sourceTree = "<group>"; };
 		F0AF7585BE2B913F939DFAED /* Markfops.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Markfops.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F19180A88DDA8592F48908E7 /* ReaderLayoutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderLayoutManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -171,6 +173,7 @@
 		233CAB8EFD94A24A07A1B70F /* Reader */ = {
 			isa = PBXGroup;
 			children = (
+				F19180A88DDA8592F48908E7 /* ReaderLayoutManager.swift */,
 				9417D7C1E56DE6005A844AAF /* ReaderPresentation.swift */,
 				51217755E9A6ADC1CB8AB13A /* ReaderView.swift */,
 			);
@@ -414,6 +417,7 @@
 				012F13E675D8CB2ECB471333 /* MarkfopsApp.swift in Sources */,
 				3F2BDA9D46E8FF6AC6D6DF9B /* MarkfopsCommands.swift in Sources */,
 				9F061AB4D3F43EFC7BB45EE6 /* PDFExporter.swift in Sources */,
+				8176515C3F34DA9FCE6D3746 /* ReaderLayoutManager.swift in Sources */,
 				18A362F4EEA42276BD14AB4C /* ReaderPresentation.swift in Sources */,
 				74709F87BE070284804A5C56 /* ReaderView.swift in Sources */,
 				95B40AB0A6E715F4F419AB71 /* SettingsView.swift in Sources */,

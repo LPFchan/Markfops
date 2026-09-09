@@ -1,6 +1,15 @@
 import AppKit
 import Foundation
 
+extension NSAttributedString.Key {
+    static let readerCodeSpan = NSAttributedString.Key("com.markfops.reader.codeSpan")
+    static let readerCodeBlock = NSAttributedString.Key("com.markfops.reader.codeBlock")
+    static let readerBlockQuote = NSAttributedString.Key("com.markfops.reader.blockQuote")
+    static let readerHeadingLevel = NSAttributedString.Key("com.markfops.reader.headingLevel")
+    static let readerThematicBreak = NSAttributedString.Key("com.markfops.reader.thematicBreak")
+    static let readerFrontMatter = NSAttributedString.Key("com.markfops.reader.frontMatter")
+}
+
 struct ReaderTheme {
     var bodyFontSize: CGFloat
     var bodyColor: NSColor
@@ -10,6 +19,7 @@ struct ReaderTheme {
     var codeBackgroundColor: NSColor
     var separatorColor: NSColor
     var contentInsets: NSEdgeInsets
+    var maxContentWidth: CGFloat
 
     static var `default`: ReaderTheme {
         ReaderTheme(
@@ -18,9 +28,10 @@ struct ReaderTheme {
             backgroundColor: .textBackgroundColor,
             secondaryColor: .secondaryLabelColor,
             linkColor: .linkColor,
-            codeBackgroundColor: .controlBackgroundColor,
+            codeBackgroundColor: NSColor.textColor.withAlphaComponent(0.06),
             separatorColor: .separatorColor,
-            contentInsets: NSEdgeInsets(top: 40, left: 32, bottom: 80, right: 32)
+            contentInsets: NSEdgeInsets(top: 40, left: 32, bottom: 80, right: 32),
+            maxContentWidth: 780
         )
     }
 }
@@ -116,9 +127,22 @@ struct ReaderPresentation {
 
 private struct ReaderSemanticContext {
     var blockKind: MarkdownSourceMap.Kind?
+    var blockRange: NSRange?
     var inlineKinds: [MarkdownSourceMap.Kind]
     var linkRange: NSRange?
     var imageRange: NSRange?
+    var listDepth: Int
+
+    static var empty: ReaderSemanticContext {
+        ReaderSemanticContext(
+            blockKind: nil,
+            blockRange: nil,
+            inlineKinds: [],
+            linkRange: nil,
+            imageRange: nil,
+            listDepth: 0
+        )
+    }
 }
 
 private final class ReaderPresentationBuilder {
@@ -133,6 +157,8 @@ private final class ReaderPresentationBuilder {
     var readerToSource: [Int] = [0]
     var skipNewlineAt: Int?
     var sourceLineStarts: [Int] = [0]
+    var handledImageRanges: [NSRange] = []
+    var handledRawBlockRanges: [NSRange] = []
 
     init(text: String, sourceMap: MarkdownSourceMap, theme: ReaderTheme, baseURL: URL?) {
         self.text = text as NSString
@@ -178,6 +204,19 @@ private final class ReaderPresentationBuilder {
     }
 
     private func emit(_ run: MarkdownSourceMap.Run) {
+        if handledImageRanges.contains(where: {
+            $0.location <= run.range.location
+                && NSMaxRange(run.range) <= NSMaxRange($0)
+        }) {
+            return
+        }
+        if handledRawBlockRanges.contains(where: {
+            $0.location <= run.range.location
+                && NSMaxRange(run.range) <= NSMaxRange($0)
+        }) {
+            return
+        }
+
         var range = run.range
 
         if let skipNewlineAt,
@@ -220,17 +259,34 @@ private final class ReaderPresentationBuilder {
     ) {
         let rawText = text.substring(with: run.range)
 
-        if isRawKind(run.kind) || context.blockKind.map(isRawKind) == true {
-            append(
+        if case .codeBlock = context.blockKind {
+            appendBlockText(
                 rawText,
                 sourceRange: run.range,
                 kind: run.kind,
                 role: run.role,
-                attributes: attributes(
-                    for: run.kind,
-                    context: context,
-                    raw: true
-                )
+                context: context
+            )
+            return
+        }
+
+        if case .table = context.blockKind {
+            emitRawBlockIfNeeded(context: context)
+            return
+        }
+        if case .htmlBlock = context.blockKind {
+            emitRawBlockIfNeeded(context: context)
+            return
+        }
+
+        if isRawKind(run.kind) || context.blockKind.map(isRawKind) == true {
+            appendBlockText(
+                rawText,
+                sourceRange: run.range,
+                kind: run.kind,
+                role: run.role,
+                context: context,
+                raw: true
             )
             return
         }
@@ -253,14 +309,90 @@ private final class ReaderPresentationBuilder {
                 attributes: attributes(for: run.kind, context: context)
             )
         default:
-            append(
+            let isCodeSpan = context.inlineKinds.contains(.codeSpan)
+            if isCodeSpan {
+                padBeforeCodeSpan()
+            }
+            appendContentText(
                 rawText,
                 sourceRange: run.range,
                 kind: run.kind,
                 role: run.role,
-                attributes: attributes(for: run.kind, context: context)
+                context: context
             )
+            if isCodeSpan {
+                padAfterCodeSpan()
+            }
         }
+    }
+
+    /// Inline code capsules need room on both sides. Kerning the neighbouring
+    /// characters adds that room without adding characters, so the offset map
+    /// stays intact.
+    private var codeSpanPadding: CGFloat { theme.bodyFontSize * 0.3 }
+
+    private func padBeforeCodeSpan() {
+        guard output.length > 0 else { return }
+        let previous = NSRange(location: output.length - 1, length: 1)
+        let previousCharacter = (output.string as NSString).character(at: previous.location)
+        guard previousCharacter != 0x0A,
+              output.attribute(.readerCodeSpan, at: previous.location, effectiveRange: nil) == nil else { return }
+        output.addAttribute(.kern, value: codeSpanPadding, range: previous)
+    }
+
+    private func padAfterCodeSpan() {
+        guard output.length > 0 else { return }
+        let last = NSRange(location: output.length - 1, length: 1)
+        let lastCharacter = (output.string as NSString).character(at: last.location)
+        guard lastCharacter != 0x0A else { return }
+        output.addAttribute(.kern, value: codeSpanPadding, range: last)
+    }
+
+    private func appendContentText(
+        _ string: String,
+        sourceRange: NSRange,
+        kind: MarkdownSourceMap.Kind,
+        role: MarkdownSourceMap.Role,
+        context: ReaderSemanticContext
+    ) {
+        let source = string as NSString
+        var localStart = 0
+
+        while localStart < source.length {
+            let remaining = NSRange(location: localStart, length: source.length - localStart)
+            let newline = source.range(of: "\n", options: [], range: remaining)
+            let localEnd = newline.location == NSNotFound
+                ? source.length
+                : NSMaxRange(newline)
+            let localRange = NSRange(location: localStart, length: localEnd - localStart)
+            let absoluteRange = NSRange(
+                location: sourceRange.location + localRange.location,
+                length: localRange.length
+            )
+            let lineContext = self.context(at: absoluteRange.location)
+            append(
+                source.substring(with: localRange),
+                sourceRange: absoluteRange,
+                kind: kind,
+                role: role,
+                attributes: attributes(for: kind, context: lineContext)
+            )
+            localStart = localEnd
+        }
+    }
+
+    private func emitRawBlockIfNeeded(context: ReaderSemanticContext) {
+        guard let blockRange = context.blockRange,
+              !handledRawBlockRanges.contains(blockRange) else { return }
+        appendBlockText(
+            text.substring(with: blockRange),
+            sourceRange: blockRange,
+            kind: context.blockKind ?? .text,
+            role: .content,
+            context: context,
+            raw: true
+        )
+        handledRawBlockRanges.append(blockRange)
     }
 
     private func emitSyntax(
@@ -279,22 +411,49 @@ private final class ReaderPresentationBuilder {
             )
         case .thematicBreak:
             append(
-                "———",
+                "\u{200B}",
                 sourceRange: run.range,
                 kind: run.kind,
                 role: run.role,
                 attributes: attributes(for: run.kind, context: context, thematicBreak: true),
                 isSubstitution: true
             )
-        case .htmlBlock, .inlineHTML, .frontMatter:
-            append(
-                text.substring(with: run.range),
-                sourceRange: run.range,
-                kind: run.kind,
-                role: run.role,
-                attributes: attributes(for: run.kind, context: context, raw: true),
-                isSubstitution: true
-            )
+        case .frontMatter:
+            emitFrontMatter(run.range)
+        case .image:
+            if let imageRange = context.imageRange,
+               let image = localImage(for: imageRange) {
+                emitImage(image, sourceRange: imageRange)
+                handledImageRanges.append(imageRange)
+            } else {
+                markOmitted(run.range, kind: run.kind, role: run.role)
+            }
+        case .htmlBlock:
+            if case .htmlBlock = context.blockKind {
+                emitRawBlockIfNeeded(context: context)
+            } else {
+                appendBlockText(
+                    text.substring(with: run.range),
+                    sourceRange: run.range,
+                    kind: run.kind,
+                    role: run.role,
+                    context: context,
+                    raw: true
+                )
+            }
+        case .inlineHTML:
+            if case .htmlBlock = context.blockKind {
+                emitRawBlockIfNeeded(context: context)
+            } else {
+                append(
+                    text.substring(with: run.range),
+                    sourceRange: run.range,
+                    kind: run.kind,
+                    role: run.role,
+                    attributes: attributes(for: run.kind, context: context, raw: true),
+                    isSubstitution: true
+                )
+            }
         case .codeBlock(fenced: true):
             markOmitted(run.range, kind: run.kind, role: run.role)
             if let newlineLength = newlineLength(at: NSMaxRange(run.range)), newlineLength > 0 {
@@ -349,9 +508,25 @@ private final class ReaderPresentationBuilder {
         attributes: [NSAttributedString.Key: Any],
         isSubstitution: Bool = false
     ) {
+        append(
+            NSAttributedString(string: string, attributes: attributes),
+            sourceRange: sourceRange,
+            kind: kind,
+            role: role,
+            isSubstitution: isSubstitution
+        )
+    }
+
+    private func append(
+        _ attributedString: NSAttributedString,
+        sourceRange: NSRange,
+        kind: MarkdownSourceMap.Kind,
+        role: MarkdownSourceMap.Role,
+        isSubstitution: Bool = false
+    ) {
         let readerStart = output.length
-        output.append(NSAttributedString(string: string, attributes: attributes))
-        let readerLength = (string as NSString).length
+        output.append(attributedString)
+        let readerLength = attributedString.length
         let sourceEnd = NSMaxRange(sourceRange)
 
         guard sourceRange.location >= 0,
@@ -390,6 +565,228 @@ private final class ReaderPresentationBuilder {
             role: role,
             isSubstitution: isSubstitution
         ))
+    }
+
+    private func appendBlockText(
+        _ string: String,
+        sourceRange: NSRange,
+        kind: MarkdownSourceMap.Kind,
+        role: MarkdownSourceMap.Role,
+        context: ReaderSemanticContext,
+        raw: Bool = false
+    ) {
+        let source = string as NSString
+        var localStart = 0
+        var lineNumber = 0
+
+        while localStart < source.length {
+            let remaining = NSRange(location: localStart, length: source.length - localStart)
+            let newline = source.range(of: "\n", options: [], range: remaining)
+            let localEnd: Int
+            if newline.location != NSNotFound {
+                localEnd = NSMaxRange(newline)
+            } else {
+                localEnd = source.length
+            }
+
+            let localRange = NSRange(location: localStart, length: localEnd - localStart)
+            let lineRange = NSRange(
+                location: sourceRange.location + localRange.location,
+                length: localRange.length
+            )
+            let atFirstLine = lineNumber == 0
+            let atLastLine = localEnd == source.length
+            append(
+                source.substring(with: localRange),
+                sourceRange: lineRange,
+                kind: kind,
+                role: role,
+                attributes: attributes(
+                    for: kind,
+                    context: context,
+                    raw: raw,
+                    blockLine: (atFirstLine, atLastLine)
+                )
+            )
+            localStart = localEnd
+            lineNumber += 1
+        }
+    }
+
+    private func emitFrontMatter(_ sourceRange: NSRange) {
+        guard let frontMatter = MarkdownFrontMatter.extract(
+            from: text.substring(with: sourceRange)
+        ) else {
+            append(
+                text.substring(with: sourceRange),
+                sourceRange: sourceRange,
+                kind: .frontMatter,
+                role: .syntax,
+                attributes: attributes(
+                    for: .frontMatter,
+                    context: ReaderSemanticContext.empty,
+                    raw: true
+                ),
+                isSubstitution: true
+            )
+            return
+        }
+
+        let rows = MarkdownFrontMatter.rows(from: frontMatter.value)
+        let keyFont = makeFont(
+            size: theme.bodyFontSize * 0.875,
+            weight: .regular,
+            italic: false,
+            monospaced: true
+        )
+        let valueFont = makeFont(
+            size: theme.bodyFontSize,
+            weight: .regular,
+            italic: false,
+            monospaced: false
+        )
+        let keyWidth = rows.map { row in
+            (row.key as NSString).size(withAttributes: [.font: keyFont]).width
+        }.max() ?? 0
+        let tabLocation = min(
+            max(theme.bodyFontSize * 7, keyWidth + theme.bodyFontSize),
+            theme.maxContentWidth * 0.5
+        )
+        let paragraphStyle = frontMatterParagraphStyle(tabLocation: tabLocation)
+        let keyAttributes: [NSAttributedString.Key: Any] = [
+            .font: keyFont,
+            .foregroundColor: theme.secondaryColor,
+            .paragraphStyle: paragraphStyle,
+            .readerFrontMatter: true,
+        ]
+        let valueAttributes: [NSAttributedString.Key: Any] = [
+            .font: valueFont,
+            .foregroundColor: theme.bodyColor,
+            .paragraphStyle: paragraphStyle,
+            .readerFrontMatter: true,
+        ]
+
+        let rendered = NSMutableAttributedString()
+        for (index, row) in rows.enumerated() {
+            if index > 0 {
+                rendered.append(NSAttributedString(string: "\n", attributes: valueAttributes))
+            }
+            if !row.key.isEmpty {
+                rendered.append(NSAttributedString(string: row.key, attributes: keyAttributes))
+                rendered.append(NSAttributedString(string: "\t", attributes: valueAttributes))
+            }
+            let firstValue = row.valueLines.first ?? ""
+            rendered.append(NSAttributedString(string: firstValue, attributes: valueAttributes))
+            for continuation in row.valueLines.dropFirst() {
+                rendered.append(NSAttributedString(string: "\n\t", attributes: valueAttributes))
+                rendered.append(NSAttributedString(string: continuation, attributes: valueAttributes))
+            }
+        }
+        if rendered.length > 0 {
+            rendered.append(NSAttributedString(string: "\n", attributes: valueAttributes))
+        }
+
+        append(
+            rendered,
+            sourceRange: sourceRange,
+            kind: .frontMatter,
+            role: .syntax,
+            isSubstitution: true
+        )
+    }
+
+    private func emitImage(_ image: NSImage, sourceRange: NSRange) {
+        let imageAttachment = ReaderImageAttachment(image: roundedImage(image, radius: 6))
+        let imageParagraph = NSMutableParagraphStyle()
+        imageParagraph.alignment = .center
+        imageParagraph.lineHeightMultiple = 1
+        imageParagraph.paragraphSpacingBefore = theme.bodyFontSize * 0.75
+        imageParagraph.paragraphSpacing = theme.bodyFontSize * 0.25
+
+        let rendered = NSMutableAttributedString()
+        let attachmentString = NSAttributedString(attachment: imageAttachment)
+        rendered.append(attachmentString)
+        rendered.addAttributes([
+            .font: makeFont(
+                size: theme.bodyFontSize,
+                weight: .regular,
+                italic: false,
+                monospaced: false
+            ),
+            .paragraphStyle: imageParagraph,
+        ], range: NSRange(location: 0, length: rendered.length))
+
+        let source = text.substring(with: sourceRange)
+        let altText = imageAltText(in: source)
+        if !altText.isEmpty {
+            let altParagraph = imageParagraph.mutableCopy() as! NSMutableParagraphStyle
+            altParagraph.paragraphSpacingBefore = 0
+            altParagraph.paragraphSpacing = theme.bodyFontSize * 0.75
+            rendered.append(NSAttributedString(string: "\n\(altText)", attributes: [
+                .font: makeFont(
+                    size: theme.bodyFontSize * 0.875,
+                    weight: .regular,
+                    italic: true,
+                    monospaced: false
+                ),
+                .foregroundColor: theme.secondaryColor,
+                .paragraphStyle: altParagraph,
+            ]))
+        }
+        rendered.append(NSAttributedString(string: "\n", attributes: [
+            .font: makeFont(
+                size: theme.bodyFontSize,
+                weight: .regular,
+                italic: false,
+                monospaced: false
+            ),
+            .paragraphStyle: imageParagraph,
+        ]))
+
+        append(
+            rendered,
+            sourceRange: sourceRange,
+            kind: .image,
+            role: .content,
+            isSubstitution: true
+        )
+    }
+
+    private func imageAltText(in source: String) -> String {
+        guard let opening = source.firstIndex(of: "["),
+              let closing = source[opening...].firstIndex(of: "]"),
+              opening < closing else { return "" }
+        return String(source[source.index(after: opening)..<closing])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func localImage(for sourceRange: NSRange) -> NSImage? {
+        guard let destination = linkDestination(for: sourceRange) as? URL,
+              destination.isFileURL,
+              FileManager.default.fileExists(atPath: destination.path) else {
+            return nil
+        }
+        return NSImage(contentsOf: destination)
+    }
+
+    private func roundedImage(_ image: NSImage, radius: CGFloat) -> NSImage {
+        let rounded = NSImage(size: image.size)
+        rounded.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .high
+        let path = NSBezierPath(
+            roundedRect: NSRect(origin: .zero, size: image.size),
+            xRadius: radius,
+            yRadius: radius
+        )
+        path.addClip()
+        image.draw(
+            in: NSRect(origin: .zero, size: image.size),
+            from: .zero,
+            operation: .sourceOver,
+            fraction: 1
+        )
+        rounded.unlockFocus()
+        return rounded
     }
 
     private func markOmitted(
@@ -434,18 +831,8 @@ private final class ReaderPresentationBuilder {
         findContext(
             in: sourceMap.span,
             at: offset,
-            current: ReaderSemanticContext(
-                blockKind: nil,
-                inlineKinds: [],
-                linkRange: nil,
-                imageRange: nil
-            )
-        ) ?? ReaderSemanticContext(
-            blockKind: nil,
-            inlineKinds: [],
-            linkRange: nil,
-            imageRange: nil
-        )
+            current: .empty
+        ) ?? .empty
     }
 
     private func findContext(
@@ -464,22 +851,29 @@ private final class ReaderPresentationBuilder {
         guard contains || childContains else { return nil }
 
         var next = current
-        if isBlockKind(span.kind), next.blockKind == nil {
-            next.blockKind = span.kind
-        }
-        switch span.kind {
-        case .emphasis, .strong, .strikethrough, .codeSpan:
-            if !next.inlineKinds.contains(span.kind) {
-                next.inlineKinds.append(span.kind)
+        // Syntax spans carry their parent's kind (a list marker is a listItem span,
+        // an image's "!" is an image span). Only content spans define the context.
+        if span.role == .content {
+            if isBlockKind(span.kind), next.blockKind == nil {
+                next.blockKind = span.kind
+                next.blockRange = span.range
             }
-        case .link, .autolink:
-            next.inlineKinds.append(span.kind)
-            next.linkRange = span.range
-        case .image:
-            next.inlineKinds.append(span.kind)
-            next.imageRange = span.range
-        default:
-            break
+            switch span.kind {
+            case .listItem:
+                next.listDepth += 1
+            case .emphasis, .strong, .strikethrough, .codeSpan:
+                if !next.inlineKinds.contains(span.kind) {
+                    next.inlineKinds.append(span.kind)
+                }
+            case .link, .autolink:
+                next.inlineKinds.append(span.kind)
+                next.linkRange = span.range
+            case .image:
+                next.inlineKinds.append(span.kind)
+                next.imageRange = span.range
+            default:
+                break
+            }
         }
 
         for child in span.children.reversed() {
@@ -504,7 +898,8 @@ private final class ReaderPresentationBuilder {
         for runKind: MarkdownSourceMap.Kind,
         context: ReaderSemanticContext,
         raw: Bool = false,
-        thematicBreak: Bool = false
+        thematicBreak: Bool = false,
+        blockLine: (isFirst: Bool, isLast: Bool)? = nil
     ) -> [NSAttributedString.Key: Any] {
         let blockKind = context.blockKind
         let codeSpan = context.inlineKinds.contains(.codeSpan)
@@ -561,7 +956,9 @@ private final class ReaderPresentationBuilder {
         )
         let paragraphStyle = paragraphStyle(
             for: blockKind,
-            thematicBreak: thematicBreak
+            thematicBreak: thematicBreak,
+            blockLine: blockLine,
+            listDepth: context.listDepth
         )
 
         var attributes: [NSAttributedString.Key: Any] = [
@@ -570,8 +967,22 @@ private final class ReaderPresentationBuilder {
             .paragraphStyle: paragraphStyle
         ]
 
-        if isCode {
-            attributes[.backgroundColor] = theme.codeBackgroundColor
+        if codeSpan {
+            attributes[.readerCodeSpan] = true
+        }
+        if codeBlock || raw {
+            attributes[.readerCodeBlock] = NSValue(
+                range: context.blockRange ?? NSRange(location: 0, length: 0)
+            )
+        }
+        if case let .heading(level) = blockKind {
+            attributes[.readerHeadingLevel] = level
+        }
+        if case .blockQuote = blockKind {
+            attributes[.readerBlockQuote] = true
+        }
+        if thematicBreak {
+            attributes[.readerThematicBreak] = true
         }
         if context.inlineKinds.contains(.strikethrough) {
             attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
@@ -579,6 +990,9 @@ private final class ReaderPresentationBuilder {
         if context.inlineKinds.contains(.link) || context.inlineKinds.contains(.autolink),
            let destination = linkDestination(for: context.linkRange) {
             attributes[.link] = destination
+        }
+        if case .frontMatter = runKind {
+            attributes[.readerFrontMatter] = true
         }
         return attributes
     }
@@ -613,7 +1027,9 @@ private final class ReaderPresentationBuilder {
 
     private func paragraphStyle(
         for blockKind: MarkdownSourceMap.Kind?,
-        thematicBreak: Bool
+        thematicBreak: Bool,
+        blockLine: (isFirst: Bool, isLast: Bool)? = nil,
+        listDepth: Int = 0
     ) -> NSParagraphStyle {
         let style = NSMutableParagraphStyle()
         style.lineHeightMultiple = 1.65
@@ -633,22 +1049,55 @@ private final class ReaderPresentationBuilder {
             style.paragraphSpacingBefore = theme.bodyFontSize * (level == 1 ? 1.5 : 1.1)
             style.paragraphSpacing = theme.bodyFontSize * 0.5
         case .listItem:
+            let depth = max(0, listDepth - 1)
+            let markerIndent = theme.bodyFontSize * 2 * CGFloat(depth)
             style.paragraphSpacingBefore = theme.bodyFontSize * 0.25
             style.paragraphSpacing = theme.bodyFontSize * 0.25
-            style.firstLineHeadIndent = 0
-            style.headIndent = theme.bodyFontSize * 2
+            style.firstLineHeadIndent = markerIndent
+            style.headIndent = markerIndent + theme.bodyFontSize * 2
+            style.tabStops = [NSTextTab(
+                textAlignment: .left,
+                location: markerIndent + theme.bodyFontSize * 2
+            )]
         case .blockQuote:
-            style.paragraphSpacingBefore = theme.bodyFontSize * 0.5
+            style.paragraphSpacingBefore = theme.bodyFontSize * 0.25
             style.paragraphSpacing = theme.bodyFontSize * 0.25
             style.firstLineHeadIndent = theme.bodyFontSize
             style.headIndent = theme.bodyFontSize
         case .codeBlock:
             style.lineHeightMultiple = 1.6
-            style.paragraphSpacingBefore = theme.bodyFontSize * 0.75
-            style.paragraphSpacing = theme.bodyFontSize * 0.75
+            style.paragraphSpacingBefore = blockLine?.isFirst == true
+                ? theme.bodyFontSize * 1.25
+                : 0
+            style.paragraphSpacing = blockLine?.isLast == true
+                ? theme.bodyFontSize * 1.25
+                : 0
+            style.firstLineHeadIndent = theme.bodyFontSize * 1.25
+            style.headIndent = theme.bodyFontSize * 1.25
+            style.tailIndent = -theme.bodyFontSize * 1.25
+        case .table, .htmlBlock:
+            style.lineHeightMultiple = 1.6
+            style.paragraphSpacingBefore = blockLine?.isFirst == true
+                ? theme.bodyFontSize * 1.25
+                : 0
+            style.paragraphSpacing = blockLine?.isLast == true
+                ? theme.bodyFontSize * 1.25
+                : 0
+            style.firstLineHeadIndent = theme.bodyFontSize * 1.25
+            style.headIndent = theme.bodyFontSize * 1.25
+            style.tailIndent = -theme.bodyFontSize * 1.25
         default:
             break
         }
+        return style
+    }
+
+    private func frontMatterParagraphStyle(tabLocation: CGFloat) -> NSParagraphStyle {
+        let style = NSMutableParagraphStyle()
+        style.lineHeightMultiple = 1.3
+        style.paragraphSpacingBefore = 0
+        style.paragraphSpacing = theme.bodyFontSize * 0.2
+        style.tabStops = [NSTextTab(textAlignment: .left, location: tabLocation)]
         return style
     }
 
@@ -679,10 +1128,56 @@ private final class ReaderPresentationBuilder {
         if let url = URL(string: string), url.scheme != nil {
             return url
         }
-        if let baseURL, let url = URL(string: string, relativeTo: baseURL)?.absoluteURL {
-            return url
+        if let baseURL {
+            if baseURL.isFileURL {
+                let directoryURL = baseURL.hasDirectoryPath
+                    ? baseURL
+                    : URL(fileURLWithPath: baseURL.path, isDirectory: true)
+                return directoryURL.appendingPathComponent(string)
+            }
+            if let url = URL(string: string, relativeTo: baseURL)?.absoluteURL {
+                return url
+            }
         }
         return string
+    }
+}
+
+private final class ReaderImageAttachment: NSTextAttachment {
+    init(image: NSImage) {
+        super.init(data: nil, ofType: nil)
+        self.image = image
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+
+    override func attachmentBounds(
+        for textContainer: NSTextContainer?,
+        proposedLineFragment lineFrag: NSRect,
+        glyphPosition: NSPoint,
+        characterIndex charIndex: Int
+    ) -> NSRect {
+        guard let image,
+              image.size.width > 0,
+              image.size.height > 0 else {
+            return super.attachmentBounds(
+                for: textContainer,
+                proposedLineFragment: lineFrag,
+                glyphPosition: glyphPosition,
+                characterIndex: charIndex
+            )
+        }
+
+        let availableWidth = max(1, lineFrag.width)
+        let scale = min(1, availableWidth / image.size.width)
+        return NSRect(
+            x: 0,
+            y: 0,
+            width: image.size.width * scale,
+            height: image.size.height * scale
+        )
     }
 }
 

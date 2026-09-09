@@ -10,7 +10,7 @@ Do not use it as a transcript or a scratchpad.
 - Overall posture: `active`
 - Current focus: land the native reader engine slices on main; the next release ships formatted mode as native text
 - Highest-priority blocker: none; the public `1.1.2` DMG and Sparkle update are verified
-- Next operator decision needed: none; slice 2b (visual polish of formatted mode) and slice 3 (morph) proceed as planned
+- Next operator decision needed: none; slice 3 (morph) is in progress
 - Related decisions: `DEC-20260409-001`, `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260410-001`, `DEC-20260909-001`, `DEC-20260909-002`
 
 ## Current State Summary
@@ -35,10 +35,10 @@ Markfops is a working native macOS Markdown app with XcodeGen project generation
 - Goal: turn the accepted native-reader direction into shipped engine slices
 - Status: `in progress`
 - Why this matters now: the repo has enough accepted research to move from exploration toward execution
-- Current work: slices 1 and 2 landed. `MarkdownSourceMap` derives per-character syntax/content runs and headings from the cmark-gfm parse. Formatted mode is a native read-only text view built from that map with syntax hidden, and the web preview is gone from the reading path. Next: visual polish of formatted mode (capsules, code blocks, quote bars), then the measured-position morph
+- Current work: slices 1, 2, and 2b landed. `MarkdownSourceMap` derives per-character syntax/content runs and headings from the cmark-gfm parse. Formatted mode is a native read-only text view built from that map with syntax hidden, styled with capsules, code panels, quote bars, heading rules, and a frontmatter property list. Next: the measured-position morph between the two stylings (slice 3)
 - Exit criteria: slice 3 lands: switching modes animates the visible region between the two stylings
 - Dependencies: `RSH-20260402-007` through `RSH-20260402-013`, `RSH-20260909-001`
-- Risks: formatted mode currently shows tables, HTML, and frontmatter as raw text, images as alt text, and has no find or heading commands; per-glyph morphing may not scale without a per-word split
+- Risks: formatted mode still shows tables and HTML as raw source, has no code highlighting, and no find or heading commands; per-glyph morphing may not scale without a per-word split
 - Related ids: `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260909-001`, `RSH-20260909-001`, `IBX-20260409-001`, `IBX-20260409-002`, `IBX-20260409-003`, `IBX-20260409-004`
 
 ## Recent Changes To Project Reality

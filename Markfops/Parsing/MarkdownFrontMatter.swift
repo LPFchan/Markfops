@@ -7,9 +7,43 @@ import Foundation
 /// cmark parse the Markdown body without treating YAML as a paragraph and
 /// without shifting source positions.
 struct MarkdownFrontMatter {
+    struct Row {
+        let key: String
+        var valueLines: [String]
+    }
+
     let bodySource: String
     let value: String
     let range: NSRange
+
+    /// Treats unindented `key: value` lines as top-level properties and keeps
+    /// indented or multiline YAML with the property that introduced it.
+    static func rows(from value: String) -> [Row] {
+        var rows: [Row] = []
+
+        for line in value.components(separatedBy: "\n") {
+            let startsAtTopLevel = line.first.map { !$0.isWhitespace } ?? false
+            if startsAtTopLevel,
+               !line.hasPrefix("#"),
+               let separator = line.firstIndex(of: ":") {
+                let key = line[..<separator].trimmingCharacters(in: .whitespaces)
+                if !key.isEmpty {
+                    let valueStart = line.index(after: separator)
+                    let rowValue = line[valueStart...].trimmingCharacters(in: .whitespaces)
+                    rows.append(Row(key: key, valueLines: [rowValue]))
+                    continue
+                }
+            }
+
+            if rows.isEmpty {
+                rows.append(Row(key: "", valueLines: [line]))
+            } else {
+                rows[rows.count - 1].valueLines.append(line)
+            }
+        }
+
+        return rows
+    }
 
     static func extract(from markdown: String) -> MarkdownFrontMatter? {
         let firstLineEnd = markdown.firstIndex(of: "\n") ?? markdown.endIndex

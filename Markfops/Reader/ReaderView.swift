@@ -69,6 +69,11 @@ final class ReaderBridge {
 
 final class ReaderNSTextView: NSTextView {
     var onWindowAttachment: (() -> Void)?
+    var readerTheme = ReaderTheme.default {
+        didSet {
+            updateReaderLayoutMetrics()
+        }
+    }
 
     var isDocumentActive = true {
         didSet {
@@ -90,6 +95,28 @@ final class ReaderNSTextView: NSTextView {
             onWindowAttachment?()
         }
     }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        let widthChanged = abs(newSize.width - frame.width) > 0.5
+        super.setFrameSize(newSize)
+        if widthChanged {
+            updateReaderLayoutMetrics()
+        }
+    }
+
+    /// Centers a column of at most maxContentWidth by widening the side insets.
+    /// Only writes when the value changed: every write invalidates TextKit layout.
+    func updateReaderLayoutMetrics() {
+        let availableWidth = max(0, frame.width)
+        let sideInset = max(
+            max(readerTheme.contentInsets.left, readerTheme.contentInsets.right),
+            (availableWidth - readerTheme.maxContentWidth) / 2
+        )
+        let inset = NSSize(width: sideInset, height: readerTheme.contentInsets.top)
+        if textContainerInset != inset {
+            textContainerInset = inset
+        }
+    }
 }
 
 struct ReaderView: NSViewRepresentable {
@@ -108,14 +135,19 @@ struct ReaderView: NSViewRepresentable {
         scrollView.borderType = .noBorder
 
         let textStorage = NSTextStorage()
-        let layoutManager = NSLayoutManager()
+        let layoutManager = ReaderLayoutManager()
+        layoutManager.theme = theme
         textStorage.addLayoutManager(layoutManager)
         let textContainer = NSTextContainer(
             size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         )
+        // Set once, before the container is attached: changing it on a live
+        // text view inside a scroll view shifts the document frame origin.
+        textContainer.lineFragmentPadding = 0
         layoutManager.addTextContainer(textContainer)
 
         let textView = ReaderNSTextView(frame: .zero, textContainer: textContainer)
+        textView.readerTheme = theme
         textView.isEditable = false
         textView.isSelectable = true
         textView.isRichText = true
@@ -136,10 +168,7 @@ struct ReaderView: NSViewRepresentable {
             width: scrollView.contentSize.width,
             height: CGFloat.greatestFiniteMagnitude
         )
-        textView.textContainerInset = NSSize(
-            width: theme.contentInsets.left,
-            height: theme.contentInsets.top
-        )
+        textView.updateReaderLayoutMetrics()
         textView.isDocumentActive = isActive
 
         context.coordinator.textView = textView
@@ -181,11 +210,10 @@ struct ReaderView: NSViewRepresentable {
         context.coordinator.isActive = isActive
         context.coordinator.theme = theme
         textView.isDocumentActive = isActive
+        textView.readerTheme = theme
+        (textView.layoutManager as? ReaderLayoutManager)?.theme = theme
         textView.backgroundColor = theme.backgroundColor
-        textView.textContainerInset = NSSize(
-            width: theme.contentInsets.left,
-            height: theme.contentInsets.top
-        )
+        textView.updateReaderLayoutMetrics()
 
         if isActive {
             context.coordinator.rebuildIfNeeded(themeKey: themeKey)
@@ -269,10 +297,7 @@ struct ReaderView: NSViewRepresentable {
             if storage.length > 0 {
                 storage.fixAttributes(in: NSRange(location: 0, length: storage.length))
             }
-            textView.textContainerInset = NSSize(
-                width: theme.contentInsets.left,
-                height: theme.contentInsets.top
-            )
+            textView.updateReaderLayoutMetrics()
 
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.isActive else { return }

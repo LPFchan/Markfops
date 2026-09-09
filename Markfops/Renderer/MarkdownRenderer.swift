@@ -9,11 +9,6 @@ enum MarkdownRenderer {
         let frontMatter: String?
     }
 
-    private struct FrontMatterRow {
-        let key: String
-        var valueLines: [String]
-    }
-
     static func renderHTML(from markdown: String) -> String {
         // Register GFM core extensions (tables, strikethrough, tasklists, autolinks)
         cmark_gfm_core_extensions_ensure_registered()
@@ -71,7 +66,7 @@ enum MarkdownRenderer {
     }
 
     private static func renderFrontMatterHTML(_ frontMatter: String) -> String {
-        let rows = frontMatterRows(from: frontMatter)
+        let rows = MarkdownFrontMatter.rows(from: frontMatter)
         let body = rows.map { row in
             let value = escapeHTML(row.valueLines.joined(separator: "\n"))
             return "<tr><th scope=\"row\">\(escapeHTML(row.key))</th><td>\(value)</td></tr>"
@@ -85,35 +80,6 @@ enum MarkdownRenderer {
         </tbody>
         </table>
         """
-    }
-
-    /// Treats unindented `key: value` lines as top-level properties and keeps
-    /// indented or multiline YAML with the property that introduced it.
-    private static func frontMatterRows(from frontMatter: String) -> [FrontMatterRow] {
-        var rows: [FrontMatterRow] = []
-
-        for line in frontMatter.components(separatedBy: "\n") {
-            let startsAtTopLevel = line.first.map { !$0.isWhitespace } ?? false
-            if startsAtTopLevel,
-               !line.hasPrefix("#"),
-               let separator = line.firstIndex(of: ":") {
-                let key = line[..<separator].trimmingCharacters(in: .whitespaces)
-                if !key.isEmpty {
-                    let valueStart = line.index(after: separator)
-                    let value = line[valueStart...].trimmingCharacters(in: .whitespaces)
-                    rows.append(FrontMatterRow(key: key, valueLines: [value]))
-                    continue
-                }
-            }
-
-            if rows.isEmpty {
-                rows.append(FrontMatterRow(key: "", valueLines: [line]))
-            } else {
-                rows[rows.count - 1].valueLines.append(line)
-            }
-        }
-
-        return rows
     }
 
     private static func escapeHTML(_ text: String) -> String {

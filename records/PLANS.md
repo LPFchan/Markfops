@@ -51,7 +51,8 @@ Each slice must end with something visible in the app and its own tests.
   - Related ids: `DEC-20260909-001`, `IBX-20260409-001`, `IBX-20260409-002`
 - Slice 2: native reader as formatted mode (landed)
   - Done: formatted mode shows the editor's text with syntax hidden, proportional prose, heading sizes, code styling, list markers, and quote insets; scroll sync, heading jumps, and table-of-contents following work through a source-to-reader offset map
-  - Remaining gaps, in priority order: inline-code capsules and visual polish; fenced code block background and syntax highlighting; tables; images; find in formatted mode; heading commands in formatted mode; frontmatter as a property table
+  - Visual polish landed: inline-code capsules, code block panels, quote bars, heading rules, nested list indents, frontmatter property list, local images, and a centered 780 pt column
+  - Remaining gaps, in priority order: code syntax highlighting; tables; remote images; find in formatted mode; heading commands in formatted mode
   - Related ids: `DEC-20260909-001`, `DEC-20260909-002`, `RSH-20260402-012`
 - Slice 3: morph between the two stylings
   - Why last: it needs both stylings and the kind map for pairing
