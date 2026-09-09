@@ -701,63 +701,36 @@ final class UndoManagerTests: XCTestCase {
         XCTAssertEqual(document.userContentScrollGeneration, 0)
     }
 
-    func testPreviewScrollRestoreCanWaitForUpdatedContent() {
-        let bridge = PreviewBridge()
-        let coordinator = PreviewView.Coordinator()
-        coordinator.isPageReady = true
-        bridge.coordinator = coordinator
-
-        bridge.setPendingScrollRatio(0.42, applyImmediately: false)
-
-        XCTAssertEqual(coordinator.pendingScrollRatio ?? -1, 0.42, accuracy: 0.001)
-    }
-
-    func testPreviewViewportRestoreKeepsSourceLineWhileContentUpdates() {
-        let bridge = PreviewBridge()
-        let coordinator = PreviewView.Coordinator()
-        coordinator.isPageReady = true
-        bridge.coordinator = coordinator
-
+    func testReaderViewportRestoreBuffersBeforeCoordinatorAttaches() {
+        let bridge = ReaderBridge()
         bridge.setPendingViewportRestore(
             sourceLine: 84,
             ratio: 0.42,
             applyImmediately: false
         )
 
+        let coordinator = ReaderView.Coordinator(
+            document: Document(rawText: ""),
+            theme: .default
+        )
+        bridge.coordinator = coordinator
+
         XCTAssertEqual(coordinator.pendingViewportSourceLine, 84)
         XCTAssertEqual(coordinator.pendingScrollRatio ?? -1, 0.42, accuracy: 0.001)
     }
 
-    func testPreviewViewportAnchorDecodesSourceLineAndFallbackRatio() {
-        let anchor = PreviewViewportAnchor(messageBody: [
-            "sourceLine": NSNumber(value: 84),
-            "ratio": NSNumber(value: 0.42)
-        ])
+    func testReaderHeadingBuffersBeforeCoordinatorAttaches() {
+        let bridge = ReaderBridge()
+        let heading = HeadingNode(level: 2, title: "Target", lineNumber: 84)
+        bridge.scrollToHeading(heading)
 
-        XCTAssertEqual(anchor, PreviewViewportAnchor(
-            messageBody: ["sourceLine": NSNumber(value: 84), "ratio": NSNumber(value: 0.42)]
-        ))
-        XCTAssertEqual(anchor?.sourceLine, 84)
-        XCTAssertEqual(anchor?.ratio ?? -1, 0.42, accuracy: 0.001)
-    }
+        let coordinator = ReaderView.Coordinator(
+            document: Document(rawText: ""),
+            theme: .default
+        )
+        bridge.coordinator = coordinator
 
-    func testPreviewScrollReportCarriesUserGestureSeparatelyFromRatio() {
-        let userReport = PreviewScrollReport(messageBody: [
-            "ratio": 0.42,
-            "userGesture": 7
-        ])
-        let programmaticReport = PreviewScrollReport(messageBody: [
-            "ratio": 0.75,
-            "userGesture": 0
-        ])
-        let legacyReport = PreviewScrollReport(messageBody: 0.25)
-
-        XCTAssertEqual(userReport?.ratio, 0.42)
-        XCTAssertEqual(userReport?.userGesture, 7)
-        XCTAssertEqual(programmaticReport?.ratio, 0.75)
-        XCTAssertEqual(programmaticReport?.userGesture, 0)
-        XCTAssertEqual(legacyReport?.ratio, 0.25)
-        XCTAssertNil(legacyReport?.userGesture)
+        XCTAssertEqual(coordinator.pendingHeading, heading)
     }
 
     func testUserScrollGestureStateStartsOnlyOnceUntilEnded() {

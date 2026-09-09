@@ -37,17 +37,6 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertNotNil(html)
     }
 
-    func testSourceLineAttributesPreserveUnicodeBlocks() {
-        let markdown = "😀\n\n# Заголовок\n\n正文"
-        let html = MarkdownRenderer.renderHTML(from: markdown)
-
-        XCTAssertEqual(html.components(separatedBy: "data-markfops-source-line=\"0\"").count - 1, 1)
-        XCTAssertEqual(html.components(separatedBy: "data-markfops-source-line=\"2\"").count - 1, 1)
-        XCTAssertEqual(html.components(separatedBy: "data-markfops-source-line=\"4\"").count - 1, 1)
-        XCTAssertTrue(html.contains("😀"))
-        XCTAssertTrue(html.contains("正文"))
-    }
-
     func testLeadingYAMLFrontMatterRendersAsPropertyTable() {
         let markdown = """
         ---
@@ -70,15 +59,6 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertTrue(html.contains("<th scope=\"row\">audience</th><td>fleet</td>"))
         XCTAssertTrue(html.contains("Fleet"))
         XCTAssertTrue(html.contains("Body"))
-    }
-
-    func testFrontMatterPreservesBodySourceLines() {
-        let markdown = "---\ntitle: Example\n---\n# Heading"
-        let html = MarkdownRenderer.renderHTML(from: markdown)
-
-        XCTAssertTrue(html.contains("data-markfops-source-line=\"0\""))
-        XCTAssertTrue(html.contains("data-markfops-source-line=\"3\""))
-        XCTAssertTrue(html.contains("id=\"markfops-heading-3-1\""))
     }
 
     func testFrontMatterMayUseYAMLEndMarker() {

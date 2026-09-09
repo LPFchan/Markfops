@@ -11,7 +11,7 @@ enum TabCloseScope {
 /// Per-window record of document surfaces that have been created lazily.
 ///
 /// The store owns this object so a temporary SwiftUI subtree rebuild cannot forget which tabs
-/// have already paid the cost of creating their AppKit and WebKit surfaces.
+/// have already paid the cost of creating their native surfaces.
 @Observable
 final class DocumentSurfaceRegistry {
     private(set) var mountedDocumentIDs: Set<UUID> = []
@@ -1371,8 +1371,8 @@ struct EditorBridgeFocusKey: FocusedValueKey {
     typealias Value = EditorBridge
 }
 
-struct PreviewBridgeFocusKey: FocusedValueKey {
-    typealias Value = PreviewBridge
+struct ReaderBridgeFocusKey: FocusedValueKey {
+    typealias Value = ReaderBridge
 }
 
 struct FindControllerFocusKey: FocusedValueKey {
@@ -1395,9 +1395,9 @@ extension FocusedValues {
         set { self[EditorBridgeFocusKey.self] = newValue }
     }
 
-    var previewBridge: PreviewBridge? {
-        get { self[PreviewBridgeFocusKey.self] }
-        set { self[PreviewBridgeFocusKey.self] = newValue }
+    var readerBridge: ReaderBridge? {
+        get { self[ReaderBridgeFocusKey.self] }
+        set { self[ReaderBridgeFocusKey.self] = newValue }
     }
 
     var findController: FindController? {

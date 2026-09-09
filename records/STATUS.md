@@ -8,10 +8,10 @@ Do not use it as a transcript or a scratchpad.
 
 - Last updated: 2026-09-09
 - Overall posture: `active`
-- Current focus: keep the published `1.1.2` baseline stable while the next release accumulates
+- Current focus: land the native reader engine slices on main; the next release ships formatted mode as native text
 - Highest-priority blocker: none; the public `1.1.2` DMG and Sparkle update are verified
-- Next operator decision needed: confirm or adjust slice 1 in `PLANS.md` (per-character kind map from the cmark parse) as the first engine slice
-- Related decisions: `DEC-20260409-001`, `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260410-001`, `DEC-20260909-001`
+- Next operator decision needed: none; slice 2b (visual polish of formatted mode) and slice 3 (morph) proceed as planned
+- Related decisions: `DEC-20260409-001`, `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260410-001`, `DEC-20260909-001`, `DEC-20260909-002`
 
 ## Current State Summary
 
@@ -35,13 +35,18 @@ Markfops is a working native macOS Markdown app with XcodeGen project generation
 - Goal: turn the accepted native-reader direction into shipped engine slices
 - Status: `in progress`
 - Why this matters now: the repo has enough accepted research to move from exploration toward execution
-- Current work: slice 1 landed: `MarkdownSourceMap` derives per-character syntax/content runs and headings from the cmark-gfm parse, and the old heading line scanner is gone; the regex syntax highlighter still runs independently and will consume the map later. Slice 2 (native reader mode) is next
-- Exit criteria: slice 2 lands with a native reader mode reachable from the mode switch
+- Current work: slices 1 and 2 landed. `MarkdownSourceMap` derives per-character syntax/content runs and headings from the cmark-gfm parse. Formatted mode is a native read-only text view built from that map with syntax hidden, and the web preview is gone from the reading path. Next: visual polish of formatted mode (capsules, code blocks, quote bars), then the measured-position morph
+- Exit criteria: slice 3 lands: switching modes animates the visible region between the two stylings
 - Dependencies: `RSH-20260402-007` through `RSH-20260402-013`, `RSH-20260909-001`
-- Risks: native rendering of tables, images, and code highlighting is real work that gates removing the web reader; per-glyph morphing may not scale without a per-word split
+- Risks: formatted mode currently shows tables, HTML, and frontmatter as raw text, images as alt text, and has no find or heading commands; per-glyph morphing may not scale without a per-word split
 - Related ids: `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260909-001`, `RSH-20260909-001`, `IBX-20260409-001`, `IBX-20260409-002`, `IBX-20260409-003`, `IBX-20260409-004`
 
 ## Recent Changes To Project Reality
+
+- Date: 2026-09-09
+  - Change: formatted mode became a native text view built from the source map; the WebKit preview, its bridge, and the HTML source-line and heading-id decoration were removed, and HTML now serves PDF export only
+  - Why it matters: editor and reader share one text engine, so scroll sync is a source-offset lookup and the morph can pair characters directly; tables, images, code highlighting, find, and heading commands in formatted mode are open gaps
+  - Related ids: `DEC-20260909-002`
 
 - Date: 2026-09-09
   - Change: the operator decided the reader view will become native text, and the engine plan was reshaped into three visible slices

@@ -14,12 +14,12 @@ Do not put raw brainstorms or untriaged intake here.
 
 ### Native Reader View
 
-- Outcome: the reader view becomes a second styling of the editor's own native text, with syntax hidden, proportional prose, styled headings, and inline-code capsules, while the web preview stays available until the native reader covers what users rely on.
-- Why this is accepted: one text engine removes the two-engine coordination problems that stalled the April research; see `DEC-20260909-001`.
+- Outcome: the reader view is a second styling of the editor's own native text, with syntax hidden, proportional prose, styled headings, and inline-code capsules. The web preview is gone from the reading path; HTML serves PDF export only.
+- Why this is accepted: one text engine removes the two-engine coordination problems that stalled the April research; see `DEC-20260909-001` and `DEC-20260909-002`.
 - Expected value: scroll synchronization becomes trivial, cross-view motion becomes possible, and the native WYSIWYG engine gets its rendering layer without a duplicate web pipeline.
-- Preconditions: a per-character kind map derived from the existing cmark-gfm parse.
-- Earliest likely start: now
-- Related ids: `DEC-20260909-001`, `RSH-20260909-001`
+- Preconditions: none; slice 1 (`MarkdownSourceMap`) and slice 2 (reader mode) have landed.
+- Earliest likely start: in progress
+- Related ids: `DEC-20260909-001`, `DEC-20260909-002`, `RSH-20260909-001`
 
 ### Measured-Position Text Morphing
 
@@ -49,10 +49,10 @@ Each slice must end with something visible in the app and its own tests.
   - Why now: cmark already exposes start and end positions for every node, including inline nodes, so this is the cheapest possible source of "which characters are syntax and which construct owns them"
   - Done when: the map feeds heading extraction (replacing the separate line scanner) and syntax highlighting, with tests covering headings, inline code, emphasis, links, and multi-byte text
   - Related ids: `DEC-20260909-001`, `IBX-20260409-001`, `IBX-20260409-002`
-- Slice 2: native reader styling as a toggle
-  - Why next: it is the reader view itself, without animation, and it exposes every gap against the web preview
-  - Done when: the editor's text storage can be shown with syntax hidden, proportional prose, heading sizes, and code capsules, the toggle is reachable from the existing mode switch, and a written gap list against the web preview exists
-  - Related ids: `DEC-20260909-001`, `RSH-20260402-012`
+- Slice 2: native reader as formatted mode (landed)
+  - Done: formatted mode shows the editor's text with syntax hidden, proportional prose, heading sizes, code styling, list markers, and quote insets; scroll sync, heading jumps, and table-of-contents following work through a source-to-reader offset map
+  - Remaining gaps, in priority order: inline-code capsules and visual polish; fenced code block background and syntax highlighting; tables; images; find in formatted mode; heading commands in formatted mode; frontmatter as a property table
+  - Related ids: `DEC-20260909-001`, `DEC-20260909-002`, `RSH-20260402-012`
 - Slice 3: morph between the two stylings
   - Why last: it needs both stylings and the kind map for pairing
   - Done when: a mode switch animates the visible region with no dropped frames on a document of a few thousand visible characters, using Core Animation, and the per-glyph versus per-word split is measured and chosen
@@ -60,14 +60,10 @@ Each slice must end with something visible in the app and its own tests.
 
 ### Mid Term
 
-- Initiative: native rendering of tables, images, code highlighting, and frontmatter property tables
-  - Why later: these decide when the web reader can be removed from the reading path
-  - Dependencies: slice 2 gap list
-  - Related ids: `DEC-20260909-001`
-- Initiative: decide the web view's remaining role
-  - Why later: export and printing may keep using HTML; the reading path should not
-  - Revisit trigger: the mid-term native rendering work closes the gap list
-  - Related ids: `DEC-20260909-001`
+- Initiative: close the formatted-mode gap list: tables, images, code highlighting, find, heading commands, frontmatter
+  - Why later: each is independent of the morph work and can land as its own slice
+  - Dependencies: slice 2
+  - Related ids: `DEC-20260909-002`
 
 ### Deferred But Accepted
 

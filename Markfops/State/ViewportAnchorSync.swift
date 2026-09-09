@@ -10,18 +10,27 @@ import Foundation
 /// user never sees content drift when the surrounding chrome changes shape.
 final class ViewportAnchorSync {
 
-    /// The editor/preview surfaces for one document. Bridges are class references
+    enum Surface {
+        case editor
+        case reader
+    }
+
+    /// The editor and reader surfaces for one document. Bridges are class references
     /// (weakly bound to live coordinators), so the pair can be created before the
     /// views exist and safely passed in from an ancestor like ContentView.
     struct Context {
         let document: Document
         let editorBridge: EditorBridge
-        let previewBridge: PreviewBridge
+        let readerBridge: ReaderBridge
 
-        init(document: Document, editorBridge: EditorBridge, previewBridge: PreviewBridge) {
+        init(
+            document: Document,
+            editorBridge: EditorBridge,
+            readerBridge: ReaderBridge
+        ) {
             self.document = document
             self.editorBridge = editorBridge
-            self.previewBridge = previewBridge
+            self.readerBridge = readerBridge
         }
 
         /// Lazily creates (or returns) the shared bridges held by the document, so
@@ -31,7 +40,7 @@ final class ViewportAnchorSync {
             Context(
                 document: document,
                 editorBridge: document.sharedEditorBridge,
-                previewBridge: document.sharedPreviewBridge
+                readerBridge: document.sharedReaderBridge
             )
         }
     }
@@ -46,57 +55,47 @@ final class ViewportAnchorSync {
     // MARK: - Capture
 
     /// Reads the current center-of-viewport anchor from whichever surface is live.
-    /// The preview read is asynchronous (JS eval), so capture always goes through a
-    /// completion handler. In edit mode the editor is read synchronously and the
-    /// completion fires on the next main runloop turn for a uniform contract.
-    static func capture(context: Context, completion: @escaping (Anchor) -> Void) {
+    static func capture(context: Context, surface: Surface? = nil) -> Anchor {
         let document = context.document
-        let documentID = document.id
-        if document.mode == .preview {
-            context.previewBridge.currentViewportAnchor { anchor in
-                DispatchQueue.main.async {
-                    guard document.id == documentID else { return }
-                    completion(Anchor(
-                        sourceLine: anchor?.sourceLine,
-                        ratio: anchor?.ratio ?? document.scrollRatio
-                    ))
-                }
-            }
-        } else {
-            let anchor = Anchor(
+        let liveSurface = surface ?? {
+            document.mode == .preview ? .reader : .editor
+        }()
+        switch liveSurface {
+        case .editor:
+            return Anchor(
                 sourceLine: context.editorBridge.currentSourceLineAtViewportCenter(),
                 ratio: context.editorBridge.currentScrollRatio() ?? document.scrollRatio
             )
-            DispatchQueue.main.async {
-                guard document.id == documentID else { return }
-                completion(anchor)
-            }
+        case .reader:
+            return Anchor(
+                sourceLine: context.readerBridge.currentSourceLineAtViewportCenter(),
+                ratio: context.readerBridge.currentScrollRatio() ?? document.scrollRatio
+            )
         }
     }
 
     // MARK: - Restore
 
     /// Re-centers the live surface on a previously captured anchor. For the editor the
-    /// caller decides when layout has settled; for the preview the restore is queued
-    /// and the bridge applies it once any in-flight body update lands.
+    /// caller decides when layout has settled; the reader queues the restore until its
+    /// presentation is ready.
     static func restore(
         _ anchor: Anchor,
         context: Context,
         editorDelay: TimeInterval = 0.05
     ) {
         let document = context.document
-        let documentID = document.id
         document.scrollRatio = anchor.ratio
 
-        if document.mode == .preview {
-            context.previewBridge.setPendingViewportRestore(
+        if document.mode != .edit {
+            context.readerBridge.setPendingViewportRestore(
                 sourceLine: anchor.sourceLine,
                 ratio: anchor.ratio,
                 applyImmediately: true
             )
         } else {
             DispatchQueue.main.asyncAfter(deadline: .now() + editorDelay) {
-                guard document.id == documentID, document.mode == .edit else { return }
+                guard document.mode == .edit else { return }
                 if anchor.sourceLine
                     .map({ context.editorBridge.scrollToSourceLineCentered($0) }) != true {
                     context.editorBridge.scrollToRatio(anchor.ratio)
@@ -117,9 +116,7 @@ final class ViewportAnchorSync {
         context: Context
     ) -> LayoutTransitionSession {
         let session = LayoutTransitionSession()
-        capture(context: context) { anchor in
-            session.arm(anchor: anchor, context: context)
-        }
+        session.arm(anchor: capture(context: context), context: context)
         return session
     }
 

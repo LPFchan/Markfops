@@ -292,7 +292,7 @@ private struct BooleanStateInstrumentation: ViewModifier {
 }
 
 /// Stable detail-column root. Active-document changes update its contents without replacing the
-/// parent that owns the retained AppKit and WebKit surfaces.
+/// parent that owns the retained native surfaces.
 private struct DocumentDetailView: View {
     @Environment(DocumentStore.self) private var store
     let configuration: EditorConfiguration
@@ -339,7 +339,7 @@ private struct DocumentDetailView: View {
 
 /// Keeps each visited document's native editor and preview mounted while another tab is selected.
 /// Tabs that were opened in a batch stay cheap until first selected. After that first selection,
-/// changing tabs only changes visibility and does not rebuild AppKit or WebKit.
+/// changing tabs only changes visibility and does not rebuild the native surfaces.
 struct DocumentSurfaceStack: View {
     let documents: [Document]
     let activeID: UUID?

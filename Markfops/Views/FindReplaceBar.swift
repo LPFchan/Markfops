@@ -14,15 +14,17 @@ final class FindController {
     var activeMode: EditMode = .edit
 
     @ObservationIgnored weak var editorBridge: EditorBridge?
-    @ObservationIgnored weak var previewBridge: PreviewBridge?
 
-    func attach(editorBridge: EditorBridge, previewBridge: PreviewBridge, mode: EditMode) {
+    func attach(
+        editorBridge: EditorBridge,
+        mode: EditMode
+    ) {
         self.editorBridge = editorBridge
-        self.previewBridge = previewBridge
         activeMode = mode
     }
 
     func showFind() {
+        guard activeMode == .edit else { return }
         withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
             isVisible = true
             showsReplace = false
@@ -32,6 +34,7 @@ final class FindController {
     }
 
     func showReplace() {
+        guard activeMode == .edit else { return }
         withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
             isVisible = true
             showsReplace = activeMode == .edit
@@ -85,19 +88,15 @@ final class FindController {
     }
 
     private func find(forward: Bool) {
+        guard activeMode == .edit else {
+            lastMatchFound = false
+            return
+        }
         guard !searchText.isEmpty else {
             lastMatchFound = true
             return
         }
-
-        switch activeMode {
-        case .edit:
-            lastMatchFound = editorBridge?.find(searchText, forward: forward) ?? false
-        case .preview:
-            previewBridge?.find(searchText, forward: forward) { [weak self] found in
-                self?.lastMatchFound = found
-            }
-        }
+        lastMatchFound = editorBridge?.find(searchText, forward: forward) ?? false
     }
 }
 

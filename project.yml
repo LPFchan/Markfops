@@ -62,12 +62,10 @@ targets:
     platform: macOS
     # XcodeGen has no `resources:` target key — everything bundled must come through
     # `sources:`. Excluding Assets.xcassets here previously meant it was never compiled,
-    # so the app shipped with no icon. Preview CSS is inlined in HTMLTemplate.swift.
+    # so the app shipped with no icon. PDF export CSS is inlined in HTMLTemplate.swift.
     sources:
       - path: Markfops
         excludes:
-          - Resources/preview-light.css
-          - Resources/preview-dark.css
           - Resources/Info.plist
           - Resources/Markfops.entitlements
     settings:

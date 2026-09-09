@@ -154,21 +154,6 @@ enum HTMLTemplate {
     tbody tr:nth-child(even) { background: var(--code-bg); }
     hr { border: none; border-top: 2px solid var(--hr); margin: 2em 0; }
     img { max-width: 100%; border-radius: 6px; display: block; margin: 1em auto; }
-    .markfops-morphing-block {
-      transition:
-        font-size 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        font-weight 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        font-variation-settings 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        line-height 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        letter-spacing 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        margin-top 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        margin-bottom 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        padding-bottom 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        border-bottom-width 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        border-bottom-color 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        color 240ms cubic-bezier(0.2, 0.82, 0.2, 1);
-      will-change: font-size, font-weight, font-variation-settings;
-    }
     """
 
     private static let darkCSS = """
@@ -286,20 +271,5 @@ enum HTMLTemplate {
     tbody tr:nth-child(even) { background: rgba(255,255,255,0.03); }
     hr { border: none; border-top: 2px solid var(--hr); margin: 2em 0; }
     img { max-width: 100%; border-radius: 6px; display: block; margin: 1em auto; }
-    .markfops-morphing-block {
-      transition:
-        font-size 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        font-weight 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        font-variation-settings 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        line-height 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        letter-spacing 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        margin-top 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        margin-bottom 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        padding-bottom 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        border-bottom-width 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        border-bottom-color 240ms cubic-bezier(0.2, 0.82, 0.2, 1),
-        color 240ms cubic-bezier(0.2, 0.82, 0.2, 1);
-      will-change: font-size, font-weight, font-variation-settings;
-    }
     """
 }

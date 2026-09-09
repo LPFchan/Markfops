@@ -9,14 +9,13 @@ struct MarkfopsCommands: Commands {
     @FocusedValue(\.documentStore) private var store
     @FocusedValue(\.sidebarVisibility) private var sidebarVisibility
     @FocusedValue(\.findController) private var findController
-    @FocusedValue(\.previewBridge) private var previewBridge
 
     private var activeMode: EditMode? {
         store?.activeDocument?.mode
     }
 
     private var canFind: Bool {
-        activeMode == .edit || activeMode == .preview
+        activeMode == .edit
     }
 
     private var canReplace: Bool {
@@ -288,26 +287,17 @@ struct MarkfopsCommands: Commands {
     }
 
     private func applyHeading(level: Int) {
-        switch activeMode {
-        case .edit:
-            let selector: Selector
-            switch level {
-            case 1:
-                selector = #selector(NSTextView.applyHeading1)
-            case 2:
-                selector = #selector(NSTextView.applyHeading2)
-            default:
-                selector = #selector(NSTextView.applyHeading3)
-            }
-            NSApp.sendAction(selector, to: nil, from: nil)
-
-        case .preview:
-            guard let document = store?.activeDocument else { return }
-            previewBridge?.promoteSelectionToHeading(level, in: document)
-
-        case .none:
-            break
+        guard activeMode == .edit else { return }
+        let selector: Selector
+        switch level {
+        case 1:
+            selector = #selector(NSTextView.applyHeading1)
+        case 2:
+            selector = #selector(NSTextView.applyHeading2)
+        default:
+            selector = #selector(NSTextView.applyHeading3)
         }
+        NSApp.sendAction(selector, to: nil, from: nil)
     }
 
     private func openFile() {

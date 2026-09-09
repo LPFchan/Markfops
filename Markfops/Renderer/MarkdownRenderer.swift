@@ -4,7 +4,7 @@ import libcmark_gfm
 /// Converts raw Markdown text to an HTML fragment using cmark-gfm.
 enum MarkdownRenderer {
 
-    private struct PreviewSource {
+    private struct RenderSource {
         let markdown: String
         let frontMatter: String?
     }
@@ -14,17 +14,13 @@ enum MarkdownRenderer {
         var valueLines: [String]
     }
 
-    private static let sourceLineAttributeRegex = try? NSRegularExpression(
-        pattern: #"data-markfops-source-line=\"(\d+)\""#
-    )
-
     static func renderHTML(from markdown: String) -> String {
         // Register GFM core extensions (tables, strikethrough, tasklists, autolinks)
         cmark_gfm_core_extensions_ensure_registered()
 
-        let previewSource = previewSource(from: markdown)
+        let renderSource = renderSource(from: markdown)
 
-        let options: Int32 = CMARK_OPT_UNSAFE | CMARK_OPT_SMART | CMARK_OPT_SOURCEPOS
+        let options: Int32 = CMARK_OPT_UNSAFE | CMARK_OPT_SMART
 
         guard let parser = cmark_parser_new(options) else {
             return "<p><em>Failed to initialise markdown parser.</em></p>"
@@ -40,7 +36,7 @@ enum MarkdownRenderer {
         }
 
         // Feed the source text
-        if let cStr = previewSource.markdown.cString(using: .utf8) {
+        if let cStr = renderSource.markdown.cString(using: .utf8) {
             cmark_parser_feed(parser, cStr, cStr.count - 1)
         }
 
@@ -56,23 +52,22 @@ enum MarkdownRenderer {
         }
         let html = String(cString: htmlPtr)
         free(htmlPtr)
-        let htmlWithSourceLines = injectSourceLineAttributes(into: html)
         let htmlWithFrontMatter: String
-        if let frontMatter = previewSource.frontMatter {
-            htmlWithFrontMatter = renderFrontMatterHTML(frontMatter) + htmlWithSourceLines
+        if let frontMatter = renderSource.frontMatter {
+            htmlWithFrontMatter = renderFrontMatterHTML(frontMatter) + html
         } else {
-            htmlWithFrontMatter = htmlWithSourceLines
+            htmlWithFrontMatter = html
         }
-        return injectHeadingIDs(into: htmlWithFrontMatter, using: markdown)
+        return htmlWithFrontMatter
     }
 
     /// Separates a complete leading YAML frontmatter block from the Markdown body.
-    /// Its source lines stay blank in the parser input so body anchors still match the editor.
-    private static func previewSource(from markdown: String) -> PreviewSource {
+    /// Its source lines stay blank in the parser input so the body is not parsed as YAML.
+    private static func renderSource(from markdown: String) -> RenderSource {
         guard let frontMatter = MarkdownFrontMatter.extract(from: markdown) else {
-            return PreviewSource(markdown: markdown, frontMatter: nil)
+            return RenderSource(markdown: markdown, frontMatter: nil)
         }
-        return PreviewSource(markdown: frontMatter.bodySource, frontMatter: frontMatter.value)
+        return RenderSource(markdown: frontMatter.bodySource, frontMatter: frontMatter.value)
     }
 
     private static func renderFrontMatterHTML(_ frontMatter: String) -> String {
@@ -83,7 +78,7 @@ enum MarkdownRenderer {
         }.joined(separator: "\n")
 
         return """
-        <table class="markfops-frontmatter" data-markfops-source-line="0" aria-label="YAML frontmatter">
+        <table class="markfops-frontmatter" aria-label="YAML frontmatter">
         <thead><tr><th>Property</th><th>Value</th></tr></thead>
         <tbody>
         \(body)
@@ -128,117 +123,4 @@ enum MarkdownRenderer {
             .replacingOccurrences(of: ">", with: "&gt;")
     }
 
-    private static func injectSourceLineAttributes(into html: String) -> String {
-        guard let regex = try? NSRegularExpression(
-            pattern: #"<([a-z][a-z0-9]*)([^>]*\sdata-sourcepos=\"(\d+):\d+-\d+:\d+\"[^>]*)>"#,
-            options: [.caseInsensitive]
-        ) else {
-            return html
-        }
-
-        let matches = regex.matches(in: html, range: NSRange(html.startIndex..., in: html))
-        guard !matches.isEmpty else { return html }
-
-        // Build the result once from the original UTF-16 ranges. Replacing each match in
-        // reverse repeatedly walks and copies the growing Swift String for long documents.
-        let source = html as NSString
-        var pieces: [String] = []
-        pieces.reserveCapacity(matches.count * 2 + 1)
-        var cursor = 0
-
-        for match in matches {
-            let fullRange = match.range(at: 0)
-            guard fullRange.location >= cursor,
-                  NSMaxRange(fullRange) <= source.length else {
-                continue
-            }
-
-            pieces.append(source.substring(with: NSRange(
-                location: cursor,
-                length: fullRange.location - cursor
-            )))
-
-            let tag = source.substring(with: fullRange)
-            if tag.contains("data-markfops-source-line=") {
-                pieces.append(tag)
-            } else {
-                guard let sourceLine = Int(source.substring(with: match.range(at: 3))) else {
-                    pieces.append(tag)
-                    cursor = NSMaxRange(fullRange)
-                    continue
-                }
-                pieces.append(String(tag.dropLast()))
-                pieces.append(" data-markfops-source-line=\"\(max(0, sourceLine - 1))\">")
-            }
-            cursor = NSMaxRange(fullRange)
-        }
-
-        pieces.append(source.substring(from: cursor))
-        return pieces.joined()
-    }
-
-    private static func injectHeadingIDs(into html: String, using markdown: String) -> String {
-        let headings = MarkdownSourceMap.parse(markdown).headings
-        guard !headings.isEmpty,
-              let regex = try? NSRegularExpression(
-                  pattern: #"<h([1-6])([^>]*)>(.*?)</h\1>"#,
-                  options: [.dotMatchesLineSeparators]
-              ) else {
-            return html
-        }
-
-        let matches = regex.matches(in: html, range: NSRange(html.startIndex..., in: html))
-        guard !matches.isEmpty else { return html }
-
-        var replacements: [(NSRange, String)] = []
-
-        for match in matches {
-            guard match.numberOfRanges == 4,
-                  let levelRange = Range(match.range(at: 1), in: html),
-                  let attributesRange = Range(match.range(at: 2), in: html),
-                  let contentRange = Range(match.range(at: 3), in: html),
-                  let level = Int(html[levelRange]) else {
-                continue
-            }
-
-            let attributes = String(html[attributesRange])
-            guard let sourceLine = sourceLine(from: attributes),
-                  let heading = headings.first(where: { $0.lineNumber == sourceLine && $0.level == level }) else {
-                continue
-            }
-
-            let innerHTML = html[contentRange]
-            let replacement = "<h\(level)\(sanitizedHeadingAttributes(from: attributes)) id=\"\(heading.domID)\">\(innerHTML)</h\(level)>"
-            replacements.append((match.range, replacement))
-        }
-
-        var result = html
-        for (range, replacement) in replacements.reversed() {
-            guard let swiftRange = Range(range, in: result) else { continue }
-            result.replaceSubrange(swiftRange, with: replacement)
-        }
-        return result
-    }
-
-    private static func sourceLine(from attributes: String) -> Int? {
-        guard let regex = sourceLineAttributeRegex,
-        let match = regex.firstMatch(in: attributes, range: NSRange(attributes.startIndex..., in: attributes)),
-        let range = Range(match.range(at: 1), in: attributes) else {
-            return nil
-        }
-        return Int(attributes[range])
-    }
-
-    private static func sanitizedHeadingAttributes(from attributes: String) -> String {
-        var sanitized = attributes.replacingOccurrences(
-            of: #"\sid=\"[^\"]*\""#,
-            with: "",
-            options: .regularExpression
-        )
-        if sanitized.isEmpty || sanitized.hasPrefix(" ") {
-            return sanitized
-        }
-        sanitized.insert(" ", at: sanitized.startIndex)
-        return sanitized
-    }
 }
