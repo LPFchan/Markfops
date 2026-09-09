@@ -78,6 +78,10 @@ Each slice must end with something visible in the app and its own tests.
 - Slice 4b: the cursor crosses the morph
   - Done when: a mode switch captures the source cursor from the outgoing surface, the incoming surface lands with its cursor at the same source position and keyboard focus, the reader is built with the arriving cursor's reveal before the morph plan so revealed syntax pairs with editor syntax, and Command-B and Command-I wrap the selection in formatted mode
   - Related ids: `DEC-20260910-001`, `RSH-20260909-001`
+- Slice 4c: the syntax reveal animates
+  - Done when: syntax appearing or disappearing around the caret fades in or out while the neighbouring glyphs on the affected lines slide to their new positions, using the same measured-position layers as the mode morph but scoped to the changed paragraph; a keystroke or caret move during the animation jumps it to its end state; Reduce Motion keeps the instant swap
+  - Why: the operator asked for it after the first session with slice 4a; a popping reveal breaks the continuity the morph established
+  - Related ids: `DEC-20260910-001`, `RSH-20260909-001`
 - Slice 5: structural edits in formatted mode
   - Done when: Enter continues lists, deleting a bullet removes its marker, heading commands work, and images, frontmatter, and thematic breaks either route or stay refused with a visible reason
   - Related ids: `DEC-20260910-001`
