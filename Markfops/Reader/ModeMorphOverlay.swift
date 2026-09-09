@@ -1,5 +1,6 @@
 import AppKit
 import CoreText
+import os
 import QuartzCore
 import SwiftUI
 
@@ -98,6 +99,15 @@ final class ModeMorphOverlay: NSView {
         let toLayer: MorphGlyphLayer?
     }
 
+    private static let log = Logger(subsystem: "plus.lost.Markfops", category: "morph")
+    /// Human-readable record of what the last request did. Read by tests.
+    private(set) var lastOutcome = "idle"
+
+    private func record(_ outcome: String) {
+        lastOutcome = outcome
+        Self.log.info("morph: \(outcome, privacy: .public)")
+    }
+
     private var activeRequestID: UUID?
     private var activeRequest: ModeMorphRequest?
     private var activeRenderables: [ActiveRenderable] = []
@@ -151,6 +161,7 @@ final class ModeMorphOverlay: NSView {
     private func start(_ request: ModeMorphRequest) {
         guard activeRequestID != request.id else { return }
         guard ModeMorphPolicy.canMorph(sourceLength: document.textStorage.length) else {
+            record("skipped: policy (length \(document.textStorage.length), reduceMotion \(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion))")
             finishInstantly(request)
             return
         }
@@ -163,6 +174,7 @@ final class ModeMorphOverlay: NSView {
               let readerTextView = readerBridge.morphTextView(),
               let readerScrollView = readerBridge.morphScrollView(),
               let presentation = readerBridge.morphPresentation() else {
+            record("skipped: missing surfaces editorTV=\(editorBridge.morphTextView() != nil) editorSV=\(editorBridge.morphScrollView() != nil) readerTV=\(readerBridge.morphTextView() != nil) readerSV=\(readerBridge.morphScrollView() != nil) presentation=\(readerBridge.morphPresentation() != nil)")
             finishInstantly(request)
             return
         }
@@ -189,9 +201,11 @@ final class ModeMorphOverlay: NSView {
                 overlayView: self
             )
             guard !plan.renderables.isEmpty else {
+                record("skipped: empty plan")
                 finishInstantly(request)
                 return
             }
+            record("animating: \(plan.renderables.count) renderables, overlay frame \(NSStringFromRect(frame)), window \(window != nil)")
             activeRequestID = request.id
             activeRequest = request
             prepareSurfaceLayers(
@@ -204,6 +218,7 @@ final class ModeMorphOverlay: NSView {
             buildLayers(for: plan)
             animate(request: request, readerTextView: readerTextView)
         } catch {
+            record("skipped: planner threw \(error) editorVisible=\(NSStringFromRect(editorScrollView.contentView.documentVisibleRect)) readerVisible=\(NSStringFromRect(readerScrollView.contentView.documentVisibleRect)) readerFrame=\(NSStringFromRect(readerTextView.frame)) readerLen=\(readerTextView.textStorage?.length ?? -1)")
             finishInstantly(request)
         }
     }
@@ -367,50 +382,65 @@ final class ModeMorphOverlay: NSView {
         active.toLayer?.opacity = 1
     }
 
+    /// Explicit animations only. These layers were added to the tree in this same
+    /// run-loop pass, so Core Animation would give them no implicit animation:
+    /// every glyph would appear at its destination and the completion block would
+    /// fire at once. Explicit from/to values animate regardless of layer age.
     private func animate(
         request: ModeMorphRequest,
         readerTextView: ReaderNSTextView
     ) {
         let targetReaderOpacity: Float = request.to == .preview ? 1 : 0
+        let moveTiming = CAMediaTimingFunction(controlPoints: 0.2, 0.82, 0.2, 1)
+        let fadeTiming = CAMediaTimingFunction(name: .easeOut)
+        let fadeDuration = animationDuration * swapWindow
+
+        func move(_ layer: CALayer?, to end: CGPoint) {
+            guard let layer else { return }
+            let animation = CABasicAnimation(keyPath: "position")
+            animation.fromValue = NSValue(point: layer.position)
+            animation.toValue = NSValue(point: end)
+            animation.duration = animationDuration
+            animation.timingFunction = moveTiming
+            layer.position = end
+            layer.add(animation, forKey: "morphPosition")
+        }
+
+        func fade(_ layer: CALayer?, to end: Float) {
+            guard let layer, layer.opacity != end else { return }
+            let animation = CABasicAnimation(keyPath: "opacity")
+            animation.fromValue = layer.opacity
+            animation.toValue = end
+            animation.duration = fadeDuration
+            animation.timingFunction = fadeTiming
+            layer.opacity = end
+            layer.add(animation, forKey: "morphOpacity")
+        }
 
         CATransaction.begin()
-        CATransaction.setDisableActions(false)
-        CATransaction.setAnimationDuration(animationDuration)
-        CATransaction.setAnimationTimingFunction(
-            CAMediaTimingFunction(controlPoints: 0.2, 0.82, 0.2, 1)
-        )
+        CATransaction.setDisableActions(true)
         CATransaction.setCompletionBlock { [weak self] in
             self?.finish(request)
         }
         for active in activeRenderables {
-            guard let from = active.renderable.fromBox,
-                  let to = active.renderable.toBox else {
-                continue
+            if let from = active.renderable.fromBox,
+               let to = active.renderable.toBox {
+                move(active.fromLayer, to: pairPosition(
+                    x: to.x,
+                    baseline: to.baseline,
+                    layerFont: from.font
+                ))
+                move(active.toLayer, to: pairPosition(
+                    x: to.x,
+                    baseline: to.baseline,
+                    layerFont: to.font
+                ))
             }
-            active.fromLayer?.position = pairPosition(
-                x: to.x,
-                baseline: to.baseline,
-                layerFont: from.font
-            )
-            active.toLayer?.position = pairPosition(
-                x: to.x,
-                baseline: to.baseline,
-                layerFont: to.font
-            )
+            fade(active.fromLayer, to: 0)
+            fade(active.toLayer, to: 1)
         }
+        fade(readerTextView.layer, to: targetReaderOpacity)
         CATransaction.commit()
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(false)
-        CATransaction.setAnimationDuration(animationDuration * swapWindow)
-        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
-        for active in activeRenderables {
-            active.fromLayer?.opacity = 0
-            active.toLayer?.opacity = 1
-        }
-        readerTextView.layer?.opacity = targetReaderOpacity
-        CATransaction.commit()
-
     }
 
     private func finish(_ request: ModeMorphRequest) {

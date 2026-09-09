@@ -38,10 +38,15 @@ Markfops is a working native macOS Markdown app with XcodeGen project generation
 - Current work: all planned slices landed. `MarkdownSourceMap` derives per-character syntax/content runs from the cmark-gfm parse; formatted mode is a native read-only text view built from it; switching modes morphs every visible glyph between the two stylings through Core Animation. Next: tune the morph by eye, then the formatted-mode gap list
 - Exit criteria: the morph feels right on real documents and a release ships it
 - Dependencies: `RSH-20260402-007` through `RSH-20260402-013`, `RSH-20260909-001`
-- Risks: the morph has only been verified by tests and offscreen renders, not by eye; formatted mode still shows tables and HTML as raw source, has no code highlighting, and no find or heading commands
+- Risks: the morph is verified to animate offscreen but not tuned by eye; formatted mode still shows tables and HTML as raw source, has no code highlighting, and no find or heading commands
 - Related ids: `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260909-001`, `RSH-20260909-001`, `IBX-20260409-001`, `IBX-20260409-002`, `IBX-20260409-003`, `IBX-20260409-004`
 
 ## Recent Changes To Project Reality
+
+- Date: 2026-09-10
+  - Change: the mode morph now uses explicit Core Animation animations; the first build snapped straight to the end state because freshly added layers get no implicit animation
+  - Why it matters: the morph is visible at all; a container-level test now checks that glyph layers are mid-fade partway through a switch
+  - Related ids: `RSH-20260909-001`
 
 - Date: 2026-09-09
   - Change: switching between edit and formatted mode now morphs every visible glyph between the two layouts with Core Animation, with per-word grouping beyond 1,500 paired characters and an instant fallback for Reduce Motion

@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import XCTest
 @testable import Markfops
 
@@ -333,5 +334,70 @@ final class ModeMorphTests: XCTestCase {
         textView.frame = textFrame
         layoutManager.ensureLayout(for: container)
         return Surface(window: window, scrollView: scrollView, textView: textView)
+    }
+}
+
+/// Drives the real container through a mode switch offscreen and checks that
+/// the overlay actually animates instead of snapping to the end state.
+final class ModeMorphContainerTests: XCTestCase {
+    func testModeSwitchAnimatesGlyphLayersOverTime() throws {
+        try XCTSkipIf(
+            NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            "Reduce Motion disables the morph"
+        )
+        let text = (1...40).map {
+            "# Heading \($0)\n\nSome **bold** and `code` paragraph text on line \($0).\n"
+        }.joined()
+        let document = Document(rawText: text)
+        document.headings = MarkdownSourceMap.parse(text).headings
+
+        let hosting = NSHostingView(rootView: EditorContainerView(
+            document: document,
+            configuration: .default,
+            scrollToHeading: nil,
+            isSelected: true
+        ))
+        hosting.frame = NSRect(x: 0, y: 0, width: 900, height: 700)
+        let window = NSWindow(
+            contentRect: hosting.frame,
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.contentView = hosting
+        defer { window.orderOut(nil) }
+        // The window is never ordered front.
+        func pump(seconds: TimeInterval) {
+            let deadline = Date().addingTimeInterval(seconds)
+            while Date() < deadline {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+                hosting.layoutSubtreeIfNeeded()
+            }
+        }
+        func overlay(in view: NSView) -> ModeMorphOverlay? {
+            if let overlay = view as? ModeMorphOverlay { return overlay }
+            for subview in view.subviews {
+                if let overlay = overlay(in: subview) { return overlay }
+            }
+            return nil
+        }
+        pump(seconds: 0.3)
+
+        document.mode = .preview
+        pump(seconds: 0.12)
+        let running = try XCTUnwrap(overlay(in: hosting), "overlay should still exist mid-morph")
+        XCTAssertTrue(running.lastOutcome.hasPrefix("animating"), running.lastOutcome)
+        let midOpacities = (running.layer?.sublayers ?? []).compactMap { $0.presentation()?.opacity }
+        XCTAssertFalse(midOpacities.isEmpty)
+        XCTAssertTrue(
+            midOpacities.contains { $0 > 0.05 && $0 < 0.95 },
+            "glyph layers should be mid-fade, not snapped to their end state"
+        )
+
+        pump(seconds: 0.6)
+        XCTAssertNil(overlay(in: hosting), "overlay should be removed after the morph finishes")
+        XCTAssertEqual(document.sharedReaderBridge.morphTextView()?.layer?.opacity, 1)
+        XCTAssertEqual(document.sharedEditorBridge.morphTextView()?.layer?.opacity, 0)
     }
 }
