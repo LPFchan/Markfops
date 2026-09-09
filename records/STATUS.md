@@ -10,8 +10,8 @@ Do not use it as a transcript or a scratchpad.
 - Overall posture: `active`
 - Current focus: keep the published `1.1.2` baseline stable while the next release accumulates
 - Highest-priority blocker: none; the public `1.1.2` DMG and Sparkle update are verified
-- Next operator decision needed: choose the scope and timing of the next release when enough work accumulates
-- Related decisions: `DEC-20260409-001`, `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260410-001`
+- Next operator decision needed: confirm or adjust slice 1 in `PLANS.md` (per-character kind map from the cmark parse) as the first engine slice
+- Related decisions: `DEC-20260409-001`, `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260410-001`, `DEC-20260909-001`
 
 ## Current State Summary
 
@@ -32,16 +32,21 @@ Markfops is a working native macOS Markdown app with XcodeGen project generation
 
 ### Native WYSIWYG Engine Research And Framing
 
-- Goal: convert completed archaeology into an implementation-ready architecture and first spike
+- Goal: turn the accepted native-reader direction into shipped engine slices
 - Status: `in progress`
 - Why this matters now: the repo has enough accepted research to move from exploration toward execution
-- Current work: complete the roadmap, transition coverage, morphing strategy, risk framing, and first-spike selection; a standalone glyph-morph spike (`RSH-20260909-001`) has shown that measured-position morphing works natively and that the open cost is pairing and scale, not motion
-- Exit criteria: implementation framing docs are filled in and the first concrete spike is chosen
+- Current work: the reader view is decided to go native (`DEC-20260909-001`) and `PLANS.md` now sequences three slices: character kind map, native reader styling, measured-position morph; a standalone spike (`RSH-20260909-001`) validated the morph technique
+- Exit criteria: slice 1 lands in the app with tests
 - Dependencies: `RSH-20260402-007` through `RSH-20260402-013`, `RSH-20260909-001`
-- Risks: unresolved questions around semantic identity, invalidation, and synchronization can still create drift in early implementation choices
-- Related ids: `DEC-20260409-002`, `DEC-20260409-003`, `IBX-20260409-001`, `IBX-20260409-002`, `IBX-20260409-003`, `IBX-20260409-004`
+- Risks: native rendering of tables, images, and code highlighting is real work that gates removing the web reader; per-glyph morphing may not scale without a per-word split
+- Related ids: `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260909-001`, `RSH-20260909-001`, `IBX-20260409-001`, `IBX-20260409-002`, `IBX-20260409-003`, `IBX-20260409-004`
 
 ## Recent Changes To Project Reality
+
+- Date: 2026-09-09
+  - Change: the operator decided the reader view will become native text, and the engine plan was reshaped into three visible slices
+  - Why it matters: the two-engine coordination problems that stalled the April research are removed rather than bridged, and the first slice is small enough to start
+  - Related ids: `DEC-20260909-001`
 
 - Date: 2026-09-09
   - Change: a throwaway spike under `spikes/torph-glyph-morph/` reproduced torph-style text morphing with TextKit-measured glyph positions and Core Animation layers
