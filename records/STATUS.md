@@ -6,11 +6,11 @@ Do not use it as a transcript or a scratchpad.
 
 ## Snapshot
 
-- Last updated: 2026-09-10
+- Last updated: 2026-09-11
 - Overall posture: `active`
-- Current focus: formatted mode is editable through the source map (`DEC-20260910-001`); slices 4a through 4d landed; slice 5 (structural edits) is next
+- Current focus: formatted mode is editable through the source map (`DEC-20260910-001`); slices 4a through 5b landed; slice 5c (list edits) is next
 - Highest-priority blocker: none; the public `1.1.2` DMG and Sparkle update are verified
-- Next operator decision needed: try typing in formatted mode and report how the syntax reveal and Enter feel
+- Next operator decision needed: judge the heading morph, the empty-line height, and the fence reveal by eye in the 2026-09-11 build
 - Related decisions: `DEC-20260409-001`, `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260410-001`, `DEC-20260909-001`, `DEC-20260909-002`, `DEC-20260910-001`
 
 ## Current State Summary
@@ -35,13 +35,18 @@ Markfops is a working native macOS Markdown app with XcodeGen project generation
 - Goal: turn the accepted native-reader direction into shipped engine slices
 - Status: `in progress`
 - Why this matters now: the repo has enough accepted research to move from exploration toward execution
-- Current work: slices 1 through 4b landed (source map, native reader, morph, source-mapped typing with cursor-local syntax reveal, cursor carried across the morph). Slices 4c and 4d animated the caret reveal and the wrap commands; 5 handles structural edits (list continuation, bullets, heading commands)
+- Current work: slices 1 through 4b landed (source map, native reader, morph, source-mapped typing with cursor-local syntax reveal, cursor carried across the morph). Slices 4c through 5a animated the caret reveal, the wrap commands, and heading changes; 5b sized empty lines and revealed fences and quote markers; 5c handles list edits
 - Exit criteria: writing in formatted mode is safe and feels right, the morph feels right, and a release ships both
 - Dependencies: `RSH-20260402-007` through `RSH-20260402-013`, `RSH-20260909-001`
-- Risks: the operator's first look at the morph produced two fixes the tests had missed, so more may follow; formatted mode still shows tables and HTML as raw source, has no code highlighting, and no find or heading commands
+- Risks: the operator's first look at the morph produced two fixes the tests had missed, so more may follow; formatted mode still shows tables and HTML as raw source, has no code highlighting, and no find
 - Related ids: `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260909-001`, `RSH-20260909-001`, `IBX-20260409-001`, `IBX-20260409-002`, `IBX-20260409-003`, `IBX-20260409-004`
 
 ## Recent Changes To Project Reality
+
+- Date: 2026-09-11
+  - Change: heading commands work in formatted mode and animate (text crossfades, prefix fades, paragraphs below slide); a Paragraph command turns a heading back; empty lines are a full line tall without widening block gaps; fences and quote markers reveal around the cursor
+  - Why it matters: the operator's second session in formatted mode reported snapping headings, a stub cursor on empty lines, and hidden fences
+  - Related ids: `DEC-20260910-001`
 
 - Date: 2026-09-10
   - Change: syntax revealed around the caret now fades in and out while the neighbouring glyphs slide; Command-B and the other wrap commands toggle off when already inside their construct and animate their delimiters and restyled text into place

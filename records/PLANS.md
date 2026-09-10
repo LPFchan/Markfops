@@ -88,11 +88,20 @@ Each slice must end with something visible in the app and its own tests.
   - Done: Command-B, Command-I, and the code and strikethrough wraps, and their toggle-off, run the reveal animation across the edit: the edit carries a source-offset mapping, the before snapshot is rekeyed through it, delimiters fade in or out, the wrapped text crossfades between its old and new styling while it slides; typing, Enter, deletion, composition, and undo stay instant
   - Open: a reveal in a distant paragraph vanishes instantly when a wrap happens elsewhere; the inline-code capsule still snaps
   - Related ids: `DEC-20260910-001`, `RSH-20260909-001`
+- Slice 5a: heading changes animate (landed)
+  - Done: the Format menu heading commands and a new Paragraph command (Command-Option-0) work in both modes through one shared source edit; in formatted mode the text crossfades between body and heading size, the revealed prefix fades in or out, and the visible paragraphs below slide instead of jumping; a keystroke that changes its line's leading block syntax (`#`, `> `, the space in `- `) animates the same way and every other keystroke stays instant
+  - Measured: the viewport extension adds about 3.5 ms to a cold reveal on a 10,000-character document; warm reveals are within noise; a heading command there costs 53 to 56 ms
+  - Open: undo of a heading command swaps instantly; a very tall viewport can push a heading change past the 4,000-character budget and swap instantly as a whole
+  - Related ids: `DEC-20260910-001`
+- Slice 5b: empty lines carry the block gap; fences and quote markers reveal (landed)
+  - Done: an empty source line takes over its neighbours' facing paragraph spacing and never drops under the body size, so the text cursor on it is a full line tall while block distances are unchanged; decorations measure the text box instead of the line fragment; a cursor inside a fenced code block reveals both fence lines and a cursor inside a quote reveals every marker
+  - Open: panel blocks (code, tables, HTML) keep their edge spacing instead of handing it to the empty line, so the panel stays clear of the cursor line
+  - Related ids: `DEC-20260910-001`
 
 ### Near Term
 
-- Slice 5: structural edits in formatted mode
-  - Done when: Enter continues lists, deleting a bullet removes its marker, heading commands work, and images, frontmatter, and thematic breaks either route or stay refused with a visible reason
+- Slice 5c: list edits in formatted mode
+  - Done when: Enter continues lists, deleting a bullet removes its marker, and images, frontmatter, and thematic breaks either route or stay refused with a visible reason
   - Related ids: `DEC-20260910-001`
 - Initiative: tune the morph by eye on real documents: swap window, duration, per-word threshold, and how decorations (capsules, panels, bars) enter and leave
   - Why now: the feel is the product; the operator's first look on 2026-09-10 fixed a snapped animation, an empty first frame, and oversized paragraph gaps, and the remaining dials are still untouched
