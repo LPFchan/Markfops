@@ -670,6 +670,23 @@ final class FormattedEditingContainerTests: XCTestCase {
         XCTAssertEqual(host.layoutManager?.hiddenCharacterRanges ?? [NSRange()], [])
     }
 
+    func testFinishingARevealRedrawsTheRealGlyphsBeforeTheCopiesGo() throws {
+        try XCTSkipIf(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, "Reduce Motion disables the animation")
+        let host = try makeHost(text: "Some **bold** text and more words here\n")
+        host.placeCaret(at: 7)
+        let overlay = try XCTUnwrap(host.coordinator.revealTransition)
+        XCTAssertTrue(overlay.isRunning, host.coordinator.lastRevealTransitionOutcome)
+        XCTAssertFalse(host.layoutManager?.hiddenCharacterRanges.isEmpty ?? true)
+
+        // No run-loop turn in between: the redraw must already have happened
+        // when the copies are gone, or the frame that removes them is blank.
+        overlay.finishImmediately()
+        XCTAssertFalse(overlay.isRunning)
+        XCTAssertEqual(host.layoutManager?.hiddenCharacterRanges ?? [NSRange()], [])
+        XCTAssertFalse(host.reader.needsDisplay, "real glyphs should be redrawn synchronously")
+        XCTAssertNil(overlay.superview)
+    }
+
     func testTypingDuringARevealAnimationFinishesItFirst() throws {
         try skipUnlessTransitionsRun()
         let host = try makeHost(text: "Some **bold** text")

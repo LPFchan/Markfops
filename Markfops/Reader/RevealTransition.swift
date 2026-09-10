@@ -460,16 +460,22 @@ final class RevealTransitionOverlay: NSView {
         clear()
     }
 
+    /// The real glyphs must be back in the text view's backing store in the
+    /// same commit that removes the copies. Marking them for display is not
+    /// enough: a completion block runs after this turn's display pass, so the
+    /// redraw would land one frame after the copies vanish, and every
+    /// animation would end with a blank frame on the glyphs that moved.
     private func clear() {
         runningGeneration = nil
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        hidingLayoutManager?.hiddenCharacterRanges = []
+        hidingLayoutManager = nil
+        superview?.displayIfNeeded()
         layer?.removeAllAnimations()
         layer?.sublayers?.forEach { $0.removeFromSuperlayer() }
         CATransaction.commit()
         activeEntries.removeAll()
-        hidingLayoutManager?.hiddenCharacterRanges = []
-        hidingLayoutManager = nil
         removeFromSuperview()
     }
 

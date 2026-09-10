@@ -291,6 +291,8 @@ final class ModeMorphOverlay: NSView {
         readerTextView.layer?.opacity = request.from == .preview ? 1 : 0
         (readerTextView.layoutManager as? ReaderLayoutManager)?.morphGlyphOpacity = 0
         readerTextView.needsDisplay = true
+        // Same commit as the copies appearing, or the first frame shows both.
+        readerTextView.displayIfNeeded()
     }
 
     private func buildLayers(for plan: MorphPlan) {
@@ -519,6 +521,10 @@ final class ModeMorphOverlay: NSView {
         (readerTextView.layoutManager as? ReaderLayoutManager)?.morphGlyphOpacity = 1
         readerTextView.needsDisplay = true
         editorTextView.needsDisplay = true
+        // Redraw now, not next frame: the caller removes the glyph copies in
+        // this same commit, and a deferred redraw would leave one blank frame.
+        readerTextView.displayIfNeeded()
+        editorTextView.displayIfNeeded()
         editorScrollView.drawsBackground = true
         editorScrollView.backgroundColor = editorTextView.backgroundColor
         readerScrollView.drawsBackground = true

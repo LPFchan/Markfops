@@ -414,5 +414,17 @@ final class ModeMorphContainerTests: XCTestCase {
         XCTAssertNil(overlay(in: hosting), "overlay should be removed after the morph finishes")
         XCTAssertEqual(document.sharedReaderBridge.morphTextView()?.layer?.opacity, 1)
         XCTAssertEqual(document.sharedEditorBridge.morphTextView()?.layer?.opacity, 0)
+
+        // Resetting the surfaces redraws them at once, so the commit that drops
+        // the glyph copies already shows the real glyphs.
+        (document.sharedReaderBridge.morphTextView()?.layoutManager as? ReaderLayoutManager)?.morphGlyphOpacity = 0
+        document.sharedReaderBridge.morphTextView()?.needsDisplay = true
+        ModeMorphOverlay.resetSurfaceState(
+            editorBridge: document.sharedEditorBridge,
+            readerBridge: document.sharedReaderBridge,
+            mode: .preview
+        )
+        XCTAssertEqual(document.sharedReaderBridge.morphTextView()?.needsDisplay, false)
+        XCTAssertEqual(document.sharedEditorBridge.morphTextView()?.needsDisplay, false)
     }
 }
