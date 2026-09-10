@@ -97,12 +97,13 @@ Each slice must end with something visible in the app and its own tests.
   - Done: an empty source line takes over its neighbours' facing paragraph spacing and never drops under the body size, so the text cursor on it is a full line tall while block distances are unchanged; decorations measure the text box instead of the line fragment; a cursor inside a fenced code block reveals both fence lines and a cursor inside a quote reveals every marker
   - Open: panel blocks (code, tables, HTML) keep their edge spacing instead of handing it to the empty line, so the panel stays clear of the cursor line
   - Related ids: `DEC-20260910-001`
+- Slice 5c: list edits in formatted mode (landed)
+  - Done: backspace over a bullet, task box, thematic break, or the front matter deletes the construct's whole source and animates the glyph out; Enter at the end of a list item writes the next marker (same bullet, next number, empty task box) behind the item's indent and quote markers, on an empty item removes the marker or outdents a nested one, and in a quote continues the `> ` prefix; list markers inside quotes are now mapped
+  - Open: typing over a substituted glyph (bullet, image, front matter) stays refused with a beep; images and thematic breaks have no editing of their own
+  - Related ids: `DEC-20260910-001`
 
 ### Near Term
 
-- Slice 5c: list edits in formatted mode
-  - Done when: Enter continues lists, deleting a bullet removes its marker, and images, frontmatter, and thematic breaks either route or stay refused with a visible reason
-  - Related ids: `DEC-20260910-001`
 - Initiative: tune the morph by eye on real documents: swap window, duration, per-word threshold, and how decorations (capsules, panels, bars) enter and leave
   - Why now: the feel is the product; the operator's first look on 2026-09-10 fixed a snapped animation, an empty first frame, and oversized paragraph gaps, and the remaining dials are still untouched
   - Dependencies: none
