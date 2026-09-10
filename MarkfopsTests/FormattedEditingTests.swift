@@ -39,7 +39,31 @@ final class ReaderRevealTests: XCTestCase {
         )
 
         let list = "- item"
-        XCTAssertNil(ReaderReveal.range(in: MarkdownSourceMap.parse(list), sourceCursor: 3))
+        XCTAssertEqual(
+            ReaderReveal.range(in: MarkdownSourceMap.parse(list), sourceCursor: 3),
+            NSRange(location: 0, length: 2),
+            "the item's marker reveals while the cursor is in the item"
+        )
+    }
+
+    func testOnlyTheInnermostListItemRevealsItsMarker() {
+        let text = "- a\n  - b\n- c"
+        let source = text as NSString
+        let map = MarkdownSourceMap.parse(text)
+        XCTAssertEqual(ReaderReveal.range(in: map, sourceCursor: 2), NSRange(location: 0, length: 2))
+        XCTAssertEqual(
+            ReaderReveal.range(in: map, sourceCursor: source.range(of: "b").location),
+            source.range(of: "- ", options: [], range: NSRange(location: 4, length: 5)),
+            "the nested item's marker, not the parent's"
+        )
+        XCTAssertEqual(
+            ReaderReveal.range(in: map, sourceCursor: source.range(of: "c").location),
+            NSRange(location: source.range(of: "- c").location, length: 2)
+        )
+        let ordered = "1. one\n2. two"
+        XCTAssertEqual(ReaderReveal.range(in: MarkdownSourceMap.parse(ordered), sourceCursor: 9), NSRange(location: 7, length: 3))
+        let task = "- [ ] do"
+        XCTAssertEqual(ReaderReveal.range(in: MarkdownSourceMap.parse(task), sourceCursor: 7), NSRange(location: 0, length: 6))
     }
 
     func testFencedCodeBlockRevealsBothFencesAndQuoteRevealsItsMarkers() {
@@ -379,7 +403,7 @@ final class ReaderOffsetMapEditingTests: XCTestCase {
         let everything = presentation(text, reveal: NSRange(location: 0, length: source.length))
         XCTAssertEqual(
             everything.attributedString.string,
-            "# Title\nSome **bold** and *em* text\n• item\n```\ncode\n```"
+            "# Title\nSome **bold** and *em* text\n- item\n```\ncode\n```"
         )
         let link = "[link](https://x.y)"
         let revealedLink = presentation(link, reveal: NSRange(location: 0, length: (link as NSString).length))
@@ -633,34 +657,34 @@ final class FormattedEditingContainerTests: XCTestCase {
         XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 4, length: 0))
     }
 
-    func testTypingOverAListMarkerIsRefusedButBackspaceRemovesIt() throws {
-        let host = try makeHost(text: "- item\n- two")
-        XCTAssertEqual(host.reader.string, "• item\n• two")
+    func testTypingOverAListMarkerIsRefusedButASelectionOverItDeletesItsSource() throws {
+        let host = try makeHost(text: "- item\n- two\n\nAfter")
+        host.placeCaret(at: try host.readerRange(of: "After").location)
+        host.pump(seconds: 0.05)
+        XCTAssertEqual(host.reader.string, "• item\n• two\n\nAfter")
         let marker = try host.readerRange(of: "• item")
         host.reader.setSelectedRange(marker)
         host.type("x")
-        XCTAssertEqual(host.document.rawText, "- item\n- two")
-        XCTAssertEqual(host.reader.string, "• item\n• two")
+        XCTAssertEqual(host.document.rawText, "- item\n- two\n\nAfter")
+        XCTAssertEqual(host.reader.string, "• item\n• two\n\nAfter")
         XCTAssertEqual(host.coordinator.refusedEditCount, 1)
 
-        host.placeCaret(at: marker.location + 2)
+        host.reader.setSelectedRange(try host.readerRange(of: "• two"))
         host.reader.deleteBackward(nil)
-        XCTAssertEqual(host.document.rawText, "item\n- two")
-        XCTAssertEqual(host.reader.string, "item\n• two")
-        XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 0, length: 0))
-        XCTAssertEqual(host.coordinator.refusedEditCount, 1)
-
-        host.type("x")
-        XCTAssertEqual(host.document.rawText, "xitem\n- two")
+        XCTAssertEqual(host.document.rawText, "- item\n\n\nAfter", "the bullet's whole source goes with the selection")
         XCTAssertEqual(host.coordinator.refusedEditCount, 1)
     }
 
     func testBackspaceIntoATaskBoxOrAThematicBreakRemovesTheWholeConstruct() throws {
         let host = try makeHost(text: "- [ ] task\n\nbefore\n\n---\n\nafter")
+        host.placeCaret(at: try host.readerRange(of: "before").location)
+        host.pump(seconds: 0.05)
         XCTAssertEqual(host.reader.string, "☐ task\n\nbefore\n\n\u{200B}\n\nafter")
-        host.placeCaret(at: 2)
+        host.reader.setSelectedRange(NSRange(location: 1, length: 1))
         host.reader.deleteBackward(nil)
-        XCTAssertEqual(host.document.rawText, "task\n\nbefore\n\n---\n\nafter")
+        XCTAssertEqual(host.document.rawText, "task\n\nbefore\n\n---\n\nafter", "the box and its marker go together")
+        host.placeCaret(at: try host.readerRange(of: "before").location)
+        host.pump(seconds: 0.05)
         XCTAssertEqual(host.reader.string, "task\n\nbefore\n\n\u{200B}\n\nafter")
 
         let rule = try host.readerRange(of: "\u{200B}")
@@ -690,7 +714,7 @@ final class FormattedEditingContainerTests: XCTestCase {
         host.placeCaret(at: 6)
         host.reader.insertNewline(nil)
         XCTAssertEqual(host.document.rawText, "- item\n- ")
-        XCTAssertEqual(host.reader.string, "• item\n• ")
+        XCTAssertEqual(host.reader.string, "• item\n- ", "the new item's marker is revealed under the caret")
         XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 9, length: 0))
 
         host.reader.insertNewline(nil)
@@ -712,8 +736,8 @@ final class FormattedEditingContainerTests: XCTestCase {
         task.placeCaret(at: 6)
         task.reader.insertNewline(nil)
         XCTAssertEqual(task.document.rawText, "- [ ] task\n- [ ] ")
-        XCTAssertEqual(task.reader.string, "☐ task\n☐ ")
-        XCTAssertEqual(task.reader.selectedRange(), NSRange(location: 9, length: 0))
+        XCTAssertEqual(task.reader.string, "☐ task\n- [ ] ")
+        XCTAssertEqual(task.reader.selectedRange(), NSRange(location: 13, length: 0))
 
         let quote = try makeHost(text: "> quote")
         quote.placeCaret(at: 5)
@@ -802,6 +826,61 @@ final class FormattedEditingContainerTests: XCTestCase {
         XCTAssertEqual(host.document.rawText, "Intro\n\n> one\n> tXwo\n")
         host.placeCaret(at: 0)
         XCTAssertEqual(host.reader.string, "Intro\n\none\ntXwo\n")
+    }
+
+    func testAListMarkerRevealsWhileTheCaretIsOnItsItem() throws {
+        let host = try makeHost(text: "- item\n- two\n\nAfter")
+        XCTAssertEqual(host.reader.string, "• item\n• two\n\nAfter")
+        host.placeCaret(at: try host.readerRange(of: "item").location)
+        host.pump(seconds: 0.05)
+        XCTAssertEqual(host.reader.string, "- item\n• two\n\nAfter")
+        XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 2, length: 0), "the caret stays on the same source character")
+        host.reader.deleteBackward(nil)
+        XCTAssertEqual(host.document.rawText, "-item\n- two\n\nAfter", "the revealed marker deletes character by character")
+        host.reader.deleteBackward(nil)
+        XCTAssertEqual(host.document.rawText, "item\n- two\n\nAfter")
+        host.placeCaret(at: try host.readerRange(of: "After").location)
+        host.pump(seconds: 0.05)
+        XCTAssertEqual(host.reader.string, "item\n• two\n\nAfter")
+    }
+
+    func testCommandZAndShiftCommandZReachTheDocumentHistoryFromTheReader() throws {
+        let host = try makeHost(text: "Hello world")
+        host.window.makeFirstResponder(host.reader)
+        host.placeCaret(at: 5)
+        host.type("!")
+        XCTAssertEqual(host.document.rawText, "Hello! world")
+        XCTAssertTrue(host.reader.tryToPerform(Selector(("undo:")), with: nil))
+        host.pump(seconds: 0.1)
+        XCTAssertEqual(host.document.rawText, "Hello world")
+        XCTAssertEqual(host.reader.string, "Hello world")
+        XCTAssertTrue(host.reader.tryToPerform(Selector(("redo:")), with: nil))
+        host.pump(seconds: 0.1)
+        XCTAssertEqual(host.document.rawText, "Hello! world")
+        XCTAssertEqual(host.reader.string, "Hello! world")
+        let undoItem = NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "")
+        XCTAssertTrue(host.reader.validateUserInterfaceItem(undoItem))
+        let redoItem = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "")
+        XCTAssertFalse(host.reader.validateUserInterfaceItem(redoItem))
+    }
+
+    @MainActor
+    func testFindSelectsMatchesInTheFormattedTextAndWraps() throws {
+        let host = try makeHost(text: "One **two** three\n\ntwo again")
+        let controller = FindController()
+        controller.attach(editorBridge: host.document.sharedEditorBridge, readerBridge: host.document.sharedReaderBridge, mode: .preview)
+        controller.searchText = "TWO"
+        controller.findNext()
+        XCTAssertTrue(controller.lastMatchFound)
+        XCTAssertEqual(host.reader.selectedRange(), try host.readerRange(of: "two"), "matches the formatted text, not the source")
+        controller.findNext()
+        let second = (host.reader.string as NSString).range(of: "two again")
+        XCTAssertEqual(host.reader.selectedRange(), NSRange(location: second.location, length: 3))
+        controller.findNext()
+        XCTAssertEqual(host.reader.selectedRange(), try host.readerRange(of: "two"), "wraps around")
+        controller.searchText = "**"
+        controller.findNext()
+        XCTAssertFalse(controller.lastMatchFound, "hidden syntax is not searchable in formatted mode")
     }
 
     func testUndoThroughTheDocumentUndoManagerRestoresSourceAndReader() throws {
@@ -1204,10 +1283,13 @@ final class FormattedEditingContainerTests: XCTestCase {
         XCTAssertEqual(host.layoutManager?.hiddenCharacterRanges ?? [NSRange()], [])
     }
 
-    func testBackspaceOverABulletFadesItOut() throws {
+    func testDeletingABulletFadesItOut() throws {
         try skipUnlessTransitionsRun()
         let host = try makeHost(text: "- item\n\nBelow paragraph\n")
-        host.placeCaret(at: 2)
+        host.placeCaret(at: try host.readerRange(of: "Below").location)
+        host.pump(seconds: 0.4)
+        XCTAssertEqual(host.reader.string, "• item\n\nBelow paragraph\n")
+        host.reader.setSelectedRange(NSRange(location: 0, length: 2))
         host.reader.deleteBackward(nil)
         XCTAssertEqual(host.document.rawText, "item\n\nBelow paragraph\n")
         let overlay = try XCTUnwrap(host.coordinator.revealTransition)
@@ -1411,28 +1493,33 @@ final class FormattedEditingContainerTests: XCTestCase {
 
     func testTypingDashSpaceStartsAListWithTheBulletFadingIn() throws {
         try skipUnlessTransitionsRun()
-        let host = try makeHost(text: "Hello")
+        let host = try makeHost(text: "Hello\n\nTail")
         host.placeCaret(at: 0)
         host.type("-")
-        XCTAssertEqual(host.document.rawText, "-Hello")
+        XCTAssertEqual(host.document.rawText, "-Hello\n\nTail")
         XCTAssertEqual(host.coordinator.lastRevealTransitionOutcome, "skipped: not a caret move", "a dash alone is plain text")
 
         host.type(" ")
 
-        XCTAssertEqual(host.document.rawText, "- Hello")
-        XCTAssertEqual(host.reader.string, "\u{2022} Hello")
+        XCTAssertEqual(host.document.rawText, "- Hello\n\nTail")
+        XCTAssertEqual(host.reader.string, "- Hello\n\nTail", "the marker stays revealed under the caret")
         let overlay = try XCTUnwrap(host.coordinator.revealTransition)
         XCTAssertTrue(overlay.isRunning, host.coordinator.lastRevealTransitionOutcome)
-        let dash = host.transitionEntries(for: "-")
-        XCTAssertEqual(dash.count, 1)
-        XCTAssertTrue(dash.allSatisfy { $0.entry.to == nil }, "the dash fades out")
-        let bullet = host.transitionEntries(for: "\u{2022}")
-        XCTAssertEqual(bullet.count, 1)
-        XCTAssertTrue(bullet.allSatisfy { $0.entry.from == nil }, "the bullet fades in")
         XCTAssertTrue(host.transitionEntries(for: "H").allSatisfy { $0.entry.isMover })
         host.pump(seconds: 0.4)
         XCTAssertFalse(overlay.isRunning)
         XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 2, length: 0))
+
+        host.placeCaret(at: try host.readerRange(of: "Tail").location)
+        host.pump(seconds: 0.05)
+        XCTAssertEqual(host.reader.string, "\u{2022} Hello\n\nTail", "the bullet appears once the caret leaves the item")
+        let bullet = host.transitionEntries(for: "\u{2022}")
+        XCTAssertEqual(bullet.count, 1)
+        XCTAssertTrue(bullet.allSatisfy { $0.entry.from == nil }, "the bullet fades in")
+        let dash = host.transitionEntries(for: "-")
+        XCTAssertEqual(dash.count, 1)
+        XCTAssertTrue(dash.allSatisfy { $0.entry.to == nil }, "the dash fades out")
+        host.pump(seconds: 0.4)
     }
 
     func testHiddenCharacterRangesLeaveNoInkWhereTheGlyphsWere() throws {

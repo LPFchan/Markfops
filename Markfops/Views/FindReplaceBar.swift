@@ -14,17 +14,31 @@ final class FindController {
     var activeMode: EditMode = .edit
 
     @ObservationIgnored weak var editorBridge: EditorBridge?
+    @ObservationIgnored weak var readerBridge: ReaderBridge?
 
     func attach(
         editorBridge: EditorBridge,
+        readerBridge: ReaderBridge,
         mode: EditMode
     ) {
         self.editorBridge = editorBridge
+        self.readerBridge = readerBridge
         activeMode = mode
     }
 
+    /// Find works in both modes; replace stays with the editor, where a
+    /// replacement is a plain text edit. Switching to formatted mode with the
+    /// replace row open collapses it to find.
+    func modeDidChange(to mode: EditMode) {
+        activeMode = mode
+        if mode == .preview, showsReplace {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
+                showsReplace = false
+            }
+        }
+    }
+
     func showFind() {
-        guard activeMode == .edit else { return }
         withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
             isVisible = true
             showsReplace = false
@@ -68,9 +82,10 @@ final class FindController {
     }
 
     func useSelectionForFind() {
-        guard activeMode == .edit,
-              let selection = editorBridge?.selectedText(),
-              !selection.isEmpty else { return }
+        let selection = activeMode == .edit
+            ? editorBridge?.selectedText()
+            : readerBridge?.selectedText()
+        guard let selection, !selection.isEmpty else { return }
         searchText = selection
         showFind()
         findNext()
@@ -88,15 +103,13 @@ final class FindController {
     }
 
     private func find(forward: Bool) {
-        guard activeMode == .edit else {
-            lastMatchFound = false
-            return
-        }
         guard !searchText.isEmpty else {
             lastMatchFound = true
             return
         }
-        lastMatchFound = editorBridge?.find(searchText, forward: forward) ?? false
+        lastMatchFound = activeMode == .edit
+            ? editorBridge?.find(searchText, forward: forward) ?? false
+            : readerBridge?.find(searchText, forward: forward) ?? false
     }
 }
 

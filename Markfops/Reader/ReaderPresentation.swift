@@ -620,6 +620,10 @@ private final class ReaderPresentationBuilder {
     ) {
         switch run.kind {
         case let .listItem(ordered, taskState):
+            if isRevealed(run.range) {
+                emitHiddenSyntax(run, context: context)
+                return
+            }
             append(
                 listMarker(for: run.range, ordered: ordered, taskState: taskState),
                 sourceRange: run.range,

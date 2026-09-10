@@ -14,7 +14,7 @@ struct EditorContainerView: View {
     @State private var findController = FindController()
 
     private var findOverlayReservedTopInset: CGFloat {
-        guard document.mode == .edit, findController.isVisible else { return 0 }
+        guard findController.isVisible else { return 0 }
         return findController.showsReplace ? 122 : 74
     }
 
@@ -89,16 +89,13 @@ struct EditorContainerView: View {
             findController: findController
         ))
         .onAppear {
-            findController.attach(editorBridge: editorBridge, mode: document.mode)
+            findController.attach(editorBridge: editorBridge, readerBridge: readerBridge, mode: document.mode)
         }
         .onDrop(of: [.fileURL], isTargeted: $isDragTargeted) { providers in
             handleDrop(providers: providers)
         }
         .onChange(of: document.mode) { oldMode, newMode in
-            findController.activeMode = newMode
-            if newMode == .preview {
-                findController.hide()
-            }
+            findController.modeDidChange(to: newMode)
 
             let sourceSurface: ViewportAnchorSync.Surface = oldMode == .preview
                 ? .reader

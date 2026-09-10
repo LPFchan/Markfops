@@ -37,6 +37,14 @@ final class ReaderBridge {
         coordinator?.currentSourceLineAtViewportCenter()
     }
 
+    func selectedText() -> String? {
+        coordinator?.selectedText()
+    }
+
+    func find(_ query: String, forward: Bool) -> Bool {
+        coordinator?.find(query, forward: forward) ?? false
+    }
+
     func currentScrollRatio() -> Double? {
         coordinator?.currentScrollRatio()
     }
@@ -139,6 +147,28 @@ final class ReaderNSTextView: NSTextView {
     /// reach the document's history, the one the routed source edits write to.
     override var undoManager: UndoManager? {
         delegate?.undoManager?(for: self) ?? super.undoManager
+    }
+
+    /// Command-Z travels the responder chain to the window, whose undo
+    /// manager is not the document's. The reader answers the actions itself
+    /// with the manager above, the way a text view that allows undo would.
+    @objc func undo(_ sender: Any?) {
+        undoManager?.undo()
+    }
+
+    @objc func redo(_ sender: Any?) {
+        undoManager?.redo()
+    }
+
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        switch item.action {
+        case #selector(undo(_:)):
+            return undoManager?.canUndo ?? false
+        case #selector(redo(_:)):
+            return undoManager?.canRedo ?? false
+        default:
+            return super.validateUserInterfaceItem(item)
+        }
     }
 
     var isDocumentActive = true {
@@ -1211,6 +1241,44 @@ struct ReaderView: NSViewRepresentable {
             if playsRefusalSound {
                 NSSound.beep()
             }
+        }
+
+        // MARK: - Find
+
+        func selectedText() -> String? {
+            guard let textView else { return nil }
+            let selection = textView.selectedRange()
+            guard selection.location != NSNotFound, selection.length > 0 else { return nil }
+            return (textView.string as NSString).substring(with: selection)
+        }
+
+        /// Searches the formatted text, so hidden syntax is not matched, from
+        /// the selection onward (or backward) and wraps around once. A match
+        /// is selected and scrolled into view.
+        func find(_ query: String, forward: Bool) -> Bool {
+            guard let textView, !query.isEmpty else { return false }
+            let content = textView.string as NSString
+            let selection = textView.selectedRange()
+            let options: NSString.CompareOptions = forward ? [.caseInsensitive] : [.caseInsensitive, .backwards]
+            let searchRange: NSRange
+            let wrappedRange: NSRange
+            if forward {
+                let start = min(NSMaxRange(selection), content.length)
+                searchRange = NSRange(location: start, length: content.length - start)
+                wrappedRange = NSRange(location: 0, length: start)
+            } else {
+                let end = max(selection.location, 0)
+                searchRange = NSRange(location: 0, length: end)
+                wrappedRange = NSRange(location: end, length: content.length - end)
+            }
+            let primary = content.range(of: query, options: options, range: searchRange)
+            let match = primary.location != NSNotFound
+                ? primary
+                : content.range(of: query, options: options, range: wrappedRange)
+            guard match.location != NSNotFound else { return false }
+            textView.setSelectedRange(match)
+            textView.scrollRangeToVisible(match)
+            return true
         }
 
         // MARK: - Reveal tracking

@@ -15,7 +15,7 @@ struct MarkfopsCommands: Commands {
     }
 
     private var canFind: Bool {
-        activeMode == .edit
+        activeMode != nil
     }
 
     private var canReplace: Bool {
