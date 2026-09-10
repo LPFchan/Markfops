@@ -245,6 +245,15 @@ final class FormattedEditingContainerTests: XCTestCase {
         func type(_ string: String) {
             reader.insertText(string, replacementRange: NSRange(location: NSNotFound, length: 0))
         }
+
+        var layoutManager: ReaderLayoutManager? {
+            reader.layoutManager as? ReaderLayoutManager
+        }
+
+        /// Overlay layers whose text is `character`, with their travel.
+        func transitionEntries(for character: String) -> [RevealTransitionOverlay.ActiveEntry] {
+            (coordinator.revealTransition?.activeEntries ?? []).filter { $0.entry.text.string == character }
+        }
     }
 
     private var hosts: [Host] = []
@@ -504,6 +513,7 @@ final class FormattedEditingContainerTests: XCTestCase {
         let milliseconds = Double(elapsed.components.seconds) * 1_000
             + Double(elapsed.components.attoseconds) / 1e15
         print("Formatted editing 10,000-character reveal rebuild: \(milliseconds) ms")
+        print("Formatted editing 10,000-character reveal transition: \(host.coordinator.lastRevealTransitionOutcome)")
 
         let typing = ContinuousClock().measure {
             host.type("X")
@@ -512,5 +522,182 @@ final class FormattedEditingContainerTests: XCTestCase {
             + Double(typing.components.attoseconds) / 1e15
         print("Formatted editing 10,000-character keystroke: \(typingMilliseconds) ms")
         XCTAssertTrue(host.document.rawText.contains("**boXld 40**"))
+    }
+
+    // MARK: - Reveal transition
+
+    private func skipUnlessTransitionsRun() throws {
+        try XCTSkipIf(
+            NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            "Reduce Motion keeps the instant swap"
+        )
+    }
+
+    func testCaretIntoBoldFadesTheSyntaxInWhileTheFollowingTextSlides() throws {
+        try skipUnlessTransitionsRun()
+        let host = try makeHost(text: "Some **bold** text")
+        let bold = try host.readerRange(of: "bold")
+        host.placeCaret(at: bold.location + 2)
+
+        XCTAssertEqual(host.reader.string, "Some **bold** text")
+        let overlay = try XCTUnwrap(host.coordinator.revealTransition, "overlay should exist")
+        XCTAssertTrue(overlay.isRunning, host.coordinator.lastRevealTransitionOutcome)
+        XCTAssertTrue(overlay.lastOutcome.hasPrefix("animating"), overlay.lastOutcome)
+        XCTAssertTrue(overlay.superview === host.reader, "overlay lives inside the reader text view")
+        XCTAssertGreaterThan(overlay.layer?.sublayers?.count ?? 0, 0)
+        XCTAssertFalse(host.layoutManager?.hiddenCharacterRanges.isEmpty ?? true, "real glyphs should be hidden")
+
+        let stars = host.transitionEntries(for: "*")
+        XCTAssertEqual(stars.count, 4, "four asterisks appear")
+        XCTAssertTrue(stars.allSatisfy { $0.entry.from == nil && $0.entry.to != nil }, "asterisks fade in")
+        let trailing = host.transitionEntries(for: "t")
+        XCTAssertFalse(trailing.isEmpty, "the text after the bold word moves")
+        XCTAssertTrue(trailing.allSatisfy { $0.entry.isMover && $0.to.x > $0.from.x }, "it moves right")
+
+        host.pump(seconds: 0.06)
+        XCTAssertTrue(overlay.isRunning, "still animating after 60 ms")
+        for star in stars {
+            let opacity = try XCTUnwrap(star.layer.presentation()?.opacity)
+            XCTAssertGreaterThan(opacity, 0)
+            XCTAssertLessThan(opacity, 1)
+        }
+        for mover in trailing {
+            let x = try XCTUnwrap(mover.layer.presentation()?.position.x)
+            XCTAssertGreaterThan(x, mover.from.x)
+            XCTAssertLessThan(x, mover.to.x)
+        }
+
+        host.pump(seconds: 0.4)
+        XCTAssertFalse(overlay.isRunning)
+        XCTAssertNil(overlay.superview, "overlay should be removed when the animation ends")
+        XCTAssertEqual(overlay.layer?.sublayers?.count ?? 0, 0)
+        XCTAssertEqual(host.layoutManager?.hiddenCharacterRanges ?? [NSRange()], [])
+        XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 9, length: 0))
+    }
+
+    func testCaretLeavingBoldFadesTheSyntaxOutWhileTheTextSlidesBack() throws {
+        try skipUnlessTransitionsRun()
+        let host = try makeHost(text: "Some **bold** text")
+        let bold = try host.readerRange(of: "bold")
+        host.placeCaret(at: bold.location + 2)
+        host.pump(seconds: 0.4)
+        XCTAssertEqual(host.reader.string, "Some **bold** text")
+
+        host.placeCaret(at: 0)
+        XCTAssertEqual(host.reader.string, "Some bold text")
+        let overlay = try XCTUnwrap(host.coordinator.revealTransition)
+        XCTAssertTrue(overlay.isRunning, host.coordinator.lastRevealTransitionOutcome)
+        let stars = host.transitionEntries(for: "*")
+        XCTAssertEqual(stars.count, 4)
+        XCTAssertTrue(stars.allSatisfy { $0.entry.from != nil && $0.entry.to == nil }, "asterisks fade out")
+        let trailing = host.transitionEntries(for: "t")
+        XCTAssertTrue(trailing.allSatisfy { $0.entry.isMover && $0.to.x < $0.from.x }, "text slides back left")
+
+        host.pump(seconds: 0.06)
+        for star in stars {
+            let opacity = try XCTUnwrap(star.layer.presentation()?.opacity)
+            XCTAssertGreaterThan(opacity, 0)
+            XCTAssertLessThan(opacity, 1)
+        }
+
+        host.pump(seconds: 0.4)
+        XCTAssertFalse(overlay.isRunning)
+        XCTAssertNil(overlay.superview)
+        XCTAssertEqual(host.layoutManager?.hiddenCharacterRanges ?? [NSRange()], [])
+    }
+
+    func testTypingDuringARevealAnimationFinishesItFirst() throws {
+        try skipUnlessTransitionsRun()
+        let host = try makeHost(text: "Some **bold** text")
+        let bold = try host.readerRange(of: "bold")
+        host.placeCaret(at: bold.location + 2)
+        let overlay = try XCTUnwrap(host.coordinator.revealTransition)
+        XCTAssertTrue(overlay.isRunning)
+
+        host.type("X")
+        XCTAssertEqual(host.document.rawText, "Some **boXld** text")
+        XCTAssertEqual(host.reader.string, "Some **boXld** text")
+        XCTAssertFalse(overlay.isRunning, "a keystroke ends the animation")
+        XCTAssertNil(overlay.superview)
+        XCTAssertEqual(host.layoutManager?.hiddenCharacterRanges ?? [NSRange()], [])
+        XCTAssertEqual(host.coordinator.lastRevealTransitionOutcome, "skipped: not a caret move")
+    }
+
+    func testKeystrokesInsideRevealedSyntaxDoNotAnimate() throws {
+        try skipUnlessTransitionsRun()
+        let host = try makeHost(text: "Some **bold** text")
+        let bold = try host.readerRange(of: "bold")
+        host.placeCaret(at: bold.location + 2)
+        host.pump(seconds: 0.4)
+
+        host.type("X")
+        XCTAssertEqual(host.reader.string, "Some **boXld** text")
+        XCTAssertEqual(host.coordinator.lastRevealTransitionOutcome, "skipped: not a caret move")
+        XCTAssertFalse(host.coordinator.revealTransition?.isRunning ?? false)
+        XCTAssertEqual(host.layoutManager?.hiddenCharacterRanges ?? [NSRange()], [])
+
+        // A caret move that keeps the same reveal does not rebuild or animate.
+        host.placeCaret(at: bold.location + 3)
+        XCTAssertFalse(host.coordinator.revealTransition?.isRunning ?? false)
+    }
+
+    func testACaretJumpBetweenDistantParagraphsAnimatesBothParagraphs() throws {
+        try skipUnlessTransitionsRun()
+        var text = "First **one** here\n\n"
+        for index in 0..<60 {
+            text += "Filler paragraph \(index) with enough words to matter.\n\n"
+        }
+        text += "Last **two** there\n"
+        let host = try makeHost(text: text)
+        let one = try host.readerRange(of: "one")
+        host.placeCaret(at: one.location + 1)
+        host.pump(seconds: 0.4)
+
+        let two = try host.readerRange(of: "two")
+        host.placeCaret(at: two.location + 1)
+        let overlay = try XCTUnwrap(host.coordinator.revealTransition)
+        XCTAssertTrue(overlay.lastOutcome.hasPrefix("animating"), overlay.lastOutcome)
+        let stars = host.transitionEntries(for: "*")
+        XCTAssertEqual(stars.filter { $0.entry.to == nil }.count, 4, "the first paragraph's syntax fades out")
+        XCTAssertEqual(stars.filter { $0.entry.from == nil }.count, 4, "the last paragraph's syntax fades in")
+        host.pump(seconds: 0.4)
+        XCTAssertFalse(overlay.isRunning)
+    }
+
+    func testHiddenCharacterRangesLeaveNoInkWhereTheGlyphsWere() throws {
+        let host = try makeHost(text: "Some **bold** text")
+        let layoutManager = try XCTUnwrap(host.layoutManager)
+        let bold = try host.readerRange(of: "bold")
+        let glyphRange = layoutManager.glyphRange(forCharacterRange: bold, actualCharacterRange: nil)
+        let container = try XCTUnwrap(host.reader.textContainer)
+        var rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: container)
+        rect.origin.x += host.reader.textContainerOrigin.x
+        rect.origin.y += host.reader.textContainerOrigin.y
+        rect = rect.insetBy(dx: 1, dy: 0)
+
+        func inkPixelCount() throws -> Int {
+            let rep = try XCTUnwrap(host.reader.bitmapImageRepForCachingDisplay(in: rect))
+            host.reader.cacheDisplay(in: rect, to: rep)
+            let background = host.reader.backgroundColor.usingColorSpace(.sRGB)
+            var count = 0
+            for x in 0..<rep.pixelsWide {
+                for y in 0..<rep.pixelsHigh {
+                    guard let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                    if abs(color.redComponent - (background?.redComponent ?? 1)) > 0.1
+                        || abs(color.greenComponent - (background?.greenComponent ?? 1)) > 0.1
+                        || abs(color.blueComponent - (background?.blueComponent ?? 1)) > 0.1 {
+                        count += 1
+                    }
+                }
+            }
+            return count
+        }
+
+        XCTAssertGreaterThan(try inkPixelCount(), 0, "the bold word draws")
+        layoutManager.hiddenCharacterRanges = [bold]
+        XCTAssertEqual(try inkPixelCount(), 0, "hidden characters draw nothing")
+        layoutManager.hiddenCharacterRanges = []
+        XCTAssertGreaterThan(try inkPixelCount(), 0, "the bold word draws again")
+        XCTAssertEqual(layoutManager.morphGlyphOpacity, 1)
     }
 }

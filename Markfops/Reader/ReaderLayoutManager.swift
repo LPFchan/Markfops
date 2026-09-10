@@ -2,23 +2,60 @@ import AppKit
 
 final class ReaderLayoutManager: NSLayoutManager {
     var theme: ReaderTheme = .default
+    /// Whole-view glyph opacity, driven by the mode morph while its layers move.
     var morphGlyphOpacity: CGFloat = 1
+    /// Character ranges whose glyphs are not drawn while a reveal transition
+    /// animates copies of them. Independent of `morphGlyphOpacity`.
+    var hiddenCharacterRanges: [NSRange] = [] {
+        didSet {
+            for range in oldValue + hiddenCharacterRanges where range.length > 0 {
+                invalidateDisplay(forCharacterRange: range)
+            }
+        }
+    }
 
     override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
         guard morphGlyphOpacity > 0 else { return }
         if morphGlyphOpacity >= 1 {
-            super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
+            drawUnhiddenGlyphs(forGlyphRange: glyphsToShow, at: origin)
             return
         }
 
         guard let context = NSGraphicsContext.current?.cgContext else {
-            super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
+            drawUnhiddenGlyphs(forGlyphRange: glyphsToShow, at: origin)
             return
         }
         context.saveGState()
         context.setAlpha(morphGlyphOpacity)
-        super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
+        drawUnhiddenGlyphs(forGlyphRange: glyphsToShow, at: origin)
         context.restoreGState()
+    }
+
+    /// Draws the requested glyphs in pieces, leaving out the hidden ranges.
+    private func drawUnhiddenGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
+        guard !hiddenCharacterRanges.isEmpty else {
+            super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
+            return
+        }
+        let hiddenGlyphRanges = hiddenCharacterRanges
+            .map { glyphRange(forCharacterRange: $0, actualCharacterRange: nil) }
+            .map { NSIntersectionRange($0, glyphsToShow) }
+            .filter { $0.length > 0 }
+            .sorted { $0.location < $1.location }
+        var cursor = glyphsToShow.location
+        for hidden in hiddenGlyphRanges {
+            if hidden.location > cursor {
+                super.drawGlyphs(
+                    forGlyphRange: NSRange(location: cursor, length: hidden.location - cursor),
+                    at: origin
+                )
+            }
+            cursor = max(cursor, NSMaxRange(hidden))
+        }
+        let end = NSMaxRange(glyphsToShow)
+        if cursor < end {
+            super.drawGlyphs(forGlyphRange: NSRange(location: cursor, length: end - cursor), at: origin)
+        }
     }
 
     override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {

@@ -456,6 +456,11 @@ struct ReaderView: NSViewRepresentable {
         var playsRefusalSound = true
         /// Count of edits refused because the map could not route them.
         private(set) var refusedEditCount = 0
+        /// Animates syntax appearing or disappearing around the caret. Created
+        /// on the first caret-driven reveal change that can animate.
+        private(set) var revealTransition: RevealTransitionOverlay?
+        /// What the last rebuild did about animating its reveal. Read by tests.
+        private(set) var lastRevealTransitionOutcome = "idle"
 
         private var userScrollGesture = UserScrollGestureState()
         private var userScrollIdleResetItem: DispatchWorkItem?
@@ -480,6 +485,7 @@ struct ReaderView: NSViewRepresentable {
             userScrollIdleResetItem?.cancel()
             userScrollIdleResetItem = nil
             NotificationCenter.default.removeObserver(self)
+            revealTransition?.finishImmediately()
             textView = nil
             scrollView = nil
             userScrollGesture.end()
@@ -531,7 +537,15 @@ struct ReaderView: NSViewRepresentable {
         /// Parses the source, builds the presentation with the reveal for
         /// `sourceCursor` (or the current reveal when nil), applies it to the
         /// storage as a minimal replacement, and places the caret at the cursor.
-        private func performRebuild(themeKey: String, sourceCursor requestedCursor: Int?) {
+        /// With `animatesReveal`, a change that only shows or hides syntax
+        /// animates: the old layout is measured before the replacement and the
+        /// new one after it. Text changes never animate, so typing pays nothing.
+        private func performRebuild(
+            themeKey: String,
+            sourceCursor requestedCursor: Int?,
+            animatesReveal: Bool = false
+        ) {
+            finishRevealTransition()
             let textUnchanged = lastDocumentID == document.id
                 && lastTextRevision == document.textRevision
             let map = textUnchanged && sourceMap != nil
@@ -540,6 +554,8 @@ struct ReaderView: NSViewRepresentable {
             let sourceCursor = requestedCursor.map {
                 max(0, min($0, (document.rawText as NSString).length))
             }
+            let previousReveal = revealedSourceRange
+            let previousPresentation = presentation
             if let sourceCursor {
                 revealedSourceRange = ReaderReveal.range(in: map, sourceCursor: sourceCursor)
             }
@@ -550,6 +566,15 @@ struct ReaderView: NSViewRepresentable {
                 baseURL: document.fileURL?.deletingLastPathComponent(),
                 revealedSourceRange: revealedSourceRange
             )
+            let changedReveals = [previousReveal, revealedSourceRange].compactMap { $0 }
+            let before = animatesReveal
+                ? captureRevealTransition(
+                    textUnchanged: textUnchanged,
+                    previous: previousPresentation,
+                    revealChanged: previousReveal != revealedSourceRange,
+                    sourceRanges: changedReveals
+                )
+                : skipRevealTransition("not a caret move")
             sourceMap = map
             presentation = built
             lastDocumentID = document.id
@@ -565,6 +590,82 @@ struct ReaderView: NSViewRepresentable {
                 textView.setSelectedRange(NSRange(location: readerOffset, length: 0))
                 isApplyingPresentation = false
             }
+            if let before {
+                startRevealTransition(from: before, built: built, sourceRanges: changedReveals)
+            }
+        }
+
+        // MARK: - Reveal transition
+
+        /// Measures the paragraphs the reveal change touches while the storage
+        /// still holds the old build. Returns nil, with the reason recorded,
+        /// when the change should swap instantly.
+        private func captureRevealTransition(
+            textUnchanged: Bool,
+            previous: ReaderPresentation?,
+            revealChanged: Bool,
+            sourceRanges: [NSRange]
+        ) -> RevealTransitionSnapshot? {
+            guard textUnchanged, let previous else {
+                return skipRevealTransition("text changed")
+            }
+            guard revealChanged, !sourceRanges.isEmpty else {
+                return skipRevealTransition("reveal unchanged")
+            }
+            guard let textView, textView.window != nil else {
+                return skipRevealTransition("no window")
+            }
+            guard ModeMorphPolicy.canMorph(sourceLength: (document.rawText as NSString).length) else {
+                return skipRevealTransition("policy")
+            }
+            do {
+                return try RevealTransitionPlanner.snapshot(
+                    in: textView,
+                    offsetMap: previous.offsetMap,
+                    sourceRanges: sourceRanges
+                )
+            } catch {
+                return skipRevealTransition("measuring the old layout threw \(error)")
+            }
+        }
+
+        private func startRevealTransition(
+            from before: RevealTransitionSnapshot,
+            built: ReaderPresentation,
+            sourceRanges: [NSRange]
+        ) {
+            guard let textView else { return }
+            let after: RevealTransitionSnapshot
+            do {
+                after = try RevealTransitionPlanner.snapshot(
+                    in: textView,
+                    offsetMap: built.offsetMap,
+                    sourceRanges: sourceRanges
+                )
+            } catch {
+                skipRevealTransition("measuring the new layout threw \(error)")
+                return
+            }
+            let plan = RevealTransitionPlanner.plan(before: before, after: after)
+            let overlay = revealTransition ?? RevealTransitionOverlay()
+            revealTransition = overlay
+            overlay.run(plan, in: textView)
+            lastRevealTransitionOutcome = overlay.lastOutcome
+        }
+
+        @discardableResult
+        private func skipRevealTransition(_ reason: String) -> RevealTransitionSnapshot? {
+            lastRevealTransitionOutcome = "skipped: " + reason
+            if reason != "not a caret move" {
+                Self.log.info("reveal transition skipped: \(reason, privacy: .public)")
+            }
+            return nil
+        }
+
+        /// Jumps a running reveal animation to its end state. Called before any
+        /// rebuild, storage replacement, caret move, or mode morph.
+        private func finishRevealTransition() {
+            revealTransition?.finishImmediately()
         }
 
         /// Replaces only the part of the storage that differs from the new
@@ -573,6 +674,7 @@ struct ReaderView: NSViewRepresentable {
         /// (a reveal or a construct change restyles text without changing it).
         private func applyPresentation(_ built: ReaderPresentation) {
             guard let textView, let storage = textView.textStorage else { return }
+            finishRevealTransition()
             isApplyingPresentation = true
             defer { isApplyingPresentation = false }
 
@@ -663,6 +765,7 @@ struct ReaderView: NSViewRepresentable {
         /// Builds the native reader synchronously when a mode morph needs the
         /// incoming text and offset map before SwiftUI's next update settles.
         func prepareForMorph(themeKey: String, sourceCursor: Int? = nil) {
+            finishRevealTransition()
             let wasActive = isActive
             isActive = true
             if let sourceCursor {
@@ -909,6 +1012,8 @@ struct ReaderView: NSViewRepresentable {
                   notification.object as? NSTextView === textView,
                   !textView.hasMarkedText(),
                   !textView.isUpdatingMarkedText else { return }
+            // Any caret move or drag ends a running reveal animation.
+            finishRevealTransition()
             let selection = textView.selectedRange()
             // A range selection keeps the current reveal: rebuilding the storage
             // under a mouse drag would shift the drag anchor.
@@ -921,7 +1026,7 @@ struct ReaderView: NSViewRepresentable {
             let sourceCursor = presentation.offsetMap.sourceInsertionOffset(forReaderOffset: caret)
             let reveal = ReaderReveal.range(in: sourceMap, sourceCursor: sourceCursor)
             guard reveal != revealedSourceRange else { return }
-            performRebuild(themeKey: themeKey, sourceCursor: sourceCursor)
+            performRebuild(themeKey: themeKey, sourceCursor: sourceCursor, animatesReveal: true)
         }
 
         // MARK: - Composition

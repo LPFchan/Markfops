@@ -78,12 +78,14 @@ Each slice must end with something visible in the app and its own tests.
   - Toggle: a second Command-B or Command-I inside the construct removes its delimiters in both modes; a selection reaching outside the construct nests
   - Related ids: `DEC-20260910-001`, `RSH-20260909-001`
 
+- Slice 4c: the syntax reveal animates (landed)
+  - Done: a caret-driven reveal change measures the affected paragraphs before and after the rebuild, pairs characters by source identity, and animates copies over 0.2 s: revealed syntax fades in, hidden syntax fades out, displaced glyphs slide; the real glyphs under them are hidden per range; any keystroke, caret move, rebuild, or mode morph jumps it to the end state; text changes and Reduce Motion stay instant
+  - Measured: a reveal change on a 10,000-character document costs about 45 ms with the animation against 42 ms without; keystrokes are unchanged
+  - Open: the inline-code capsule snaps to its new size while its glyphs slide; decoration motion belongs to the morph tuning initiative
+  - Related ids: `DEC-20260910-001`, `RSH-20260909-001`
+
 ### Near Term
 
-- Slice 4c: the syntax reveal animates
-  - Done when: syntax appearing or disappearing around the caret fades in or out while the neighbouring glyphs on the affected lines slide to their new positions, using the same measured-position layers as the mode morph but scoped to the changed paragraph; a keystroke or caret move during the animation jumps it to its end state; Reduce Motion keeps the instant swap
-  - Why: the operator asked for it after the first session with slice 4a; a popping reveal breaks the continuity the morph established
-  - Related ids: `DEC-20260910-001`, `RSH-20260909-001`
 - Slice 5: structural edits in formatted mode
   - Done when: Enter continues lists, deleting a bullet removes its marker, heading commands work, and images, frontmatter, and thematic breaks either route or stay refused with a visible reason
   - Related ids: `DEC-20260910-001`
