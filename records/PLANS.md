@@ -101,6 +101,10 @@ Each slice must end with something visible in the app and its own tests.
   - Done: backspace over a bullet, task box, thematic break, or the front matter deletes the construct's whole source and animates the glyph out; Enter at the end of a list item writes the next marker (same bullet, next number, empty task box) behind the item's indent and quote markers, on an empty item removes the marker or outdents a nested one, and in a quote continues the `> ` prefix; list markers inside quotes are now mapped
   - Open: typing over a substituted glyph (bullet, image, front matter) stays refused with a beep; images and thematic breaks have no editing of their own
   - Related ids: `DEC-20260910-001`
+- Slice 5d: undo, find, and list-marker reveal in formatted mode (landed)
+  - Done: Command-Z and Shift-Command-Z reach the document's history from the reader; Command-F finds in the formatted text (replace stays with the editor); a list item's marker reveals while the cursor is in the item, innermost item only
+  - Open: find has no match flash in the reader; a match is shown by selection alone
+  - Related ids: `DEC-20260910-001`
 
 ### Near Term
 
