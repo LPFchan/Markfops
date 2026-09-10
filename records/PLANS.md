@@ -84,6 +84,11 @@ Each slice must end with something visible in the app and its own tests.
   - Open: the inline-code capsule snaps to its new size while its glyphs slide; decoration motion belongs to the morph tuning initiative
   - Related ids: `DEC-20260910-001`, `RSH-20260909-001`
 
+- Slice 4d: wrap commands animate their syntax into place (landed)
+  - Done: Command-B, Command-I, and the code and strikethrough wraps, and their toggle-off, run the reveal animation across the edit: the edit carries a source-offset mapping, the before snapshot is rekeyed through it, delimiters fade in or out, the wrapped text crossfades between its old and new styling while it slides; typing, Enter, deletion, composition, and undo stay instant
+  - Open: a reveal in a distant paragraph vanishes instantly when a wrap happens elsewhere; the inline-code capsule still snaps
+  - Related ids: `DEC-20260910-001`, `RSH-20260909-001`
+
 ### Near Term
 
 - Slice 5: structural edits in formatted mode

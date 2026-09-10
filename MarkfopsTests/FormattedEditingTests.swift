@@ -216,6 +216,70 @@ final class ReaderOffsetMapEditingTests: XCTestCase {
 
 /// Hosts the real container offscreen in formatted mode and edits the reader.
 /// The window is never ordered front and no input events are synthesized.
+final class RevealTransitionRemapTests: XCTestCase {
+    /// Glyphs for every offset plus one substituted glyph (a list bullet) at
+    /// `substitutedAt`, to check that substituted keys remap too.
+    private func snapshot(offsets: Range<Int>, substitutedAt: Int = 100) -> RevealTransitionSnapshot {
+        var glyphs: [RevealGlyphKey: RevealMeasuredGlyph] = [:]
+        for offset in offsets {
+            glyphs[.source(offset)] = RevealMeasuredGlyph(
+                readerIndex: offset,
+                box: MorphGlyphBox(
+                    x: CGFloat(offset) * 10,
+                    baseline: 0,
+                    width: 10,
+                    font: .systemFont(ofSize: 12),
+                    attributed: NSAttributedString(string: "x")
+                )
+            )
+        }
+        glyphs[.substituted(sourceLocation: substitutedAt, index: 0)] = RevealMeasuredGlyph(
+            readerIndex: 100,
+            box: MorphGlyphBox(x: 1000, baseline: 0, width: 10, font: .systemFont(ofSize: 12), attributed: NSAttributedString(string: "•"))
+        )
+        return RevealTransitionSnapshot(glyphs: glyphs, measuredRanges: [NSRange(location: 0, length: offsets.count)])
+    }
+
+    private func edit(_ text: String, select fragment: String) -> MarkdownWrapToggle.Edit {
+        MarkdownWrapToggle.edit(
+            in: text as NSString,
+            sourceMap: MarkdownSourceMap.parse(text),
+            selection: (text as NSString).range(of: fragment),
+            prefix: "**",
+            suffix: "**"
+        )
+    }
+
+    func testWrapRemapsEveryGlyphWithoutCollisionsOrDeletions() {
+        let before = snapshot(offsets: 0..<14)
+        let wrap = edit("Some bold text", select: "bold")
+        let remapped = before.remapped(through: wrap.newOffset(forOldOffset:))
+
+        XCTAssertEqual(remapped.glyphs.count + remapped.deleted.count, before.glyphs.count, "no key collides")
+        XCTAssertTrue(remapped.deleted.isEmpty)
+        XCTAssertEqual(remapped.glyphs[.source(7)]?.readerIndex, 5, "the b of bold now sits past the prefix")
+        XCTAssertEqual(remapped.glyphs[.source(13)]?.readerIndex, 9)
+        XCTAssertNil(remapped.glyphs[.source(5)])
+        XCTAssertEqual(remapped.glyphs[.substituted(sourceLocation: 104, index: 0)]?.readerIndex, 100)
+    }
+
+    func testUnwrapRemapsTheContentAndKeepsTheDelimitersForFadingOut() {
+        let before = snapshot(offsets: 0..<18)
+        let unwrap = edit("Some **bold** text", select: "bold")
+        let remapped = before.remapped(through: unwrap.newOffset(forOldOffset:))
+
+        XCTAssertEqual(remapped.glyphs.count + remapped.deleted.count, before.glyphs.count, "no key collides")
+        XCTAssertEqual(Set(remapped.deleted.keys), [.source(5), .source(6), .source(11), .source(12)])
+        XCTAssertEqual(remapped.glyphs[.source(5)]?.readerIndex, 7)
+        XCTAssertEqual(remapped.glyphs[.source(9)]?.readerIndex, 13)
+
+        XCTAssertEqual(remapped.glyphs[.substituted(sourceLocation: 96, index: 0)]?.readerIndex, 100)
+        let plan = RevealTransitionPlanner.plan(before: remapped, after: snapshot(offsets: 0..<14, substitutedAt: 96))
+        XCTAssertEqual(plan.fadeOutCount, 4, "the removed delimiters fade out")
+        XCTAssertEqual(plan.fadeInCount, 0)
+    }
+}
+
 final class FormattedEditingContainerTests: XCTestCase {
     private struct Host {
         let document: Document
@@ -638,6 +702,137 @@ final class FormattedEditingContainerTests: XCTestCase {
 
         // A caret move that keeps the same reveal does not rebuild or animate.
         host.placeCaret(at: bold.location + 3)
+        XCTAssertFalse(host.coordinator.revealTransition?.isRunning ?? false)
+    }
+
+    // MARK: - Wrap commands
+
+    private func isBold(_ font: NSFont?) -> Bool {
+        font?.fontDescriptor.symbolicTraits.contains(.bold) ?? false
+    }
+
+    func testBoldOnASelectedWordFadesTheDelimitersInAndCrossfadesTheWord() throws {
+        try skipUnlessTransitionsRun()
+        let host = try makeHost(text: "Some bold text")
+        host.reader.setSelectedRange(try host.readerRange(of: "bold"))
+
+        host.reader.wrapSelection(prefix: "**", suffix: "**")
+
+        XCTAssertEqual(host.document.rawText, "Some **bold** text")
+        XCTAssertEqual(host.reader.string, "Some **bold** text")
+        XCTAssertEqual(host.reader.selectedRange(), try host.readerRange(of: "bold"), "the content is reselected at once")
+        let overlay = try XCTUnwrap(host.coordinator.revealTransition, "overlay should exist")
+        XCTAssertTrue(overlay.isRunning, host.coordinator.lastRevealTransitionOutcome)
+        XCTAssertTrue(overlay.lastOutcome.contains("4 restyling"), overlay.lastOutcome)
+        XCTAssertFalse(host.layoutManager?.hiddenCharacterRanges.isEmpty ?? true, "real glyphs should be hidden")
+
+        let stars = host.transitionEntries(for: "*")
+        XCTAssertEqual(stars.count, 4, "both delimiter pairs appear")
+        XCTAssertTrue(stars.allSatisfy { $0.entry.from == nil && $0.entry.to != nil }, "delimiters fade in")
+        let word = ["b", "o", "l", "d"].flatMap { host.transitionEntries(for: $0) }
+        XCTAssertEqual(word.count, 4)
+        for glyph in word {
+            XCTAssertTrue(glyph.entry.isMover && glyph.entry.crossfades, "\(glyph.entry.text.string) crossfades")
+            XCTAssertFalse(isBold(glyph.entry.from?.font), "old styling is regular")
+            XCTAssertTrue(isBold(glyph.entry.to?.font), "new styling is bold")
+            XCTAssertNotNil(glyph.fromLayer, "a copy in the old styling fades out")
+            XCTAssertGreaterThan(glyph.to.x, glyph.from.x, "the word slides right past the prefix")
+        }
+        let trailing = host.transitionEntries(for: "x")
+        XCTAssertFalse(trailing.isEmpty, "the text after the word moves")
+        XCTAssertTrue(trailing.allSatisfy { $0.entry.isMover && !$0.entry.crossfades && $0.to.x > $0.from.x })
+
+        host.pump(seconds: 0.06)
+        XCTAssertTrue(overlay.isRunning, "still animating after 60 ms")
+        for glyph in word {
+            let fading = try XCTUnwrap(glyph.fromLayer?.presentation()?.opacity)
+            let appearing = try XCTUnwrap(glyph.layer.presentation()?.opacity)
+            XCTAssertGreaterThan(fading, 0)
+            XCTAssertLessThan(fading, 1)
+            XCTAssertGreaterThan(appearing, 0)
+            XCTAssertLessThan(appearing, 1)
+        }
+
+        host.pump(seconds: 0.4)
+        XCTAssertFalse(overlay.isRunning)
+        XCTAssertNil(overlay.superview)
+        XCTAssertEqual(overlay.layer?.sublayers?.count ?? 0, 0)
+        XCTAssertEqual(host.layoutManager?.hiddenCharacterRanges ?? [NSRange()], [])
+        XCTAssertEqual(host.reader.selectedRange(), try host.readerRange(of: "bold"))
+        XCTAssertEqual(host.coordinator.refusedEditCount, 0)
+    }
+
+    func testBoldAgainFadesTheDelimitersOutAndCrossfadesTheWordBack() throws {
+        try skipUnlessTransitionsRun()
+        let host = try makeHost(text: "Some bold text")
+        host.reader.setSelectedRange(try host.readerRange(of: "bold"))
+        host.reader.wrapSelection(prefix: "**", suffix: "**")
+        host.pump(seconds: 0.4)
+        XCTAssertEqual(host.reader.string, "Some **bold** text")
+
+        host.reader.wrapSelection(prefix: "**", suffix: "**")
+
+        XCTAssertEqual(host.document.rawText, "Some bold text")
+        XCTAssertEqual(host.reader.string, "Some bold text")
+        XCTAssertEqual(host.reader.selectedRange(), try host.readerRange(of: "bold"))
+        let overlay = try XCTUnwrap(host.coordinator.revealTransition)
+        XCTAssertTrue(overlay.isRunning, host.coordinator.lastRevealTransitionOutcome)
+        let stars = host.transitionEntries(for: "*")
+        XCTAssertEqual(stars.count, 4)
+        XCTAssertTrue(stars.allSatisfy { $0.entry.from != nil && $0.entry.to == nil }, "delimiters fade out")
+        let word = ["b", "o", "l", "d"].flatMap { host.transitionEntries(for: $0) }
+        XCTAssertEqual(word.count, 4)
+        for glyph in word {
+            XCTAssertTrue(glyph.entry.crossfades)
+            XCTAssertTrue(isBold(glyph.entry.from?.font))
+            XCTAssertFalse(isBold(glyph.entry.to?.font))
+            XCTAssertLessThan(glyph.to.x, glyph.from.x, "the word slides back left")
+        }
+
+        host.pump(seconds: 0.06)
+        for star in stars {
+            let opacity = try XCTUnwrap(star.layer.presentation()?.opacity)
+            XCTAssertGreaterThan(opacity, 0)
+            XCTAssertLessThan(opacity, 1)
+        }
+
+        host.pump(seconds: 0.4)
+        XCTAssertFalse(overlay.isRunning)
+        XCTAssertNil(overlay.superview)
+        XCTAssertEqual(host.layoutManager?.hiddenCharacterRanges ?? [NSRange()], [])
+    }
+
+    func testItalicWithACaretFadesTwoDelimitersInWhileTheFollowingTextSlides() throws {
+        try skipUnlessTransitionsRun()
+        let host = try makeHost(text: "Hello world")
+        host.placeCaret(at: 5)
+
+        host.reader.wrapSelection(prefix: "*", suffix: "*")
+
+        XCTAssertEqual(host.reader.string, "Hello** world")
+        XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 6, length: 0))
+        let overlay = try XCTUnwrap(host.coordinator.revealTransition)
+        XCTAssertTrue(overlay.isRunning, host.coordinator.lastRevealTransitionOutcome)
+        let stars = host.transitionEntries(for: "*")
+        XCTAssertEqual(stars.count, 2)
+        XCTAssertTrue(stars.allSatisfy { $0.entry.from == nil && $0.entry.to != nil })
+        let following = host.transitionEntries(for: "w")
+        XCTAssertEqual(following.count, 1)
+        XCTAssertTrue(following.allSatisfy { $0.entry.isMover && !$0.entry.crossfades && $0.to.x > $0.from.x })
+        XCTAssertTrue(host.transitionEntries(for: "H").isEmpty, "text before the caret stays put")
+
+        host.pump(seconds: 0.4)
+        XCTAssertFalse(overlay.isRunning)
+        XCTAssertEqual(host.layoutManager?.hiddenCharacterRanges ?? [NSRange()], [])
+    }
+
+    func testEnterDoesNotAnimate() throws {
+        try skipUnlessTransitionsRun()
+        let host = try makeHost(text: "Hello world")
+        host.placeCaret(at: 5)
+        host.reader.insertNewline(nil)
+        XCTAssertEqual(host.document.rawText, "Hello\n\n world")
+        XCTAssertEqual(host.coordinator.lastRevealTransitionOutcome, "skipped: not a caret move")
         XCTAssertFalse(host.coordinator.revealTransition?.isRunning ?? false)
     }
 

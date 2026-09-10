@@ -8,7 +8,7 @@ Do not use it as a transcript or a scratchpad.
 
 - Last updated: 2026-09-10
 - Overall posture: `active`
-- Current focus: formatted mode is editable through the source map (`DEC-20260910-001`); slices 4a through 4c landed; slice 5 (structural edits) is next
+- Current focus: formatted mode is editable through the source map (`DEC-20260910-001`); slices 4a through 4d landed; slice 5 (structural edits) is next
 - Highest-priority blocker: none; the public `1.1.2` DMG and Sparkle update are verified
 - Next operator decision needed: try typing in formatted mode and report how the syntax reveal and Enter feel
 - Related decisions: `DEC-20260409-001`, `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260410-001`, `DEC-20260909-001`, `DEC-20260909-002`, `DEC-20260910-001`
@@ -35,7 +35,7 @@ Markfops is a working native macOS Markdown app with XcodeGen project generation
 - Goal: turn the accepted native-reader direction into shipped engine slices
 - Status: `in progress`
 - Why this matters now: the repo has enough accepted research to move from exploration toward execution
-- Current work: slices 1 through 4b landed (source map, native reader, morph, source-mapped typing with cursor-local syntax reveal, cursor carried across the morph). Slice 4c animated the reveal; 5 handles structural edits (list continuation, bullets, heading commands)
+- Current work: slices 1 through 4b landed (source map, native reader, morph, source-mapped typing with cursor-local syntax reveal, cursor carried across the morph). Slices 4c and 4d animated the caret reveal and the wrap commands; 5 handles structural edits (list continuation, bullets, heading commands)
 - Exit criteria: writing in formatted mode is safe and feels right, the morph feels right, and a release ships both
 - Dependencies: `RSH-20260402-007` through `RSH-20260402-013`, `RSH-20260909-001`
 - Risks: the operator's first look at the morph produced two fixes the tests had missed, so more may follow; formatted mode still shows tables and HTML as raw source, has no code highlighting, and no find or heading commands
@@ -44,7 +44,7 @@ Markfops is a working native macOS Markdown app with XcodeGen project generation
 ## Recent Changes To Project Reality
 
 - Date: 2026-09-10
-  - Change: syntax revealed around the caret now fades in and out while the neighbouring glyphs slide; Command-B and the other wrap commands toggle off when already inside their construct
+  - Change: syntax revealed around the caret now fades in and out while the neighbouring glyphs slide; Command-B and the other wrap commands toggle off when already inside their construct and animate their delimiters and restyled text into place
   - Why it matters: both came from the operator's first session typing in formatted mode
   - Related ids: `DEC-20260910-001`
 

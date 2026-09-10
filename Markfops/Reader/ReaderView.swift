@@ -534,16 +534,35 @@ struct ReaderView: NSViewRepresentable {
             }
         }
 
+        /// A before snapshot a routed edit measured and remapped into the new
+        /// text's offsets, with the new-text source ranges to measure after
+        /// the rebuild.
+        struct PreparedRevealTransition {
+            let before: RevealTransitionSnapshot
+            let sourceRanges: [NSRange]
+        }
+
+        /// What a routed edit hands over so its syntax animates into place:
+        /// the old source range it replaces, the replacement's range in the
+        /// new text, and where each old source offset lands (nil: removed).
+        struct RoutedEditTransition {
+            let oldRange: NSRange
+            let newRange: NSRange
+            let newOffset: (Int) -> Int?
+        }
+
         /// Parses the source, builds the presentation with the reveal for
         /// `sourceCursor` (or the current reveal when nil), applies it to the
         /// storage as a minimal replacement, and places the caret at the cursor.
         /// With `animatesReveal`, a change that only shows or hides syntax
         /// animates: the old layout is measured before the replacement and the
-        /// new one after it. Text changes never animate, so typing pays nothing.
+        /// new one after it. Text changes never animate, so typing pays nothing,
+        /// unless the edit measured its own before snapshot (`editTransition`).
         private func performRebuild(
             themeKey: String,
             sourceCursor requestedCursor: Int?,
-            animatesReveal: Bool = false
+            animatesReveal: Bool = false,
+            editTransition: PreparedRevealTransition? = nil
         ) {
             finishRevealTransition()
             let textUnchanged = lastDocumentID == document.id
@@ -567,14 +586,23 @@ struct ReaderView: NSViewRepresentable {
                 revealedSourceRange: revealedSourceRange
             )
             let changedReveals = [previousReveal, revealedSourceRange].compactMap { $0 }
-            let before = animatesReveal
-                ? captureRevealTransition(
+            let before: RevealTransitionSnapshot?
+            let transitionRanges: [NSRange]
+            if let editTransition {
+                before = editTransition.before
+                transitionRanges = editTransition.sourceRanges
+            } else if animatesReveal {
+                before = captureRevealTransition(
                     textUnchanged: textUnchanged,
                     previous: previousPresentation,
                     revealChanged: previousReveal != revealedSourceRange,
                     sourceRanges: changedReveals
                 )
-                : skipRevealTransition("not a caret move")
+                transitionRanges = changedReveals
+            } else {
+                before = skipRevealTransition("not a caret move")
+                transitionRanges = []
+            }
             sourceMap = map
             presentation = built
             lastDocumentID = document.id
@@ -591,7 +619,7 @@ struct ReaderView: NSViewRepresentable {
                 isApplyingPresentation = false
             }
             if let before {
-                startRevealTransition(from: before, built: built, sourceRanges: changedReveals)
+                startRevealTransition(from: before, built: built, sourceRanges: transitionRanges)
             }
         }
 
@@ -626,6 +654,36 @@ struct ReaderView: NSViewRepresentable {
                 )
             } catch {
                 return skipRevealTransition("measuring the old layout threw \(error)")
+            }
+        }
+
+        /// Measures the paragraph an edit is about to replace while the
+        /// storage still holds the old text, keyed by the new text's offsets.
+        /// Returns nil, with the reason recorded, when the edit should swap
+        /// instantly.
+        private func captureEditTransition(_ request: RoutedEditTransition) -> PreparedRevealTransition? {
+            finishRevealTransition()
+            guard let textView, textView.window != nil, let presentation else {
+                skipRevealTransition("no window")
+                return nil
+            }
+            guard ModeMorphPolicy.canMorph(sourceLength: (document.rawText as NSString).length) else {
+                skipRevealTransition("policy")
+                return nil
+            }
+            do {
+                let snapshot = try RevealTransitionPlanner.snapshot(
+                    in: textView,
+                    offsetMap: presentation.offsetMap,
+                    sourceRanges: [request.oldRange]
+                )
+                return PreparedRevealTransition(
+                    before: snapshot.remapped(through: request.newOffset),
+                    sourceRanges: [request.newRange]
+                )
+            } catch {
+                skipRevealTransition("measuring the old layout threw \(error)")
+                return nil
             }
         }
 
@@ -912,13 +970,15 @@ struct ReaderView: NSViewRepresentable {
 
         /// `sourceSelection` is the selection to show after the rebuild, as a
         /// source range; nil puts a caret after the replacement. Its start is
-        /// the cursor the reveal is computed for.
+        /// the cursor the reveal is computed for. With `transition`, the edit
+        /// animates its syntax into place; typing passes nil and stays instant.
         @discardableResult
         private func routeSourceEdit(
             sourceRange: NSRange,
             replacement: String,
             readerRange: NSRange,
-            sourceSelection: NSRange? = nil
+            sourceSelection: NSRange? = nil,
+            transition: RoutedEditTransition? = nil
         ) -> Bool {
             guard let textView, let themeKey = lastThemeKey else {
                 refuse("reader not built")
@@ -926,13 +986,14 @@ struct ReaderView: NSViewRepresentable {
             }
             isRoutingEdit = true
             defer { isRoutingEdit = false }
+            let prepared = transition.flatMap { captureEditTransition($0) }
             guard document.sharedEditorBridge.applySourceEdit(in: sourceRange, with: replacement) else {
                 refuse("editor unavailable for source \(sourceRange)")
                 return false
             }
             let cursor = sourceSelection?.location
                 ?? sourceRange.location + (replacement as NSString).length
-            performRebuild(themeKey: themeKey, sourceCursor: cursor)
+            performRebuild(themeKey: themeKey, sourceCursor: cursor, editTransition: prepared)
             if let sourceSelection, sourceSelection.length > 0, let presentation {
                 let start = presentation.offsetMap.readerOffset(forSourceOffset: sourceSelection.location)
                 let end = presentation.offsetMap.readerOffset(forSourceOffset: NSMaxRange(sourceSelection))
@@ -990,7 +1051,12 @@ struct ReaderView: NSViewRepresentable {
                 sourceRange: edit.range,
                 replacement: edit.replacement,
                 readerRange: readerRange,
-                sourceSelection: edit.selection
+                sourceSelection: edit.selection,
+                transition: RoutedEditTransition(
+                    oldRange: edit.range,
+                    newRange: NSRange(location: edit.range.location, length: (edit.replacement as NSString).length),
+                    newOffset: edit.newOffset(forOldOffset:)
+                )
             )
         }
 

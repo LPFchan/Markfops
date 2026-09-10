@@ -3,9 +3,10 @@ import CoreText
 import os
 import QuartzCore
 
-/// Identity of one reader character across two builds of the same source
-/// text. A reveal only changes which syntax is shown, so a character that
-/// exists in both builds carries the same key in both.
+/// Identity of one reader character across two builds. A reveal only changes
+/// which syntax is shown, so a character that exists in both builds carries
+/// the same key in both; an edit that moves source text remaps the keys of
+/// the old build first (`RevealTransitionSnapshot.remapped`).
 enum RevealGlyphKey: Hashable {
     /// A character shown one-to-one for this source offset.
     case source(Int)
@@ -23,16 +24,77 @@ struct RevealMeasuredGlyph {
 struct RevealTransitionSnapshot {
     let glyphs: [RevealGlyphKey: RevealMeasuredGlyph]
     let measuredRanges: [NSRange]
+    /// Glyphs an edit removed, under their keys in the old build: measured
+    /// there, gone from the new build, so they only ever fade out.
+    let deleted: [RevealGlyphKey: RevealMeasuredGlyph]
+
+    init(
+        glyphs: [RevealGlyphKey: RevealMeasuredGlyph],
+        measuredRanges: [NSRange],
+        deleted: [RevealGlyphKey: RevealMeasuredGlyph] = [:]
+    ) {
+        self.glyphs = glyphs
+        self.measuredRanges = measuredRanges
+        self.deleted = deleted
+    }
+
+    /// The same glyphs keyed by where an edit moves their source offsets, so
+    /// a snapshot of the old text pairs with one of the new text. Glyphs whose
+    /// offset maps to nil were removed by the edit and move to `deleted`. Two
+    /// keys never land on the same new key for a wrap or unwrap; if they did,
+    /// one glyph would be lost.
+    func remapped(through newOffset: (Int) -> Int?) -> RevealTransitionSnapshot {
+        var moved: [RevealGlyphKey: RevealMeasuredGlyph] = [:]
+        moved.reserveCapacity(glyphs.count)
+        var removed = deleted
+        for (key, glyph) in glyphs {
+            let newKey: RevealGlyphKey?
+            switch key {
+            case let .source(offset):
+                newKey = newOffset(offset).map { .source($0) }
+            case let .substituted(sourceLocation, index):
+                newKey = newOffset(sourceLocation).map { .substituted(sourceLocation: $0, index: index) }
+            }
+            if let newKey {
+                moved[newKey] = glyph
+            } else {
+                removed[key] = glyph
+            }
+        }
+        return RevealTransitionSnapshot(glyphs: moved, measuredRanges: measuredRanges, deleted: removed)
+    }
 }
 
 struct RevealTransitionEntry {
     let key: RevealGlyphKey
+    /// The glyph as the new build draws it, or as the old one did for a
+    /// disappearing glyph.
     let text: NSAttributedString
     let font: NSFont
-    /// Position in the old build; nil for syntax that is appearing.
+    /// Position and old styling in the old build; nil for syntax that is appearing.
     let from: MorphGlyphBox?
-    /// Position in the new build; nil for syntax that is disappearing.
+    /// Position and new styling in the new build; nil for syntax that is disappearing.
     let to: MorphGlyphBox?
+    /// The old and new builds style this glyph differently (regular to bold,
+    /// say): the overlay fades a copy in the old styling out while the copy
+    /// in the new styling fades in, both travelling together.
+    let crossfades: Bool
+
+    init(
+        key: RevealGlyphKey,
+        text: NSAttributedString,
+        font: NSFont,
+        from: MorphGlyphBox?,
+        to: MorphGlyphBox?,
+        crossfades: Bool = false
+    ) {
+        self.key = key
+        self.text = text
+        self.font = font
+        self.from = from
+        self.to = to
+        self.crossfades = crossfades
+    }
 
     var isMover: Bool { from != nil && to != nil }
 }
@@ -41,7 +103,10 @@ struct RevealTransitionPlan {
     let entries: [RevealTransitionEntry]
     /// Reader ranges of the new build whose real glyphs the overlay stands in for.
     let hiddenRanges: [NSRange]
+    /// Paired glyphs that change position.
     let moverCount: Int
+    /// Paired glyphs that change styling, moving or not.
+    let crossfadeCount: Int
     let fadeInCount: Int
     let fadeOutCount: Int
 }
@@ -146,6 +211,7 @@ enum RevealTransitionPlanner {
         var entries: [RevealTransitionEntry] = []
         var hiddenIndices: [Int] = []
         var movers = 0
+        var crossfades = 0
         var fadeIns = 0
         var fadeOuts = 0
 
@@ -153,14 +219,17 @@ enum RevealTransitionPlanner {
             if let old = before.glyphs[key] {
                 let stayed = abs(old.box.x - new.box.x) <= stillTolerance
                     && abs(old.box.baseline - new.box.baseline) <= stillTolerance
-                guard !stayed else { continue }
-                movers += 1
+                let restyled = !stylingMatches(old.box, new.box)
+                guard !stayed || restyled else { continue }
+                if !stayed { movers += 1 }
+                if restyled { crossfades += 1 }
                 entries.append(RevealTransitionEntry(
                     key: key,
                     text: new.box.attributed,
                     font: new.box.font,
                     from: old.box,
-                    to: new.box
+                    to: new.box,
+                    crossfades: restyled
                 ))
             } else {
                 fadeIns += 1
@@ -184,14 +253,35 @@ enum RevealTransitionPlanner {
                 to: nil
             ))
         }
+        for (key, old) in before.deleted {
+            fadeOuts += 1
+            entries.append(RevealTransitionEntry(
+                key: key,
+                text: old.box.attributed,
+                font: old.box.font,
+                from: old.box,
+                to: nil
+            ))
+        }
 
         return RevealTransitionPlan(
             entries: entries,
             hiddenRanges: coalesce(hiddenIndices),
             moverCount: movers,
+            crossfadeCount: crossfades,
             fadeInCount: fadeIns,
             fadeOutCount: fadeOuts
         )
+    }
+
+    /// Whether two measurements of a glyph draw it the same way. Only the
+    /// font and the strikethrough count: a colour or kerning change alone
+    /// is not worth a second layer.
+    static func stylingMatches(_ old: MorphGlyphBox, _ new: MorphGlyphBox) -> Bool {
+        guard old.font == new.font else { return false }
+        let oldStrike = old.attributed.attribute(.strikethroughStyle, at: 0, effectiveRange: nil) as? Int ?? 0
+        let newStrike = new.attributed.attribute(.strikethroughStyle, at: 0, effectiveRange: nil) as? Int ?? 0
+        return oldStrike == newStrike
     }
 
     static func coalesce(_ indices: [Int]) -> [NSRange] {
@@ -216,7 +306,11 @@ enum RevealTransitionPlanner {
 final class RevealTransitionOverlay: NSView {
     struct ActiveEntry {
         let entry: RevealTransitionEntry
+        /// The copy in the entry's styling: the new one, or the old one for
+        /// a disappearing glyph.
         let layer: MorphGlyphLayer
+        /// For a crossfade, the copy in the old styling that fades out.
+        let fromLayer: MorphGlyphLayer?
         let from: CGPoint
         let to: CGPoint
     }
@@ -290,36 +384,57 @@ final class RevealTransitionOverlay: NSView {
         CATransaction.setCompletionBlock { [weak self] in
             self?.finish(generation: current)
         }
+        func move(_ glyph: CALayer, from start: CGPoint, to end: CGPoint) {
+            guard start != end else { return }
+            let move = CABasicAnimation(keyPath: "position")
+            move.fromValue = NSValue(point: start)
+            move.toValue = NSValue(point: end)
+            move.duration = Self.duration
+            move.timingFunction = moveTiming
+            glyph.position = end
+            glyph.add(move, forKey: "revealPosition")
+        }
+        func fade(_ glyph: CALayer, to target: Float) {
+            guard glyph.opacity != target else { return }
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = glyph.opacity
+            fade.toValue = target
+            fade.duration = Self.duration
+            fade.timingFunction = fadeTiming
+            glyph.opacity = target
+            glyph.add(fade, forKey: "revealOpacity")
+        }
+
         for entry in plan.entries {
-            let glyph = MorphGlyphLayer(reveal: entry, scale: scale)
+            let width = (entry.to ?? entry.from)?.width ?? 0
+            let glyph = MorphGlyphLayer(text: entry.text, font: entry.font, width: width, scale: scale)
             let from = entry.from.map { position(for: $0, font: entry.font, in: textView) }
             let to = entry.to.map { position(for: $0, font: entry.font, in: textView) }
             let start = from ?? to ?? .zero
             let end = to ?? from ?? .zero
             glyph.position = start
-            glyph.opacity = entry.from == nil ? 0 : 1
+            // A crossfading glyph starts invisible under its old-styling copy.
+            glyph.opacity = entry.from == nil || entry.crossfades ? 0 : 1
             layer?.addSublayer(glyph)
 
-            if from != nil, to != nil, start != end {
-                let move = CABasicAnimation(keyPath: "position")
-                move.fromValue = NSValue(point: start)
-                move.toValue = NSValue(point: end)
-                move.duration = Self.duration
-                move.timingFunction = moveTiming
-                glyph.position = end
-                glyph.add(move, forKey: "revealPosition")
+            var fromLayer: MorphGlyphLayer?
+            if entry.crossfades, let oldBox = entry.from, let newBox = entry.to {
+                let old = MorphGlyphLayer(text: oldBox.attributed, font: oldBox.font, width: oldBox.width, scale: scale)
+                old.position = position(for: oldBox, font: oldBox.font, in: textView)
+                old.opacity = 1
+                layer?.addSublayer(old)
+                // Travels with the new copy, keeping its own baseline offset.
+                let oldEnd = position(x: newBox.x, baseline: newBox.baseline, font: oldBox.font, in: textView)
+                move(old, from: old.position, to: oldEnd)
+                fade(old, to: 0)
+                fromLayer = old
             }
-            let targetOpacity: Float = entry.to == nil ? 0 : 1
-            if glyph.opacity != targetOpacity {
-                let fade = CABasicAnimation(keyPath: "opacity")
-                fade.fromValue = glyph.opacity
-                fade.toValue = targetOpacity
-                fade.duration = Self.duration
-                fade.timingFunction = fadeTiming
-                glyph.opacity = targetOpacity
-                glyph.add(fade, forKey: "revealOpacity")
+
+            if from != nil, to != nil {
+                move(glyph, from: start, to: end)
             }
-            active.append(ActiveEntry(entry: entry, layer: glyph, from: start, to: end))
+            fade(glyph, to: entry.to == nil ? 0 : 1)
+            active.append(ActiveEntry(entry: entry, layer: glyph, fromLayer: fromLayer, from: start, to: end))
         }
         CATransaction.commit()
 
@@ -329,7 +444,7 @@ final class RevealTransitionOverlay: NSView {
             layoutManager.hiddenCharacterRanges = plan.hiddenRanges
         }
         record(
-            "animating: \(active.count) layers (\(plan.moverCount) moving, \(plan.fadeInCount) appearing, \(plan.fadeOutCount) disappearing), hiding \(plan.hiddenRanges.count) ranges"
+            "animating: \(active.count) layers (\(plan.moverCount) moving, \(plan.crossfadeCount) restyling, \(plan.fadeInCount) appearing, \(plan.fadeOutCount) disappearing), hiding \(plan.hiddenRanges.count) ranges"
         )
     }
 
@@ -379,22 +494,25 @@ final class RevealTransitionOverlay: NSView {
     /// The layer origin (bottom-left, anchor zero) for a box, converted from
     /// the text view's flipped coordinates into this view's.
     private func position(for box: MorphGlyphBox, font: NSFont, in textView: NSTextView) -> CGPoint {
-        let baselinePoint = convert(NSPoint(x: box.x, y: box.baseline), from: textView)
+        position(x: box.x, baseline: box.baseline, font: font, in: textView)
+    }
+
+    private func position(x: CGFloat, baseline: CGFloat, font: NSFont, in textView: NSTextView) -> CGPoint {
+        let baselinePoint = convert(NSPoint(x: x, y: baseline), from: textView)
         return CGPoint(x: baselinePoint.x, y: baselinePoint.y + font.descender)
     }
 }
 
 extension MorphGlyphLayer {
-    convenience init(reveal entry: RevealTransitionEntry, scale: CGFloat) {
+    convenience init(text: NSAttributedString, font: NSFont, width: CGFloat, scale: CGFloat) {
         self.init()
-        text = entry.text
-        descent = -entry.font.descender
-        let width = (entry.to ?? entry.from)?.width ?? 0
+        self.text = text
+        descent = -font.descender
         bounds = CGRect(
             x: 0,
             y: 0,
             width: max(2, ceil(width) + 2),
-            height: max(2, ceil(entry.font.ascender - entry.font.descender) + 2)
+            height: max(2, ceil(font.ascender - font.descender) + 2)
         )
         anchorPoint = .zero
         contentsScale = scale

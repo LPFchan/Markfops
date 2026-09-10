@@ -6,11 +6,34 @@ import Foundation
 /// delimiters. Shared by the monospace editor and formatted mode.
 enum MarkdownWrapToggle {
     struct Edit: Equatable {
+        /// A piece of `range` that survives the edit and where it lands in
+        /// the new text.
+        struct Kept: Equatable {
+            let old: NSRange
+            let newLocation: Int
+        }
+
         /// Source range to replace.
         let range: NSRange
         let replacement: String
         /// Source selection to show afterwards.
         let selection: NSRange
+        /// The parts of `range` the replacement keeps, in order. Text outside
+        /// `range` is kept as a whole and only shifts.
+        let kept: [Kept]
+
+        /// Where the character at an old source offset sits in the new text,
+        /// or nil when the edit removed it.
+        func newOffset(forOldOffset offset: Int) -> Int? {
+            if offset < range.location { return offset }
+            if offset >= NSMaxRange(range) {
+                return offset + (replacement as NSString).length - range.length
+            }
+            for piece in kept where NSLocationInRange(offset, piece.old) {
+                return piece.newLocation + offset - piece.old.location
+            }
+            return nil
+        }
     }
 
     static func edit(
@@ -26,13 +49,15 @@ enum MarkdownWrapToggle {
             return unwrap
         }
         let selected = text.substring(with: selection)
+        let content = NSRange(
+            location: selection.location + (prefix as NSString).length,
+            length: selection.length
+        )
         return Edit(
             range: selection,
             replacement: prefix + selected + suffix,
-            selection: NSRange(
-                location: selection.location + (prefix as NSString).length,
-                length: selection.length
-            )
+            selection: content,
+            kept: selection.length > 0 ? [Edit.Kept(old: selection, newLocation: content.location)] : []
         )
     }
 
@@ -89,34 +114,37 @@ enum MarkdownWrapToggle {
         let extent = extentWithDelimiters(of: span)
 
         var replacement = ""
+        var kept: [Edit.Kept] = []
         var cursor = extent.location
+        func keep(upTo end: Int) {
+            guard end > cursor else { return }
+            let piece = NSRange(location: cursor, length: end - cursor)
+            kept.append(Edit.Kept(old: piece, newLocation: extent.location + (replacement as NSString).length))
+            replacement += text.substring(with: piece)
+        }
         for delimiter in delimiters {
-            if delimiter.location > cursor {
-                replacement += text.substring(with: NSRange(location: cursor, length: delimiter.location - cursor))
-            }
+            keep(upTo: delimiter.location)
             cursor = max(cursor, NSMaxRange(delimiter))
         }
-        if cursor < NSMaxRange(extent) {
-            replacement += text.substring(with: NSRange(location: cursor, length: NSMaxRange(extent) - cursor))
-        }
+        keep(upTo: NSMaxRange(extent))
 
-        func mapped(_ offset: Int) -> Int {
-            var removed = 0
-            for delimiter in delimiters {
-                if NSMaxRange(delimiter) <= offset {
-                    removed += delimiter.length
-                } else if delimiter.location < offset {
-                    removed += offset - delimiter.location
-                }
+        func mapped(_ point: Int) -> Int {
+            for piece in kept where piece.old.location <= point && point <= NSMaxRange(piece.old) {
+                return piece.newLocation + point - piece.old.location
             }
-            return extent.location + (offset - extent.location) - removed
+            // Inside a removed delimiter: land where it was.
+            if let next = kept.first(where: { $0.old.location > point }) {
+                return next.newLocation
+            }
+            return extent.location + (replacement as NSString).length
         }
         let start = mapped(selection.location)
         let end = mapped(NSMaxRange(selection))
         return Edit(
             range: extent,
             replacement: replacement,
-            selection: NSRange(location: start, length: max(0, end - start))
+            selection: NSRange(location: start, length: max(0, end - start)),
+            kept: kept
         )
     }
 }
