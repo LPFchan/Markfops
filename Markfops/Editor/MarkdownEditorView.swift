@@ -369,15 +369,22 @@ final class MarkdownNSTextView: NSTextView {
         }
     }
 
+    /// Wraps the selection in Markdown delimiters, or removes them when the
+    /// selection already sits inside a construct made by those delimiters.
     func wrapSelection(prefix: String, suffix: String) {
         let sel = selectedRange()
         guard sel.location != NSNotFound else { return }
-        let selected = (string as NSString).substring(with: sel)
-        let replacement = prefix + selected + suffix
-        if shouldChangeText(in: sel, replacementString: replacement) {
-            replaceCharacters(in: sel, with: replacement)
+        let edit = MarkdownWrapToggle.edit(
+            in: string as NSString,
+            sourceMap: MarkdownSourceMap.parse(string),
+            selection: sel,
+            prefix: prefix,
+            suffix: suffix
+        )
+        if shouldChangeText(in: edit.range, replacementString: edit.replacement) {
+            replaceCharacters(in: edit.range, with: edit.replacement)
             didChangeText()
-            setSelectedRange(NSRange(location: sel.location + prefix.count, length: selected.count))
+            setSelectedRange(edit.selection)
         }
     }
 

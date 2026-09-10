@@ -75,7 +75,7 @@ Each slice must end with something visible in the app and its own tests.
 
 - Slice 4b: the cursor crosses the morph (landed)
   - Done: a mode switch captures the source cursor from the outgoing surface; the incoming surface lands with its cursor at the same source position and keyboard focus, with or without a morph; the reader is built with the arriving cursor's reveal before the morph plans, so revealed syntax pairs with editor syntax and moves; Command-B and Command-I (and the Format menu) wrap the selection in formatted mode, keeping hidden syntax inside; italic uses `*` in both modes
-  - Open: no toggle-off for bold or italic yet; wrapping already-wrapped text nests delimiters
+  - Toggle: a second Command-B or Command-I inside the construct removes its delimiters in both modes; a selection reaching outside the construct nests
   - Related ids: `DEC-20260910-001`, `RSH-20260909-001`
 
 ### Near Term

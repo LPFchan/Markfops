@@ -269,6 +269,28 @@ final class ModeSwitchCursorTests: XCTestCase {
         )
     }
 
+    func testBoldTwiceInFormattedModeRoundTrips() throws {
+        let host = try makeHost(text: "Some bold text", mode: .preview)
+        host.reader.setSelectedRange(try host.readerRange(of: "bold"))
+
+        host.reader.wrapSelection(prefix: "**", suffix: "**")
+        XCTAssertEqual(host.document.rawText, "Some **bold** text")
+        XCTAssertEqual(host.reader.string, "Some **bold** text")
+
+        host.reader.wrapSelection(prefix: "**", suffix: "**")
+        XCTAssertEqual(host.document.rawText, "Some bold text")
+        XCTAssertEqual(host.reader.string, "Some bold text")
+        XCTAssertEqual(host.reader.selectedRange(), try host.readerRange(of: "bold"))
+        XCTAssertEqual(host.coordinator.refusedEditCount, 0)
+
+        // A caret inside hidden bold unbolds the whole word too.
+        host.document.rawText = "Some **bold** text"
+        host.pump(seconds: 0.2)
+        host.reader.setSelectedRange(NSRange(location: 7, length: 0))
+        host.reader.wrapSelection(prefix: "**", suffix: "**")
+        XCTAssertEqual(host.document.rawText, "Some bold text")
+    }
+
     func testItalicWithACollapsedSelectionLeavesTheCaretBetweenTheDelimiters() throws {
         let host = try makeHost(text: "Hello world", mode: .preview)
         host.reader.setSelectedRange(NSRange(location: 5, length: 0))

@@ -860,13 +860,14 @@ struct ReaderView: NSViewRepresentable {
             routeSourceEdit(sourceRange: sourceRange, replacement: replacement, readerRange: readerRange)
         }
 
-        /// Wraps the selection's source range in `prefix` and `suffix`. The
-        /// source text of the range is kept, so hidden syntax inside it
-        /// survives. The wrapped content stays selected afterwards; a collapsed
-        /// selection leaves the caret between the delimiters. There is no
-        /// toggle-off: wrapping bold text again nests the delimiters.
+        /// Wraps the selection's source range in `prefix` and `suffix`, or
+        /// removes those delimiters when the selection already sits inside a
+        /// construct made by them. The source text of the range is kept, so
+        /// hidden syntax inside it survives. The wrapped content stays selected
+        /// afterwards; a collapsed selection leaves the caret between the
+        /// delimiters.
         func wrapSelection(prefix: String, suffix: String) {
-            guard let textView, let presentation else {
+            guard let textView, let presentation, let sourceMap else {
                 refuse("no presentation for wrap")
                 return
             }
@@ -875,16 +876,18 @@ struct ReaderView: NSViewRepresentable {
                 refuse("reader \(readerRange) is not routable")
                 return
             }
-            let inner = (document.rawText as NSString).substring(with: sourceRange)
-            let content = NSRange(
-                location: sourceRange.location + (prefix as NSString).length,
-                length: (inner as NSString).length
+            let edit = MarkdownWrapToggle.edit(
+                in: document.rawText as NSString,
+                sourceMap: sourceMap,
+                selection: sourceRange,
+                prefix: prefix,
+                suffix: suffix
             )
             routeSourceEdit(
-                sourceRange: sourceRange,
-                replacement: prefix + inner + suffix,
+                sourceRange: edit.range,
+                replacement: edit.replacement,
                 readerRange: readerRange,
-                sourceSelection: content
+                sourceSelection: edit.selection
             )
         }
 

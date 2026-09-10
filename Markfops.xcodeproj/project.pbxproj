@@ -32,6 +32,7 @@
 		5F5AFA51A1E970047664EA95 /* DocumentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A38073AFAC4D127F4B5E82 /* DocumentStore.swift */; };
 		6172E1D5C4DA62D60D855851 /* TabPillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3658F01E16FD2DDB93ADA68 /* TabPillView.swift */; };
 		641F887E2C6B7778BFC212B2 /* ModeSwitchCursorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA6A27A4047CDCD5AC9A309B /* ModeSwitchCursorTests.swift */; };
+		6555BB570A06D503C2C38091 /* MarkdownWrapToggle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 648F743693B62621C87DC951 /* MarkdownWrapToggle.swift */; };
 		67FE4B0CF38EF072113055C6 /* TabItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D734182DCCA9A09CFD0BEE8 /* TabItemView.swift */; };
 		6D2764E4E371C3796C9DBE7D /* MorphPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78BFE88CBC2DE848BDFF286A /* MorphPlanner.swift */; };
 		6F510D2C422BA6E3BBAF526F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01485A1CB5D8FFA84DCBA0D1 /* ContentView.swift */; };
@@ -48,6 +49,7 @@
 		9BBACC6DCB309FC8D1BE33A5 /* MarkdownSourceMapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 624EACAE9726BE4EFD7BB173 /* MarkdownSourceMapTests.swift */; };
 		9F061AB4D3F43EFC7BB45EE6 /* PDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F05D215E01EBC0B400953604 /* PDFExporter.swift */; };
 		A2429F9EC0E81A0422EACD46 /* HeadingNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4625617133DDEF9653F91CA /* HeadingNode.swift */; };
+		AF8E104644A42587CB37333B /* MarkdownWrapToggleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C5E8E3CA042BD3B12FBCBBA /* MarkdownWrapToggleTests.swift */; };
 		B0E795820CE68F8DE414613B /* MarkdownEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D67A2CE029ADE8669191CD1 /* MarkdownEditorView.swift */; };
 		B2D2CC393BBAABB3A7B66179 /* ModeMorphOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35F3B2F2046676141EBD12E5 /* ModeMorphOverlay.swift */; };
 		B6C2D59B2F44745E61B0C001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 7EA17F562C7201617AD11672 /* Sparkle */; };
@@ -88,6 +90,7 @@
 		3813E1BAFCCEA6FB9393425E /* TabDragState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabDragState.swift; sourceTree = "<group>"; };
 		382CAC3B1A5BC2EE0E253225 /* FormattedEditingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormattedEditingTests.swift; sourceTree = "<group>"; };
 		3AD38016280157D603C3E2CB /* TextViewCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextViewCoordinator.swift; sourceTree = "<group>"; };
+		3C5E8E3CA042BD3B12FBCBBA /* MarkdownWrapToggleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownWrapToggleTests.swift; sourceTree = "<group>"; };
 		4061B4ED2E773406BB7694F4 /* AuxiliaryWindowCloseHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuxiliaryWindowCloseHandler.swift; sourceTree = "<group>"; };
 		4CF153CF61BA07386D4CD9AB /* FaviconBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaviconBadge.swift; sourceTree = "<group>"; };
 		4D67A2CE029ADE8669191CD1 /* MarkdownEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEditorView.swift; sourceTree = "<group>"; };
@@ -98,6 +101,7 @@
 		61E7B956C2E09B3B85798093 /* Document.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Document.swift; sourceTree = "<group>"; };
 		624EACAE9726BE4EFD7BB173 /* MarkdownSourceMapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownSourceMapTests.swift; sourceTree = "<group>"; };
 		6348872E85804164DA055A32 /* UndoManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UndoManagerTests.swift; sourceTree = "<group>"; };
+		648F743693B62621C87DC951 /* MarkdownWrapToggle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownWrapToggle.swift; sourceTree = "<group>"; };
 		659A26D73BF54F62D6BD2E31 /* MarkdownSourceMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownSourceMap.swift; sourceTree = "<group>"; };
 		680F15DCD240DD2819574D40 /* HorizontalTabBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HorizontalTabBarView.swift; sourceTree = "<group>"; };
 		68C64074880ABB02F29BF99B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -243,6 +247,7 @@
 			children = (
 				DB3A9DA5DE76025CECDD51CF /* MarkdownFrontMatter.swift */,
 				659A26D73BF54F62D6BD2E31 /* MarkdownSourceMap.swift */,
+				648F743693B62621C87DC951 /* MarkdownWrapToggle.swift */,
 			);
 			path = Parsing;
 			sourceTree = "<group>";
@@ -282,6 +287,7 @@
 				9474347D5E720593FBBE8726 /* MarkdownRendererTests.swift */,
 				624EACAE9726BE4EFD7BB173 /* MarkdownSourceMapTests.swift */,
 				0F05696E977748169F11526C /* MarkdownSyntaxHighlighterTests.swift */,
+				3C5E8E3CA042BD3B12FBCBBA /* MarkdownWrapToggleTests.swift */,
 				1718CA6749B071C9BE4C8CEB /* ModeMorphTests.swift */,
 				EA6A27A4047CDCD5AC9A309B /* ModeSwitchCursorTests.swift */,
 				A205B3BE50E306D74019122E /* ReaderPresentationTests.swift */,
@@ -439,6 +445,7 @@
 				13B38088C65798132F2C2CCF /* MarkdownRenderer.swift in Sources */,
 				03C5C890363E26E4E9F0F250 /* MarkdownSourceMap.swift in Sources */,
 				0F3DB7DCF1EBB8111808A9C0 /* MarkdownSyntaxHighlighter.swift in Sources */,
+				6555BB570A06D503C2C38091 /* MarkdownWrapToggle.swift in Sources */,
 				012F13E675D8CB2ECB471333 /* MarkfopsApp.swift in Sources */,
 				3F2BDA9D46E8FF6AC6D6DF9B /* MarkfopsCommands.swift in Sources */,
 				B2D2CC393BBAABB3A7B66179 /* ModeMorphOverlay.swift in Sources */,
@@ -472,6 +479,7 @@
 				1206DCA30D179D228DF1E42F /* MarkdownRendererTests.swift in Sources */,
 				9BBACC6DCB309FC8D1BE33A5 /* MarkdownSourceMapTests.swift in Sources */,
 				466214DFDEBB82A2E8EF3C90 /* MarkdownSyntaxHighlighterTests.swift in Sources */,
+				AF8E104644A42587CB37333B /* MarkdownWrapToggleTests.swift in Sources */,
 				8263A85081369DE9BE30BFCB /* ModeMorphTests.swift in Sources */,
 				641F887E2C6B7778BFC212B2 /* ModeSwitchCursorTests.swift in Sources */,
 				76305CD7E9F4BD1BFC276E6E /* ReaderPresentationTests.swift in Sources */,
