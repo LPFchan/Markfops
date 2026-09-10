@@ -991,8 +991,7 @@ struct ReaderView: NSViewRepresentable {
                 return false
             }
             guard let sourceRange = presentation.offsetMap.sourceRange(forReaderRange: readerRange) else {
-                refuse("reader \(readerRange) is not routable")
-                return false
+                return routeDeletionOfSubstitution(readerRange: readerRange, replacement: replacement)
             }
             // A keystroke that changes the line's block syntax (`# `, `> `,
             // `- `) changes what block the line is and animates like a
@@ -1014,6 +1013,41 @@ struct ReaderView: NSViewRepresentable {
                 replacement: replacement,
                 readerRange: readerRange,
                 transition: transition
+            )
+        }
+
+        /// A reader range the one-to-one mapping refused holds a substituted
+        /// glyph (a list marker, a thematic break, an image, the front
+        /// matter). Deleting it deletes the construct's whole source, and the
+        /// change animates like a heading change: the glyph fades out and the
+        /// line's text slides. Typing over it stays refused; the glyph stands
+        /// for more than one source character and the map cannot say which.
+        private func routeDeletionOfSubstitution(readerRange: NSRange, replacement: String) -> Bool {
+            guard replacement.isEmpty,
+                  let presentation,
+                  let sourceRange = presentation.offsetMap.sourceRange(forDeletionOf: readerRange) else {
+                refuse("reader \(readerRange) is not routable")
+                return false
+            }
+            Self.log.debug(
+                "widened deletion of reader \(readerRange.location, privacy: .public)+\(readerRange.length, privacy: .public) to source \(sourceRange.location, privacy: .public)+\(sourceRange.length, privacy: .public)"
+            )
+            let edit = MarkdownSourceEdit(
+                range: sourceRange,
+                replacement: "",
+                selection: NSRange(location: sourceRange.location, length: 0),
+                kept: []
+            )
+            return routeSourceEdit(
+                sourceRange: edit.range,
+                replacement: edit.replacement,
+                readerRange: readerRange,
+                sourceSelection: edit.selection,
+                transition: RoutedEditTransition(
+                    oldRange: edit.range,
+                    newRange: edit.newRange,
+                    newOffset: edit.newOffset(forOldOffset:)
+                )
             )
         }
 
@@ -1053,8 +1087,11 @@ struct ReaderView: NSViewRepresentable {
             return true
         }
 
-        /// Enter replaces the selection with a paragraph break in prose or a
-        /// single newline in line-based blocks, then routes like any other edit.
+        /// Enter replaces the selection with a paragraph break in prose, a
+        /// single newline in line-based blocks, or the next list item or
+        /// quote line (`ReaderNewline`), then routes like any other edit. An
+        /// Enter that writes or removes a marker animates it into place; a
+        /// plain newline stays instant.
         func insertNewline() {
             guard let textView, let presentation, let sourceMap else {
                 refuse("no presentation for newline")
@@ -1065,8 +1102,25 @@ struct ReaderView: NSViewRepresentable {
                 refuse("reader \(readerRange) is not routable")
                 return
             }
-            let replacement = ReaderNewline.replacement(in: sourceMap, sourceOffset: sourceRange.location)
-            routeSourceEdit(sourceRange: sourceRange, replacement: replacement, readerRange: readerRange)
+            let edit = ReaderNewline.edit(
+                in: document.rawText as NSString,
+                sourceMap: sourceMap,
+                selection: sourceRange
+            )
+            let transition = ReaderNewline.changesBlock(edit)
+                ? RoutedEditTransition(
+                    oldRange: edit.range,
+                    newRange: edit.newRange,
+                    newOffset: edit.newOffset(forOldOffset:)
+                )
+                : nil
+            routeSourceEdit(
+                sourceRange: edit.range,
+                replacement: edit.replacement,
+                readerRange: readerRange,
+                sourceSelection: edit.selection,
+                transition: transition
+            )
         }
 
         /// Wraps the selection's source range in `prefix` and `suffix`, or

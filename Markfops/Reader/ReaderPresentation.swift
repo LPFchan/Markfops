@@ -146,11 +146,18 @@ struct ReaderOffsetMap {
     /// Hidden syntax strictly inside the range is part of the result; hidden
     /// syntax at either boundary is not. Returns nil when either end character
     /// is not mapped one-to-one or a substituted construct (list marker, image,
-    /// front matter, thematic break, raw HTML) lies inside the range.
+    /// front matter, thematic break, raw HTML) lies inside the range, and for
+    /// an insertion point strictly inside such a construct's glyphs, where no
+    /// source position corresponds to it.
     func sourceRange(forReaderRange readerRange: NSRange) -> NSRange? {
         guard readerRange.location >= 0,
               NSMaxRange(readerRange) <= readerLength else { return nil }
         guard readerRange.length > 0 else {
+            if let index = visibleRecordIndex(containingReaderOffset: readerRange.location),
+               !records[index].isOneToOne,
+               records[index].readerRange.location < readerRange.location {
+                return nil
+            }
             return NSRange(
                 location: sourceInsertionOffset(forReaderOffset: readerRange.location),
                 length: 0
@@ -173,6 +180,34 @@ struct ReaderOffsetMap {
             + (readerRange.location - first.readerRange.location)
         let sourceEnd = last.sourceRange.location
             + (NSMaxRange(readerRange) - 1 - last.readerRange.location) + 1
+        guard sourceEnd >= sourceStart else { return nil }
+        return NSRange(location: sourceStart, length: sourceEnd - sourceStart)
+    }
+
+    /// The source range a deletion of `readerRange` removes. Where every
+    /// character maps one-to-one this is `sourceRange(forReaderRange:)`. A
+    /// record that is not one-to-one at either end (a list marker, a
+    /// thematic break, an image, the front matter) has no source character
+    /// per reader character, so the deletion takes its whole source range:
+    /// deleting into a bullet removes `- `, deleting into a rendered image
+    /// removes the image. Returns nil for an empty or invalid range, or when
+    /// an end character has no record.
+    func sourceRange(forDeletionOf readerRange: NSRange) -> NSRange? {
+        guard readerRange.length > 0,
+              readerRange.location >= 0,
+              NSMaxRange(readerRange) <= readerLength else { return nil }
+        guard let firstIndex = visibleRecordIndex(containingReaderOffset: readerRange.location),
+              let lastIndex = visibleRecordIndex(containingReaderOffset: NSMaxRange(readerRange) - 1) else {
+            return nil
+        }
+        let first = records[firstIndex]
+        let last = records[lastIndex]
+        let sourceStart = first.isOneToOne
+            ? first.sourceRange.location + (readerRange.location - first.readerRange.location)
+            : first.sourceRange.location
+        let sourceEnd = last.isOneToOne
+            ? last.sourceRange.location + (NSMaxRange(readerRange) - last.readerRange.location)
+            : NSMaxRange(last.sourceRange)
         guard sourceEnd >= sourceStart else { return nil }
         return NSRange(location: sourceStart, length: sourceEnd - sourceStart)
     }

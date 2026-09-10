@@ -81,24 +81,133 @@ final class ReaderRevealTests: XCTestCase {
 }
 
 final class ReaderNewlineTests: XCTestCase {
-    private func replacement(_ text: String, at offset: Int) -> String {
-        ReaderNewline.replacement(in: MarkdownSourceMap.parse(text), sourceOffset: offset)
+    private func edit(_ text: String, at offset: Int, length: Int = 0) -> MarkdownSourceEdit {
+        ReaderNewline.edit(
+            in: text as NSString,
+            sourceMap: MarkdownSourceMap.parse(text),
+            selection: NSRange(location: offset, length: length)
+        )
     }
 
-    func testProseGetsAParagraphBreakAndLineBasedBlocksKeepASingleNewline() {
-        XCTAssertEqual(replacement("Hello world", at: 5), "\n\n")
-        XCTAssertEqual(replacement("Hello world", at: 11), "\n\n")
-        XCTAssertEqual(replacement("# Title", at: 7), "\n\n")
-        XCTAssertEqual(replacement("", at: 0), "\n\n")
-        XCTAssertEqual(replacement("para\n\nnext", at: 5), "\n\n")
-        XCTAssertEqual(replacement("- item", at: 6), "\n")
-        XCTAssertEqual(replacement("- item\n\n  second para", at: 14), "\n")
-        XCTAssertEqual(replacement("> quote", at: 4), "\n")
-        XCTAssertEqual(replacement("```\ncode\n```", at: 6), "\n")
-        XCTAssertEqual(replacement("    indented", at: 8), "\n")
-        XCTAssertEqual(replacement("| a |\n|---|\n| 1 |", at: 2), "\n")
-        XCTAssertEqual(replacement("---\ntitle: x\n---\nbody", at: 6), "\n")
-        XCTAssertEqual(replacement("---\ntitle: x\n---\nbody", at: 20), "\n\n")
+    /// The source after Enter and where the caret lands in it.
+    private func after(_ text: String, at offset: Int, length: Int = 0) -> (text: String, caret: Int) {
+        let edit = edit(text, at: offset, length: length)
+        XCTAssertEqual(edit.kept, [])
+        XCTAssertEqual(edit.selection.length, 0)
+        return ((text as NSString).replacingCharacters(in: edit.range, with: edit.replacement), edit.selection.location)
+    }
+
+    private func assertAfter(
+        _ text: String, at offset: Int, length: Int = 0,
+        is expected: String, caret: Int,
+        file: StaticString = #filePath, line: UInt = #line
+    ) {
+        let result = after(text, at: offset, length: length)
+        XCTAssertEqual(result.text, expected, file: file, line: line)
+        XCTAssertEqual(result.caret, caret, file: file, line: line)
+    }
+
+    func testProseGetsAParagraphBreakAndRawBlocksKeepASingleNewline() {
+        XCTAssertEqual(edit("Hello world", at: 5), MarkdownSourceEdit(
+            range: NSRange(location: 5, length: 0), replacement: "\n\n",
+            selection: NSRange(location: 7, length: 0), kept: []
+        ))
+        XCTAssertEqual(edit("Hello world", at: 11).replacement, "\n\n")
+        XCTAssertEqual(edit("# Title", at: 7).replacement, "\n\n")
+        XCTAssertEqual(edit("", at: 0).replacement, "\n\n")
+        XCTAssertEqual(edit("para\n\nnext", at: 5).replacement, "\n\n")
+        XCTAssertEqual(edit("---", at: 3).replacement, "\n\n")
+        XCTAssertEqual(edit("```\ncode\n```", at: 6).replacement, "\n")
+        XCTAssertEqual(edit("    indented", at: 8).replacement, "\n")
+        XCTAssertEqual(edit("| a |\n|---|\n| 1 |", at: 2).replacement, "\n")
+        XCTAssertEqual(edit("<div>\nx\n</div>", at: 7).replacement, "\n")
+        XCTAssertEqual(edit("---\ntitle: x\n---\nbody", at: 6).replacement, "\n")
+        XCTAssertEqual(edit("---\ntitle: x\n---\nbody", at: 20).replacement, "\n\n")
+        // A code block inside an item is still code.
+        XCTAssertEqual(edit("- item\n\n  ```\n  code\n  ```", at: 16).replacement, "\n")
+        // A selection is replaced by the break.
+        assertAfter("Hello world", at: 5, length: 3, is: "Hello\n\nrld", caret: 7)
+    }
+
+    func testEnterContinuesAListWithTheSameMarker() {
+        assertAfter("- item", at: 6, is: "- item\n- ", caret: 9)
+        assertAfter("* item", at: 6, is: "* item\n* ", caret: 9)
+        assertAfter("+ item", at: 6, is: "+ item\n+ ", caret: 9)
+        assertAfter("- one\n- two", at: 11, is: "- one\n- two\n- ", caret: 14)
+        // In the middle of the item the text after the caret becomes the new item.
+        assertAfter("- item", at: 4, is: "- it\n- em", caret: 7)
+        // A selection is replaced.
+        assertAfter("- item", at: 3, length: 2, is: "- i\n- m", caret: 6)
+        // A later paragraph of the item still continues the item.
+        assertAfter("- item\n\n  second", at: 16, is: "- item\n\n  second\n- ", caret: 19)
+    }
+
+    func testEnterNumbersOrderedItemsAndKeepsTheirDelimiter() {
+        assertAfter("1. one", at: 6, is: "1. one\n2. ", caret: 10)
+        assertAfter("3. three", at: 8, is: "3. three\n4. ", caret: 12)
+        assertAfter("3) three", at: 8, is: "3) three\n4) ", caret: 12)
+        assertAfter("9. nine", at: 7, is: "9. nine\n10. ", caret: 12)
+        XCTAssertEqual(ReaderNewline.nextMarker(after: "12) "), "13) ")
+        XCTAssertEqual(ReaderNewline.nextMarker(after: "-   "), "- ")
+    }
+
+    func testEnterContinuesATaskItemWithAnUncheckedBox() {
+        assertAfter("- [ ] task", at: 10, is: "- [ ] task\n- [ ] ", caret: 17)
+        assertAfter("- [x] done", at: 10, is: "- [x] done\n- [ ] ", caret: 17)
+        assertAfter("1. [x] done", at: 11, is: "1. [x] done\n2. [ ] ", caret: 19)
+    }
+
+    func testEnterKeepsTheIndentOfANestedItemAndTheQuoteAroundAList() {
+        assertAfter("- a\n  - b", at: 9, is: "- a\n  - b\n  - ", caret: 14)
+        assertAfter("1. a\n   - b", at: 11, is: "1. a\n   - b\n   - ", caret: 17)
+        assertAfter("> - item", at: 8, is: "> - item\n> - ", caret: 13)
+        assertAfter("- > quoted", at: 10, is: "- > quoted\n  > ", caret: 15)
+    }
+
+    func testEnterWithTheCaretBeforeAnItemsContentStartsAnItemAbove() {
+        assertAfter("- a\n- b", at: 4, is: "- a\n- \n- b", caret: 9)
+        assertAfter("- item", at: 0, is: "- \n- item", caret: 5)
+    }
+
+    func testEnterOnAnEmptyItemRemovesItsMarkerAndEndsTheList() {
+        assertAfter("- item\n- ", at: 9, is: "- item\n", caret: 7)
+        assertAfter("- ", at: 2, is: "", caret: 0)
+        assertAfter("1. one\n2. ", at: 10, is: "1. one\n", caret: 7)
+        assertAfter("- [ ] task\n- [ ] ", at: 17, is: "- [ ] task\n", caret: 11)
+        // Inside a quote the quote stays.
+        assertAfter("> - a\n> - ", at: 10, is: "> - a\n> ", caret: 8)
+        // A nested empty item outdents one level. (A lone `- ` right under
+        // an item's text is a setext underline, not a nested item, so the
+        // nested list needs an item of its own first.)
+        assertAfter("- a\n  - b\n  - ", at: 14, is: "- a\n  - b\n- ", caret: 12)
+        assertAfter("1. a\n   - b\n   - ", at: 17, is: "1. a\n   - b\n- ", caret: 14)
+        assertAfter("> - a\n>   - b\n>   - ", at: 20, is: "> - a\n>   - b\n> - ", caret: 18)
+    }
+
+    func testEnterContinuesAQuoteAndRemovesTheMarkersOfAnEmptyQuoteLine() {
+        assertAfter("> quote", at: 7, is: "> quote\n> ", caret: 10)
+        assertAfter("> quote", at: 4, is: "> qu\n> ote", caret: 7)
+        assertAfter("> > deep", at: 8, is: "> > deep\n> > ", caret: 13)
+        // A lazy continuation line continues the quote's markers.
+        assertAfter("> a\nb", at: 5, is: "> a\nb\n> ", caret: 8)
+        // The caret inside the markers acts at the content start.
+        assertAfter("> quote", at: 0, is: "> \n> quote", caret: 5)
+        // Only markers: remove them.
+        assertAfter("> a\n> ", at: 6, is: "> a\n", caret: 4)
+        assertAfter("> ", at: 2, is: "", caret: 0)
+        assertAfter("> > a\n> > ", at: 10, is: "> > a\n", caret: 6)
+        assertAfter("- > a\n  > ", at: 10, is: "- > a\n  ", caret: 8)
+    }
+
+    func testAnEnterThatWritesOrRemovesAMarkerChangesTheBlock() {
+        XCTAssertFalse(ReaderNewline.changesBlock(edit("Hello world", at: 5)))
+        XCTAssertFalse(ReaderNewline.changesBlock(edit("Hello world", at: 2, length: 3)))
+        XCTAssertFalse(ReaderNewline.changesBlock(edit("```\ncode\n```", at: 6)))
+        XCTAssertTrue(ReaderNewline.changesBlock(edit("- item", at: 6)))
+        XCTAssertTrue(ReaderNewline.changesBlock(edit("> quote", at: 7)))
+        XCTAssertTrue(ReaderNewline.changesBlock(edit("- item\n- ", at: 9)))
+        XCTAssertTrue(ReaderNewline.changesBlock(edit("- a\n  - b\n  - ", at: 14)))
+        XCTAssertTrue(ReaderNewline.changesBlock(edit("> a\n> ", at: 6)))
     }
 }
 
@@ -146,6 +255,49 @@ final class ReaderOffsetMapEditingTests: XCTestCase {
         XCTAssertNil(map.sourceRange(forReaderRange: readerRange(of: "• item", in: built)))
         XCTAssertNil(map.sourceRange(forReaderRange: readerRange(of: "\n• ", in: built)))
         XCTAssertNil(map.sourceRange(forReaderRange: NSRange(location: 0, length: 10_000)))
+    }
+
+    func testDeletionRangeTakesASubstitutedGlyphsWholeSource() {
+        let text = "Some **bold** here\n- item\n- [x] done\n\n---\n\n1. one\nafter"
+        let built = presentation(text)
+        let source = text as NSString
+        let map = built.offsetMap
+        XCTAssertEqual(
+            built.attributedString.string,
+            "Some bold here\n• item\n☑ done\n\n\u{200B}\n\n1. one\nafter"
+        )
+
+        // One-to-one text deletes as it does through the plain mapping.
+        XCTAssertEqual(map.sourceRange(forDeletionOf: readerRange(of: "bold", in: built)), source.range(of: "bold"))
+        XCTAssertEqual(map.sourceRange(forDeletionOf: readerRange(of: " bold ", in: built)), source.range(of: " **bold** "))
+
+        // Any character of a marker deletes the whole marker run.
+        let bullet = readerRange(of: "• ", in: built)
+        let dash = NSRange(location: source.range(of: "- item").location, length: 2)
+        XCTAssertEqual(map.sourceRange(forDeletionOf: bullet), dash)
+        XCTAssertEqual(map.sourceRange(forDeletionOf: NSRange(location: bullet.location + 1, length: 1)), dash)
+        XCTAssertEqual(map.sourceRange(forDeletionOf: readerRange(of: "• item", in: built)), source.range(of: "- item"))
+        XCTAssertEqual(map.sourceRange(forDeletionOf: readerRange(of: "\n• ", in: built)), source.range(of: "\n- "))
+        XCTAssertEqual(map.sourceRange(forDeletionOf: readerRange(of: "☑ ", in: built)), source.range(of: "- [x] "))
+        let number = readerRange(of: "1. ", in: built)
+        XCTAssertEqual(
+            map.sourceRange(forDeletionOf: NSRange(location: NSMaxRange(number) - 1, length: 1)),
+            source.range(of: "1. ")
+        )
+
+        // A thematic break is one glyph standing for its whole line.
+        XCTAssertEqual(map.sourceRange(forDeletionOf: readerRange(of: "\u{200B}", in: built)), source.range(of: "---"))
+        XCTAssertEqual(map.sourceRange(forDeletionOf: readerRange(of: "\u{200B}\n", in: built)), source.range(of: "---\n"))
+
+        XCTAssertNil(map.sourceRange(forDeletionOf: NSRange(location: 3, length: 0)))
+        XCTAssertNil(map.sourceRange(forDeletionOf: NSRange(location: 0, length: 10_000)))
+
+        let frontMatter = "---\ntitle: x\n---\nbody"
+        let withFrontMatter = presentation(frontMatter)
+        XCTAssertEqual(
+            withFrontMatter.offsetMap.sourceRange(forDeletionOf: readerRange(of: "title", in: withFrontMatter)),
+            (frontMatter as NSString).range(of: "---\ntitle: x\n---")
+        )
     }
 
     func testInsertionOffsetSticksToContentNextToHiddenSyntax() {
@@ -481,7 +633,7 @@ final class FormattedEditingContainerTests: XCTestCase {
         XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 4, length: 0))
     }
 
-    func testAnEditTouchingAListMarkerIsRefused() throws {
+    func testTypingOverAListMarkerIsRefusedButBackspaceRemovesIt() throws {
         let host = try makeHost(text: "- item\n- two")
         XCTAssertEqual(host.reader.string, "• item\n• two")
         let marker = try host.readerRange(of: "• item")
@@ -493,12 +645,85 @@ final class FormattedEditingContainerTests: XCTestCase {
 
         host.placeCaret(at: marker.location + 2)
         host.reader.deleteBackward(nil)
-        XCTAssertEqual(host.document.rawText, "- item\n- two")
-        XCTAssertEqual(host.coordinator.refusedEditCount, 2)
+        XCTAssertEqual(host.document.rawText, "item\n- two")
+        XCTAssertEqual(host.reader.string, "item\n• two")
+        XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 0, length: 0))
+        XCTAssertEqual(host.coordinator.refusedEditCount, 1)
 
         host.type("x")
-        XCTAssertEqual(host.document.rawText, "- xitem\n- two")
-        XCTAssertEqual(host.coordinator.refusedEditCount, 2)
+        XCTAssertEqual(host.document.rawText, "xitem\n- two")
+        XCTAssertEqual(host.coordinator.refusedEditCount, 1)
+    }
+
+    func testBackspaceIntoATaskBoxOrAThematicBreakRemovesTheWholeConstruct() throws {
+        let host = try makeHost(text: "- [ ] task\n\nbefore\n\n---\n\nafter")
+        XCTAssertEqual(host.reader.string, "☐ task\n\nbefore\n\n\u{200B}\n\nafter")
+        host.placeCaret(at: 2)
+        host.reader.deleteBackward(nil)
+        XCTAssertEqual(host.document.rawText, "task\n\nbefore\n\n---\n\nafter")
+        XCTAssertEqual(host.reader.string, "task\n\nbefore\n\n\u{200B}\n\nafter")
+
+        let rule = try host.readerRange(of: "\u{200B}")
+        host.placeCaret(at: NSMaxRange(rule))
+        host.reader.deleteBackward(nil)
+        XCTAssertEqual(host.document.rawText, "task\n\nbefore\n\n\n\nafter")
+        XCTAssertEqual(host.reader.string, "task\n\nbefore\n\n\n\nafter")
+        XCTAssertEqual(host.coordinator.refusedEditCount, 0)
+    }
+
+    func testBackspaceIntoTheFrontMatterRemovesItAndTypingIntoItIsRefused() throws {
+        let host = try makeHost(text: "---\ntitle: x\n---\nbody")
+        let title = try host.readerRange(of: "title")
+        host.placeCaret(at: title.location + 2)
+        host.type("y")
+        XCTAssertEqual(host.document.rawText, "---\ntitle: x\n---\nbody")
+        XCTAssertEqual(host.coordinator.refusedEditCount, 1)
+
+        host.reader.deleteBackward(nil)
+        XCTAssertEqual(host.document.rawText, "\nbody")
+        XCTAssertEqual(host.reader.string, "\nbody")
+        XCTAssertEqual(host.coordinator.refusedEditCount, 1)
+    }
+
+    func testEnterAtTheEndOfAListItemStartsTheNextItemAndEnterOnAnEmptyItemEndsTheList() throws {
+        let host = try makeHost(text: "- item")
+        host.placeCaret(at: 6)
+        host.reader.insertNewline(nil)
+        XCTAssertEqual(host.document.rawText, "- item\n- ")
+        XCTAssertEqual(host.reader.string, "• item\n• ")
+        XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 9, length: 0))
+
+        host.reader.insertNewline(nil)
+        XCTAssertEqual(host.document.rawText, "- item\n")
+        XCTAssertEqual(host.reader.string, "• item\n")
+        XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 7, length: 0))
+        XCTAssertEqual(host.coordinator.refusedEditCount, 0)
+    }
+
+    func testEnterContinuesOrderedTaskAndQuoteLines() throws {
+        let ordered = try makeHost(text: "1. one")
+        ordered.placeCaret(at: 6)
+        ordered.reader.insertNewline(nil)
+        XCTAssertEqual(ordered.document.rawText, "1. one\n2. ")
+        XCTAssertEqual(ordered.reader.string, "1. one\n2. ")
+        XCTAssertEqual(ordered.reader.selectedRange(), NSRange(location: 10, length: 0))
+
+        let task = try makeHost(text: "- [ ] task")
+        task.placeCaret(at: 6)
+        task.reader.insertNewline(nil)
+        XCTAssertEqual(task.document.rawText, "- [ ] task\n- [ ] ")
+        XCTAssertEqual(task.reader.string, "☐ task\n☐ ")
+        XCTAssertEqual(task.reader.selectedRange(), NSRange(location: 9, length: 0))
+
+        let quote = try makeHost(text: "> quote")
+        quote.placeCaret(at: 5)
+        XCTAssertEqual(quote.reader.string, "> quote", "the caret inside the quote reveals its marker")
+        quote.placeCaret(at: 7)
+        quote.reader.insertNewline(nil)
+        XCTAssertEqual(quote.document.rawText, "> quote\n> ")
+        XCTAssertEqual(quote.reader.string, "> quote\n> ")
+        XCTAssertEqual(quote.reader.selectedRange(), NSRange(location: 10, length: 0))
+        XCTAssertEqual(quote.coordinator.refusedEditCount, 0)
     }
 
     func testEnterInAParagraphStartsANewParagraph() throws {
@@ -959,6 +1184,42 @@ final class FormattedEditingContainerTests: XCTestCase {
         XCTAssertEqual(host.document.rawText, "Hello\n\n world")
         XCTAssertEqual(host.coordinator.lastRevealTransitionOutcome, "skipped: not a caret move")
         XCTAssertFalse(host.coordinator.revealTransition?.isRunning ?? false)
+    }
+
+    func testEnterOnAListItemFadesTheNewBulletIn() throws {
+        try skipUnlessTransitionsRun()
+        let host = try makeHost(text: "- item\n\nBelow paragraph\n")
+        host.placeCaret(at: 6)
+        host.reader.insertNewline(nil)
+        XCTAssertEqual(host.document.rawText, "- item\n- \n\nBelow paragraph\n")
+        let overlay = try XCTUnwrap(host.coordinator.revealTransition)
+        XCTAssertTrue(overlay.isRunning, host.coordinator.lastRevealTransitionOutcome)
+        let bullets = host.transitionEntries(for: "•")
+        XCTAssertEqual(bullets.filter { $0.entry.from == nil && $0.entry.to != nil }.count, 1, "the new bullet fades in")
+        XCTAssertEqual(bullets.filter { $0.entry.to == nil }.count, 0)
+        XCTAssertEqual(below(host, letter: "B").count, 1, "the paragraph below slides")
+        host.pump(seconds: 0.4)
+        XCTAssertFalse(overlay.isRunning)
+        XCTAssertNil(overlay.superview)
+        XCTAssertEqual(host.layoutManager?.hiddenCharacterRanges ?? [NSRange()], [])
+    }
+
+    func testBackspaceOverABulletFadesItOut() throws {
+        try skipUnlessTransitionsRun()
+        let host = try makeHost(text: "- item\n\nBelow paragraph\n")
+        host.placeCaret(at: 2)
+        host.reader.deleteBackward(nil)
+        XCTAssertEqual(host.document.rawText, "item\n\nBelow paragraph\n")
+        let overlay = try XCTUnwrap(host.coordinator.revealTransition)
+        XCTAssertTrue(overlay.isRunning, host.coordinator.lastRevealTransitionOutcome)
+        let bullets = host.transitionEntries(for: "•")
+        XCTAssertEqual(bullets.filter { $0.entry.from != nil && $0.entry.to == nil }.count, 1, "the bullet fades out")
+        let movers = host.transitionEntries(for: "i").filter { $0.entry.isMover }
+        XCTAssertEqual(movers.count, 1, "the item's text slides")
+        host.pump(seconds: 0.4)
+        XCTAssertFalse(overlay.isRunning)
+        XCTAssertNil(overlay.superview)
+        XCTAssertEqual(host.reader.string, "item\n\nBelow paragraph\n")
     }
 
     func testACaretJumpBetweenDistantParagraphsAnimatesBothParagraphs() throws {

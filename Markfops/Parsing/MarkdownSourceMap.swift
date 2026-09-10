@@ -779,7 +779,9 @@ struct MarkdownSourceMap {
 
     private static func addListMarkerSyntax(to builder: SpanBuilder, source: SourceText) {
         let line = source.line(builder.location.startLine)
-        var marker = line.startByte
+        // The item starts at its marker; what precedes it on the line (indent,
+        // a quote's `> `) belongs to the blocks around it.
+        var marker = max(line.startByte, builder.location.utf8Start)
         while marker < line.contentEnd(in: source.bytes), source.isHorizontalWhitespace(source.bytes[marker]) {
             marker += 1
         }
