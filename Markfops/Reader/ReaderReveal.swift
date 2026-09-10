@@ -6,8 +6,11 @@ enum ReaderReveal {
     /// `sourceCursor`: every inline construct (emphasis, strong, strikethrough,
     /// code span, link, autolink, image) that contains the cursor, including at
     /// its end so a cursor right after a bold word reveals it, unioned with the
-    /// heading block the cursor's line belongs to. Nested constructs reveal
-    /// together through the outermost one. Other blocks reveal nothing.
+    /// block the cursor sits in when that block has syntax of its own: a
+    /// heading (its `#` marks), a fenced code block (both fence lines), or a
+    /// block quote (every `>` marker). Nested constructs reveal together
+    /// through the outermost one; a code block inside a quote reveals both.
+    /// Other blocks, including indented code, reveal nothing.
     static func range(in sourceMap: MarkdownSourceMap, sourceCursor: Int) -> NSRange? {
         var result: NSRange?
         collect(in: sourceMap.span, cursor: sourceCursor, into: &result)
@@ -27,8 +30,11 @@ enum ReaderReveal {
         case .emphasis, .strong, .strikethrough, .codeSpan, .link, .autolink, .image:
             union(spanRangeWithDelimiters(span), into: &result)
             return
-        case .heading:
+        case .heading, .blockQuote:
             union(span.range, into: &result)
+        case .codeBlock(fenced: true):
+            union(spanRangeWithDelimiters(span), into: &result)
+            return
         default:
             break
         }
@@ -38,7 +44,8 @@ enum ReaderReveal {
     }
 
     /// A code span's node range excludes its backticks, which sit in syntax
-    /// children just outside it. The revealed range must cover them too.
+    /// children just outside it. The revealed range must cover them too. A
+    /// fenced block's range already holds its fences; the union is a no-op there.
     private static func spanRangeWithDelimiters(_ span: MarkdownSourceMap.Span) -> NSRange {
         var range = span.range
         for child in span.children where child.role == .syntax {

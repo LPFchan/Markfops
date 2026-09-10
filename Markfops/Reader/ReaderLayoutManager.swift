@@ -125,12 +125,7 @@ final class ReaderLayoutManager: NSLayoutManager {
             let glyphRange = self.glyphRange(forCharacterRange: fullRange, actualCharacterRange: nil)
             guard glyphRange.length > 0 else { return }
 
-            var blockRect: NSRect?
-            self.enumerateLineFragments(forGlyphRange: glyphRange) { lineRect, _, _, _, _ in
-                let rect = lineRect.offsetBy(dx: origin.x, dy: origin.y)
-                blockRect = blockRect.map { $0.union(rect) } ?? rect
-            }
-            guard var blockRect else { return }
+            guard var blockRect = self.textBox(forGlyphRange: glyphRange, origin: origin) else { return }
 
             let verticalPadding = self.theme.bodyFontSize * 1.25
             blockRect.origin.y -= verticalPadding
@@ -228,19 +223,16 @@ final class ReaderLayoutManager: NSLayoutManager {
             let glyphRange = self.glyphRange(forCharacterRange: fullRange, actualCharacterRange: nil)
             guard glyphRange.length > 0 else { return }
 
-            var quoteRect: NSRect?
-            self.enumerateLineFragments(forGlyphRange: glyphRange) { lineRect, _, _, _, _ in
-                let rect = lineRect.offsetBy(dx: origin.x, dy: origin.y)
-                quoteRect = quoteRect.map { $0.union(rect) } ?? rect
-            }
-            guard let quoteRect else { return }
+            guard let quoteRect = self.textBox(forGlyphRange: glyphRange, origin: origin) else { return }
 
+            // The bar spans the quote's own 0.25 em spacing on both ends.
+            let verticalPadding = self.theme.bodyFontSize * 0.25
             self.theme.separatorColor.setFill()
             NSRect(
                 x: quoteRect.minX,
-                y: quoteRect.minY,
+                y: quoteRect.minY - verticalPadding,
                 width: 4,
-                height: quoteRect.height
+                height: quoteRect.height + verticalPadding * 2
             ).fill()
         }
     }
@@ -263,18 +255,12 @@ final class ReaderLayoutManager: NSLayoutManager {
             let glyphRange = self.glyphRange(forCharacterRange: fullRange, actualCharacterRange: nil)
             guard glyphRange.length > 0 else { return }
 
-            var lastLine: NSRect?
-            self.enumerateLineFragments(forGlyphRange: glyphRange) { lineRect, _, _, _, _ in
-                lastLine = lineRect
-            }
-            guard let lastLine else { return }
-            let rect = lastLine.offsetBy(dx: origin.x, dy: origin.y)
-            self.theme.separatorColor.setStroke()
-            let path = NSBezierPath()
-            path.move(to: NSPoint(x: rect.minX, y: rect.maxY - 0.5))
-            path.line(to: NSPoint(x: rect.maxX, y: rect.maxY - 0.5))
-            path.lineWidth = 1
-            path.stroke()
+            // The rule sits under the heading's own 0.5 em spacing after.
+            self.drawRule(
+                belowGlyphRange: glyphRange,
+                offset: self.theme.bodyFontSize * 0.5,
+                origin: origin
+            )
         }
     }
 
@@ -294,19 +280,54 @@ final class ReaderLayoutManager: NSLayoutManager {
             let glyphRange = self.glyphRange(forCharacterRange: fullRange, actualCharacterRange: nil)
             guard glyphRange.length > 0 else { return }
 
-            var lastLine: NSRect?
-            self.enumerateLineFragments(forGlyphRange: glyphRange) { lineRect, _, _, _, _ in
-                lastLine = lineRect
-            }
-            guard let lastLine else { return }
-            let rect = lastLine.offsetBy(dx: origin.x, dy: origin.y)
-            self.theme.separatorColor.setStroke()
-            let path = NSBezierPath()
-            path.move(to: NSPoint(x: rect.minX, y: rect.maxY - 0.5))
-            path.line(to: NSPoint(x: rect.maxX, y: rect.maxY - 0.5))
-            path.lineWidth = 1
-            path.stroke()
+            // The rule sits under the last row's own 0.2 em spacing after.
+            self.drawRule(
+                belowGlyphRange: glyphRange,
+                offset: self.theme.bodyFontSize * 0.2,
+                origin: origin
+            )
         }
+    }
+
+    /// The union of the text boxes of the lines holding `glyphRange`: full
+    /// line width, but only the height the text occupies. Line fragment rects
+    /// also hold the paragraph spacing before and after, which the reader
+    /// moves onto empty lines, so decorations measure the text instead.
+    private func textBox(forGlyphRange glyphRange: NSRange, origin: NSPoint) -> NSRect? {
+        var box: NSRect?
+        enumerateLineFragments(forGlyphRange: glyphRange) { lineRect, usedRect, _, _, _ in
+            let rect = NSRect(
+                x: lineRect.minX,
+                y: usedRect.minY,
+                width: lineRect.width,
+                height: usedRect.height
+            ).offsetBy(dx: origin.x, dy: origin.y)
+            box = box.map { $0.union(rect) } ?? rect
+        }
+        return box
+    }
+
+    /// A one-point rule `offset` below the text box of the last line in
+    /// `glyphRange`.
+    private func drawRule(belowGlyphRange glyphRange: NSRange, offset: CGFloat, origin: NSPoint) {
+        var lastLine: NSRect?
+        enumerateLineFragments(forGlyphRange: glyphRange) { lineRect, usedRect, _, _, _ in
+            lastLine = NSRect(
+                x: lineRect.minX,
+                y: usedRect.minY,
+                width: lineRect.width,
+                height: usedRect.height
+            )
+        }
+        guard let lastLine else { return }
+        let rect = lastLine.offsetBy(dx: origin.x, dy: origin.y)
+        let y = rect.maxY + offset - 0.5
+        theme.separatorColor.setStroke()
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: rect.minX, y: y))
+        path.line(to: NSPoint(x: rect.maxX, y: y))
+        path.lineWidth = 1
+        path.stroke()
     }
 
     private func drawThematicBreaks(

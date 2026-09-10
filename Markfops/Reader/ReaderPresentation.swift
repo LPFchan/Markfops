@@ -311,6 +311,9 @@ private final class ReaderPresentationBuilder {
     var sourceLineStarts: [Int] = [0]
     var handledImageRanges: [NSRange] = []
     var handledRawBlockRanges: [NSRange] = []
+    /// Reader offsets of the lone newlines that stand for empty source lines,
+    /// sized after emission by `absorbSpacingIntoBlankLines`.
+    private var blankLineReaderOffsets: [Int] = []
     /// Fonts and paragraph styles repeat across thousands of runs; creating
     /// them per run (italic goes through a descriptor lookup) dominated the
     /// build time, which now runs on every keystroke in formatted mode.
@@ -341,6 +344,7 @@ private final class ReaderPresentationBuilder {
         for run in sourceMap.runs(in: fullRange) {
             emit(run)
         }
+        absorbSpacingIntoBlankLines()
 
         // The source map covers the complete source. This fill is defensive for
         // zero-width boundaries and makes the forward lookup total even if a
@@ -424,12 +428,16 @@ private final class ReaderPresentationBuilder {
         let rawText = text.substring(with: run.range)
 
         if case .codeBlock = context.blockKind {
+            // Revealed fence lines sit above and below the content and take
+            // the block's edge spacing, so the content stops being an edge.
+            let fences = revealedFences(in: context)
             appendBlockText(
                 rawText,
                 sourceRange: run.range,
                 kind: run.kind,
                 role: run.role,
-                context: context
+                context: context,
+                edgeLines: (!fences.opening, !fences.closing)
             )
             return
         }
@@ -539,6 +547,9 @@ private final class ReaderPresentationBuilder {
                 && lineContext.blockKind == nil
                 && (absoluteRange.location == 0
                     || text.character(at: absoluteRange.location - 1) == 0x0A)
+            if isBlankLine {
+                blankLineReaderOffsets.append(output.length)
+            }
             append(
                 line,
                 sourceRange: absoluteRange,
@@ -628,6 +639,10 @@ private final class ReaderPresentationBuilder {
                 )
             }
         case .codeBlock(fenced: true):
+            if isRevealed(run.range) {
+                emitRevealedFence(run, context: context)
+                return
+            }
             markOmitted(run.range, kind: run.kind, role: run.role)
             if let newlineLength = newlineLength(at: NSMaxRange(run.range)), newlineLength > 0 {
                 skipNewlineAt = NSMaxRange(run.range)
@@ -635,6 +650,70 @@ private final class ReaderPresentationBuilder {
         default:
             emitHiddenSyntax(run, context: context)
         }
+    }
+
+    private func isRevealed(_ range: NSRange) -> Bool {
+        guard let revealedSourceRange else { return false }
+        return revealedSourceRange.location <= range.location
+            && NSMaxRange(range) <= NSMaxRange(revealedSourceRange)
+    }
+
+    /// A fence line shown in place, dimmed, in the block's monospaced style.
+    /// It keeps its newline (the run after it is not trimmed), so it stands on
+    /// its own line and carries the block's edge spacing: the opening fence
+    /// the space before the block, the closing fence the space after it.
+    private func emitRevealedFence(
+        _ run: MarkdownSourceMap.Run,
+        context: ReaderSemanticContext
+    ) {
+        let isOpening = fencedBlock(touching: run.range)?.openingFence == run.range
+        var attributes = attributes(
+            for: run.kind,
+            context: context,
+            blockLine: (isOpening, !isOpening)
+        )
+        attributes[.foregroundColor] = theme.secondaryColor
+        append(
+            text.substring(with: run.range),
+            sourceRange: run.range,
+            kind: run.kind,
+            role: run.role,
+            attributes: attributes
+        )
+    }
+
+    /// The fence syntax runs of the fenced block whose span touches `range`.
+    private func fencedBlock(
+        touching range: NSRange
+    ) -> (openingFence: NSRange, closingFence: NSRange?)? {
+        guard let span = innermostContentSpan(
+            kind: .codeBlock(fenced: true),
+            touching: range,
+            in: sourceMap.span
+        ) else { return nil }
+        let fences = span.children
+            .filter { $0.role == .syntax && $0.kind == .codeBlock(fenced: true) }
+            .map(\.range)
+        guard let opening = fences.first else { return nil }
+        return (opening, fences.count > 1 ? fences.last : nil)
+    }
+
+    /// Which fences of the code block around `context` are shown. Cheap when
+    /// nothing in the block is revealed, which is the case for every keystroke
+    /// outside it.
+    private func revealedFences(
+        in context: ReaderSemanticContext
+    ) -> (opening: Bool, closing: Bool) {
+        guard let blockRange = context.blockRange,
+              let revealedSourceRange,
+              NSIntersectionRange(blockRange, revealedSourceRange).length > 0,
+              let fences = fencedBlock(touching: blockRange) else {
+            return (false, false)
+        }
+        return (
+            isRevealed(fences.openingFence),
+            fences.closingFence.map(isRevealed) ?? false
+        )
     }
 
     /// Syntax the reader normally hides. Inside the revealed range it is emitted
@@ -807,7 +886,8 @@ private final class ReaderPresentationBuilder {
         kind: MarkdownSourceMap.Kind,
         role: MarkdownSourceMap.Role,
         context: ReaderSemanticContext,
-        raw: Bool = false
+        raw: Bool = false,
+        edgeLines: (first: Bool, last: Bool) = (true, true)
     ) {
         let source = string as NSString
         var localStart = 0
@@ -828,8 +908,8 @@ private final class ReaderPresentationBuilder {
                 location: sourceRange.location + localRange.location,
                 length: localRange.length
             )
-            let atFirstLine = lineNumber == 0
-            let atLastLine = localEnd == source.length
+            let atFirstLine = lineNumber == 0 && edgeLines.first
+            let atLastLine = localEnd == source.length && edgeLines.last
             append(
                 source.substring(with: localRange),
                 sourceRange: lineRange,
@@ -1390,16 +1470,84 @@ private final class ReaderPresentationBuilder {
     }
 
     /// An empty source line stays in the reader text so source and reader lines
-    /// keep pairing, but it must not read as a full body line. The neighbours'
-    /// own paragraph spacing is the visible gap; the line itself collapses.
+    /// keep pairing. It has no spacing of its own; its height is decided once
+    /// the neighbours are known, in `absorbSpacingIntoBlankLines`.
     private func blankLineParagraphStyle() -> NSParagraphStyle {
         let style = NSMutableParagraphStyle()
         style.lineHeightMultiple = 1
-        style.minimumLineHeight = theme.bodyFontSize * 0.25
-        style.maximumLineHeight = theme.bodyFontSize * 0.25
         style.paragraphSpacingBefore = 0
         style.paragraphSpacing = 0
         return style
+    }
+
+    /// Makes each empty source line be the gap between its neighbours: its
+    /// line box grows to the previous paragraph's spacing after plus the next
+    /// paragraph's spacing before, and those two values are zeroed on the
+    /// neighbours, so the distance between blocks is unchanged while the text
+    /// cursor on the empty line is a full line tall. The box never drops
+    /// under the body size, so a cursor between two list items stays legible.
+    /// Panel blocks (code, tables, raw HTML) keep their edge spacing: the
+    /// panel is drawn over it, so an empty line next to a panel stays outside
+    /// the panel. An empty line next to another empty line, or at either end
+    /// of the document, takes nothing from that side.
+    private func absorbSpacingIntoBlankLines() {
+        guard !blankLineReaderOffsets.isEmpty else { return }
+        let string = output.string as NSString
+        let blanks = Set(blankLineReaderOffsets)
+
+        func neighbour(at location: Int) -> NSRange? {
+            guard location >= 0, location < string.length else { return nil }
+            let paragraph = string.paragraphRange(for: NSRange(location: location, length: 0))
+            guard paragraph.length > 0,
+                  !blanks.contains(paragraph.location),
+                  output.attribute(.readerCodeBlock, at: paragraph.location, effectiveRange: nil) == nil else {
+                return nil
+            }
+            return paragraph
+        }
+        func style(at location: Int) -> NSParagraphStyle? {
+            output.attribute(.paragraphStyle, at: location, effectiveRange: nil) as? NSParagraphStyle
+        }
+
+        for offset in blankLineReaderOffsets {
+            var height: CGFloat = 0
+            if let previous = neighbour(at: offset - 1),
+               let spacing = style(at: previous.location)?.paragraphSpacing,
+               spacing > 0 {
+                height += spacing
+                adjustParagraphStyles(in: previous) { $0.paragraphSpacing = 0 }
+            }
+            if let next = neighbour(at: offset + 1),
+               let spacing = style(at: next.location)?.paragraphSpacingBefore,
+               spacing > 0 {
+                height += spacing
+                adjustParagraphStyles(in: next) { $0.paragraphSpacingBefore = 0 }
+            }
+            height = max(height, theme.bodyFontSize)
+            adjustParagraphStyles(in: NSRange(location: offset, length: 1)) {
+                $0.minimumLineHeight = height
+                $0.maximumLineHeight = height
+            }
+        }
+    }
+
+    /// Rewrites the paragraph styles inside `range` through mutable copies so
+    /// the shared cached styles stay untouched.
+    private func adjustParagraphStyles(
+        in range: NSRange,
+        _ change: (NSMutableParagraphStyle) -> Void
+    ) {
+        var runs: [(NSRange, NSParagraphStyle)] = []
+        output.enumerateAttribute(.paragraphStyle, in: range, options: []) { value, subrange, _ in
+            if let style = value as? NSParagraphStyle {
+                runs.append((subrange, style))
+            }
+        }
+        for (subrange, style) in runs {
+            guard let mutable = style.mutableCopy() as? NSMutableParagraphStyle else { continue }
+            change(mutable)
+            output.addAttribute(.paragraphStyle, value: mutable, range: subrange)
+        }
     }
 
     private func frontMatterParagraphStyle(tabLocation: CGFloat) -> NSParagraphStyle {

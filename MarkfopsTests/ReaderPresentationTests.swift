@@ -377,28 +377,217 @@ final class ReaderPresentationTests: XCTestCase {
         }
     }
 
-    func testEmptySourceLinesCollapseBetweenBlocks() {
-        let text = "First paragraph.\n\nSecond paragraph.\n\n\n# Heading\n"
-        let presentation = ReaderPresentation.build(
+    // MARK: - Empty lines carry the block gap
+
+    private let em = ReaderTheme.default.bodyFontSize
+
+    private func build(_ text: String, reveal: NSRange? = nil) -> ReaderPresentation {
+        ReaderPresentation.build(
             text: text,
             sourceMap: MarkdownSourceMap.parse(text),
-            theme: .default,
-            baseURL: nil
+            revealedSourceRange: reveal
         )
-        let rendered = presentation.attributedString
-        let output = rendered.string as NSString
+    }
 
-        // Every empty source line survives as a newline so line pairing holds.
-        XCTAssertTrue(output.contains("First paragraph.\n\nSecond paragraph.\n\n\n"))
+    /// The paragraph style at the first character of `fragment` in the reader.
+    private func style(of fragment: String, in presentation: ReaderPresentation) throws -> NSParagraphStyle {
+        let rendered = presentation.attributedString.string as NSString
+        let range = rendered.range(of: fragment)
+        XCTAssertNotEqual(range.location, NSNotFound, "missing \(fragment)")
+        return try XCTUnwrap(
+            presentation.attributedString.attribute(.paragraphStyle, at: range.location, effectiveRange: nil)
+                as? NSParagraphStyle
+        )
+    }
 
-        let blankOffset = output.range(of: "\n\nSecond").location + 1
-        let blank = rendered.attribute(.paragraphStyle, at: blankOffset, effectiveRange: nil) as? NSParagraphStyle
-        XCTAssertEqual(blank?.maximumLineHeight, ReaderTheme.default.bodyFontSize * 0.25)
-        XCTAssertEqual(blank?.paragraphSpacing, 0)
-        XCTAssertEqual(blank?.paragraphSpacingBefore, 0)
+    /// The style of the `index`-th empty line (lone newline) in the reader.
+    private func blankStyle(_ index: Int, in presentation: ReaderPresentation) throws -> NSParagraphStyle {
+        let rendered = presentation.attributedString.string as NSString
+        var found = 0
+        for offset in 0..<rendered.length where rendered.character(at: offset) == 0x0A
+            && (offset == 0 || rendered.character(at: offset - 1) == 0x0A) {
+            if found == index {
+                return try XCTUnwrap(
+                    presentation.attributedString.attribute(.paragraphStyle, at: offset, effectiveRange: nil)
+                        as? NSParagraphStyle
+                )
+            }
+            found += 1
+        }
+        throw XCTSkip("empty line \(index) not found")
+    }
 
-        let body = rendered.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
-        XCTAssertEqual(body?.maximumLineHeight, 0)
-        XCTAssertGreaterThan(body?.paragraphSpacing ?? 0, 0)
+    func testEmptyLineBetweenParagraphsTakesBothSpacingsAndZeroesThemOnTheNeighbours() throws {
+        let presentation = build("First paragraph.\n\nSecond paragraph.\n")
+        XCTAssertEqual(presentation.attributedString.string, "First paragraph.\n\nSecond paragraph.\n")
+
+        let blank = try blankStyle(0, in: presentation)
+        XCTAssertEqual(blank.minimumLineHeight, em * 1.5, accuracy: 0.01)
+        XCTAssertEqual(blank.maximumLineHeight, em * 1.5, accuracy: 0.01)
+        XCTAssertEqual(blank.paragraphSpacing, 0)
+        XCTAssertEqual(blank.paragraphSpacingBefore, 0)
+
+        let first = try style(of: "First", in: presentation)
+        XCTAssertEqual(first.paragraphSpacing, 0, "the facing spacing moved onto the empty line")
+        XCTAssertEqual(first.paragraphSpacingBefore, em * 0.75, accuracy: 0.01, "the far side is untouched")
+        XCTAssertEqual(first.maximumLineHeight, 0)
+        let second = try style(of: "Second", in: presentation)
+        XCTAssertEqual(second.paragraphSpacingBefore, 0)
+        XCTAssertEqual(second.paragraphSpacing, em * 0.75, accuracy: 0.01)
+        // The whole neighbour paragraph changes, including its own newline.
+        let firstNewline = try style(of: "\n\nSecond", in: presentation)
+        XCTAssertEqual(firstNewline.paragraphSpacing, 0)
+    }
+
+    func testEmptyLineHeightFollowsTheNeighboursKinds() throws {
+        let beforeHeading = build("Paragraph.\n\n# Heading\n")
+        XCTAssertEqual(try blankStyle(0, in: beforeHeading).maximumLineHeight, em * (0.75 + 1.5), accuracy: 0.01)
+        XCTAssertEqual(try style(of: "Heading", in: beforeHeading).paragraphSpacingBefore, 0)
+        XCTAssertEqual(try style(of: "Heading", in: beforeHeading).paragraphSpacing, em * 0.5, accuracy: 0.01)
+
+        let afterQuote = build("> quote\n\nParagraph.\n")
+        XCTAssertEqual(try blankStyle(0, in: afterQuote).maximumLineHeight, em * (0.25 + 0.75), accuracy: 0.01)
+        XCTAssertEqual(try style(of: "quote", in: afterQuote).paragraphSpacing, 0)
+        XCTAssertEqual(try style(of: "Paragraph", in: afterQuote).paragraphSpacingBefore, 0)
+
+        let betweenItems = build("- one\n\n- two\n")
+        XCTAssertEqual(try blankStyle(0, in: betweenItems).maximumLineHeight, em, accuracy: 0.01, "clamped to the body size")
+        XCTAssertEqual(try style(of: "one", in: betweenItems).paragraphSpacing, 0)
+        XCTAssertEqual(try style(of: "two", in: betweenItems).paragraphSpacingBefore, 0)
+
+        let twoEmpties = build("First paragraph.\n\n\nSecond paragraph.\n")
+        XCTAssertEqual(try blankStyle(0, in: twoEmpties).maximumLineHeight, em, accuracy: 0.01, "0.75 em clamped up")
+        XCTAssertEqual(try blankStyle(1, in: twoEmpties).maximumLineHeight, em, accuracy: 0.01)
+        XCTAssertEqual(try style(of: "First", in: twoEmpties).paragraphSpacing, 0)
+        XCTAssertEqual(try style(of: "Second", in: twoEmpties).paragraphSpacingBefore, 0)
+
+        let atTheEdges = build("\nOnly.\n\n")
+        XCTAssertEqual(try blankStyle(0, in: atTheEdges).maximumLineHeight, em, accuracy: 0.01)
+        XCTAssertEqual(try blankStyle(1, in: atTheEdges).maximumLineHeight, em, accuracy: 0.01)
+        XCTAssertEqual(try style(of: "Only", in: atTheEdges).paragraphSpacingBefore, 0)
+        XCTAssertEqual(try style(of: "Only", in: atTheEdges).paragraphSpacing, 0)
+    }
+
+    func testEmptyLineNextToACodePanelLeavesThePanelSpacingOnTheBlock() throws {
+        // The panel is drawn over the block's own 1.25 em edge spacing, so an
+        // empty line next to it takes only the paragraph's share and stays
+        // outside the panel.
+        let presentation = build("Paragraph.\n\n```\ncode\n```\n\nAfter.\n")
+        XCTAssertEqual(presentation.attributedString.string, "Paragraph.\n\ncode\n\nAfter.\n")
+        XCTAssertEqual(try blankStyle(0, in: presentation).maximumLineHeight, em, accuracy: 0.01)
+        XCTAssertEqual(try blankStyle(1, in: presentation).maximumLineHeight, em, accuracy: 0.01)
+        XCTAssertEqual(try style(of: "Paragraph", in: presentation).paragraphSpacing, 0)
+        let code = try style(of: "code", in: presentation)
+        XCTAssertEqual(code.paragraphSpacingBefore, em * 1.25, accuracy: 0.01)
+        XCTAssertEqual(code.paragraphSpacing, em * 1.25, accuracy: 0.01)
+        XCTAssertEqual(try style(of: "After", in: presentation).paragraphSpacingBefore, 0)
+    }
+
+    func testEmptyLinesInsideCodeAndListsAreNotTouched() throws {
+        let presentation = build("```\na\n\nb\n```\n- item\n\n  more\n")
+        let rendered = presentation.attributedString.string as NSString
+        let codeBlank = rendered.range(of: "a\n\nb").location + 2
+        let codeStyle = try XCTUnwrap(
+            presentation.attributedString.attribute(.paragraphStyle, at: codeBlank, effectiveRange: nil) as? NSParagraphStyle
+        )
+        XCTAssertEqual(codeStyle.maximumLineHeight, 0, "a blank code line keeps the code style")
+        XCTAssertEqual(codeStyle.lineHeightMultiple, 1.6, accuracy: 0.01)
+        let listBlank = rendered.range(of: "item\n\n").location + 5
+        let listStyle = try XCTUnwrap(
+            presentation.attributedString.attribute(.paragraphStyle, at: listBlank, effectiveRange: nil) as? NSParagraphStyle
+        )
+        XCTAssertEqual(listStyle.maximumLineHeight, 0, "a blank line inside a list item keeps the list style")
+    }
+
+    // MARK: - Fences reveal
+
+    func testRevealedFencesStandOnTheirOwnLinesInsideThePanelAndTakeTheEdgeSpacing() throws {
+        let text = "Intro.\n\n```swift\nlet x = 1\nlet y = 2\n```\n\nAfter.\n"
+        let source = text as NSString
+        let block = source.range(of: "```swift\nlet x = 1\nlet y = 2\n```")
+        XCTAssertEqual(ReaderReveal.range(in: MarkdownSourceMap.parse(text), sourceCursor: block.location + 12), block)
+        let hidden = build(text)
+        XCTAssertEqual(hidden.attributedString.string, "Intro.\n\nlet x = 1\nlet y = 2\n\nAfter.\n")
+
+        let revealed = build(text, reveal: block)
+        XCTAssertEqual(revealed.attributedString.string, "Intro.\n\n```swift\nlet x = 1\nlet y = 2\n```\n\nAfter.\n")
+
+        let opening = try style(of: "```swift", in: revealed)
+        XCTAssertEqual(opening.paragraphSpacingBefore, em * 1.25, accuracy: 0.01)
+        XCTAssertEqual(opening.paragraphSpacing, 0)
+        let firstLine = try style(of: "let x", in: revealed)
+        XCTAssertEqual(firstLine.paragraphSpacingBefore, 0)
+        XCTAssertEqual(firstLine.paragraphSpacing, 0)
+        let lastLine = try style(of: "let y", in: revealed)
+        XCTAssertEqual(lastLine.paragraphSpacing, 0)
+        let closing = try style(of: "```\n\nAfter", in: revealed)
+        XCTAssertEqual(closing.paragraphSpacingBefore, 0)
+        XCTAssertEqual(closing.paragraphSpacing, em * 1.25, accuracy: 0.01)
+
+        let rendered = revealed.attributedString.string as NSString
+        let blockValue = revealed.attributedString.attribute(
+            .readerCodeBlock, at: rendered.range(of: "let x").location, effectiveRange: nil
+        ) as? NSValue
+        XCTAssertNotNil(blockValue)
+        for fragment in ["```swift", "```\n\nAfter"] {
+            let location = rendered.range(of: fragment).location
+            XCTAssertEqual(
+                revealed.attributedString.attribute(.readerCodeBlock, at: location, effectiveRange: nil) as? NSValue,
+                blockValue,
+                "\(fragment) is inside the panel"
+            )
+            XCTAssertEqual(
+                revealed.attributedString.attribute(.foregroundColor, at: location, effectiveRange: nil) as? NSColor,
+                ReaderTheme.default.secondaryColor
+            )
+            let font = try XCTUnwrap(
+                revealed.attributedString.attribute(.font, at: location, effectiveRange: nil) as? NSFont
+            )
+            XCTAssertTrue(font.fontDescriptor.symbolicTraits.contains(.monoSpace))
+        }
+        XCTAssertEqual(
+            revealed.attributedString.attribute(.foregroundColor, at: rendered.range(of: "let x").location, effectiveRange: nil) as? NSColor,
+            ReaderTheme.default.bodyColor
+        )
+
+        // The fences map one-to-one and the content keeps its offsets.
+        XCTAssertEqual(
+            revealed.offsetMap.sourceRange(forReaderRange: rendered.range(of: "```swift")),
+            source.range(of: "```swift")
+        )
+        XCTAssertEqual(
+            revealed.offsetMap.sourceRange(forReaderRange: rendered.range(of: "let y = 2")),
+            source.range(of: "let y = 2")
+        )
+        XCTAssertEqual(
+            revealed.offsetMap.sourceInsertionOffset(forReaderOffset: rendered.range(of: "```swift").location),
+            source.range(of: "```swift").location
+        )
+
+        // The empty lines around the block are unchanged by the reveal.
+        XCTAssertEqual(try blankStyle(0, in: revealed).maximumLineHeight, try blankStyle(0, in: hidden).maximumLineHeight)
+        XCTAssertEqual(try blankStyle(1, in: revealed).maximumLineHeight, try blankStyle(1, in: hidden).maximumLineHeight)
+    }
+
+    func testRevealedUnclosedFenceLeavesTheEdgeSpacingOnTheLastContentLine() throws {
+        let text = "```\ncode\nmore"
+        let revealed = build(text, reveal: NSRange(location: 0, length: (text as NSString).length))
+        XCTAssertEqual(revealed.attributedString.string, "```\ncode\nmore")
+        XCTAssertEqual(try style(of: "```", in: revealed).paragraphSpacingBefore, em * 1.25, accuracy: 0.01)
+        XCTAssertEqual(try style(of: "code", in: revealed).paragraphSpacingBefore, 0)
+        XCTAssertEqual(try style(of: "more", in: revealed).paragraphSpacing, em * 1.25, accuracy: 0.01)
+    }
+
+    func testRevealedQuoteShowsItsMarkersInTheQuoteStyle() throws {
+        let text = "> one\n> two\n"
+        let revealed = build(text, reveal: NSRange(location: 0, length: 11))
+        XCTAssertEqual(revealed.attributedString.string, "> one\n> two\n")
+        let marker = revealed.attributedString
+        XCTAssertEqual(marker.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor, ReaderTheme.default.secondaryColor)
+        XCTAssertEqual(marker.attribute(.readerBlockQuote, at: 0, effectiveRange: nil) as? Bool, true)
+        XCTAssertEqual(try style(of: "> one", in: revealed).headIndent, em, accuracy: 0.01)
+        XCTAssertEqual(revealed.offsetMap.sourceInsertionOffset(forReaderOffset: 0), 0, "the caret before a shown marker stays before it")
+        XCTAssertEqual(revealed.offsetMap.sourceInsertionOffset(forReaderOffset: 2), 2)
+        XCTAssertEqual(build(text).offsetMap.sourceInsertionOffset(forReaderOffset: 0), 2, "hidden markers are skipped")
     }
 }

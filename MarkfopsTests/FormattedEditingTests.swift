@@ -41,6 +41,43 @@ final class ReaderRevealTests: XCTestCase {
         let list = "- item"
         XCTAssertNil(ReaderReveal.range(in: MarkdownSourceMap.parse(list), sourceCursor: 3))
     }
+
+    func testFencedCodeBlockRevealsBothFencesAndQuoteRevealsItsMarkers() {
+        let text = "Intro\n\n```swift\nlet x = 1\n```\n\nAfter **b**\n"
+        let source = text as NSString
+        let map = MarkdownSourceMap.parse(text)
+        let closingFence = source.range(of: "```", options: .backwards)
+        let block = NSRange(
+            location: source.range(of: "```swift").location,
+            length: NSMaxRange(closingFence) - source.range(of: "```swift").location
+        )
+        XCTAssertEqual(block, source.range(of: "```swift\nlet x = 1\n```"))
+        XCTAssertEqual(ReaderReveal.range(in: map, sourceCursor: source.range(of: "x = 1").location), block)
+        XCTAssertEqual(ReaderReveal.range(in: map, sourceCursor: source.range(of: "```swift").location + 3), block, "on the opening fence")
+        XCTAssertEqual(ReaderReveal.range(in: map, sourceCursor: closingFence.location + 1), block, "on the closing fence")
+        XCTAssertEqual(ReaderReveal.range(in: map, sourceCursor: NSMaxRange(block)), block, "at the end of the closing fence")
+        XCTAssertNil(ReaderReveal.range(in: map, sourceCursor: NSMaxRange(block) + 1), "on the empty line after the block")
+        XCTAssertNil(ReaderReveal.range(in: map, sourceCursor: source.range(of: "After").location))
+        XCTAssertNil(ReaderReveal.range(in: map, sourceCursor: 2))
+
+        let indented = "para\n\n    code\n"
+        XCTAssertNil(ReaderReveal.range(in: MarkdownSourceMap.parse(indented), sourceCursor: 10))
+
+        let quote = "> one\n> two *em*\n\npara"
+        let quoteSource = quote as NSString
+        let quoteMap = MarkdownSourceMap.parse(quote)
+        let quoteRange = quoteSource.range(of: "> one\n> two *em*")
+        XCTAssertEqual(ReaderReveal.range(in: quoteMap, sourceCursor: 3), quoteRange)
+        XCTAssertEqual(ReaderReveal.range(in: quoteMap, sourceCursor: quoteSource.range(of: "em").location), quoteRange, "an inline inside the quote reveals with it")
+        XCTAssertNil(ReaderReveal.range(in: quoteMap, sourceCursor: quoteSource.range(of: "para").location))
+
+        let nested = "> outer\n> > inner\n"
+        let nestedMap = MarkdownSourceMap.parse(nested)
+        XCTAssertEqual(
+            ReaderReveal.range(in: nestedMap, sourceCursor: (nested as NSString).range(of: "inner").location),
+            (nested as NSString).range(of: "> outer\n> > inner")
+        )
+    }
 }
 
 final class ReaderNewlineTests: XCTestCase {
@@ -190,7 +227,7 @@ final class ReaderOffsetMapEditingTests: XCTestCase {
         let everything = presentation(text, reveal: NSRange(location: 0, length: source.length))
         XCTAssertEqual(
             everything.attributedString.string,
-            "# Title\nSome **bold** and *em* text\n• item\ncode\n"
+            "# Title\nSome **bold** and *em* text\n• item\n```\ncode\n```"
         )
         let link = "[link](https://x.y)"
         let revealedLink = presentation(link, reveal: NSRange(location: 0, length: (link as NSString).length))
@@ -491,8 +528,55 @@ final class FormattedEditingContainerTests: XCTestCase {
         host.placeCaret(at: code.location + 2)
         host.reader.insertNewline(nil)
         XCTAssertEqual(host.document.rawText, "```\nco\nde\n```\n")
-        XCTAssertEqual(host.reader.string, "co\nde\n")
-        XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 3, length: 0))
+        // The caret is inside the block, so its fences show around the code.
+        XCTAssertEqual(host.reader.string, "```\nco\nde\n```\n")
+        XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 7, length: 0))
+    }
+
+    func testCaretInsideAFencedBlockShowsTheFencesAndTypingRoutesInside() throws {
+        let host = try makeHost(text: "Intro\n\n```swift\nlet x = 1\n```\n\nAfter\n")
+        XCTAssertEqual(host.reader.string, "Intro\n\nlet x = 1\n\nAfter\n")
+
+        let code = try host.readerRange(of: "let x")
+        host.placeCaret(at: code.location + 4)
+        XCTAssertEqual(host.reader.string, "Intro\n\n```swift\nlet x = 1\n```\n\nAfter\n")
+        // The caret keeps its source position, now past the shown fence line.
+        XCTAssertEqual(host.reader.selectedRange(), NSRange(location: try host.readerRange(of: "let x").location + 4, length: 0))
+
+        host.type("X")
+        XCTAssertEqual(host.document.rawText, "Intro\n\n```swift\nlet Xx = 1\n```\n\nAfter\n")
+        XCTAssertEqual(host.reader.string, "Intro\n\n```swift\nlet Xx = 1\n```\n\nAfter\n")
+        XCTAssertEqual(host.coordinator.refusedEditCount, 0)
+
+        // Editing the info string on the shown fence line routes there too.
+        let info = try host.readerRange(of: "swift")
+        host.placeCaret(at: NSMaxRange(info))
+        host.type("!")
+        XCTAssertEqual(host.document.rawText, "Intro\n\n```swift!\nlet Xx = 1\n```\n\nAfter\n")
+        XCTAssertTrue(host.reader.string.contains("```swift!\n"))
+
+        // Leaving the block hides the fences again.
+        host.placeCaret(at: 0)
+        XCTAssertEqual(host.reader.string, "Intro\n\nlet Xx = 1\n\nAfter\n")
+        XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 0, length: 0))
+
+        // A caret on the empty line after the block does not reveal it.
+        let after = try host.readerRange(of: "After")
+        host.placeCaret(at: after.location - 1)
+        XCTAssertEqual(host.reader.string, "Intro\n\nlet Xx = 1\n\nAfter\n")
+    }
+
+    func testCaretInsideAQuoteShowsItsMarkers() throws {
+        let host = try makeHost(text: "Intro\n\n> one\n> two\n")
+        XCTAssertEqual(host.reader.string, "Intro\n\none\ntwo\n")
+        let two = try host.readerRange(of: "two")
+        host.placeCaret(at: two.location + 1)
+        XCTAssertEqual(host.reader.string, "Intro\n\n> one\n> two\n")
+        XCTAssertEqual(host.reader.selectedRange(), NSRange(location: try host.readerRange(of: "two").location + 1, length: 0))
+        host.type("X")
+        XCTAssertEqual(host.document.rawText, "Intro\n\n> one\n> tXwo\n")
+        host.placeCaret(at: 0)
+        XCTAssertEqual(host.reader.string, "Intro\n\none\ntXwo\n")
     }
 
     func testUndoThroughTheDocumentUndoManagerRestoresSourceAndReader() throws {
