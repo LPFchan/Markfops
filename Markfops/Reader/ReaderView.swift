@@ -128,6 +128,9 @@ final class ReaderNSTextView: NSTextView {
     /// Command-B and Command-I wrap the selection's source range in Markdown
     /// delimiters; the coordinator routes the edit like any other.
     var onWrapSelection: ((_ prefix: String, _ suffix: String) -> Void)?
+    /// The heading commands rewrite the selection's lines; the coordinator
+    /// routes the edit and animates the heading into its new size.
+    var onApplyHeading: ((_ level: Int) -> Void)?
     private(set) var isUpdatingMarkedText = false
     private var isCommittingComposition = false
 
@@ -217,6 +220,12 @@ final class ReaderNSTextView: NSTextView {
     func wrapSelection(prefix: String, suffix: String) {
         guard !hasMarkedText() else { return }
         onWrapSelection?(prefix, suffix)
+    }
+
+    /// Level 0 turns the selected lines back into paragraphs.
+    func applyHeading(level: Int) {
+        guard !hasMarkedText() else { return }
+        onApplyHeading?(level)
     }
 
     /// An input method commits its composition through `insertText`. The
@@ -364,6 +373,9 @@ struct ReaderView: NSViewRepresentable {
         textView.onWrapSelection = { [weak coordinator = context.coordinator] prefix, suffix in
             coordinator?.wrapSelection(prefix: prefix, suffix: suffix)
         }
+        textView.onApplyHeading = { [weak coordinator = context.coordinator] level in
+            coordinator?.applyHeading(level: level)
+        }
         readerBridge.coordinator = context.coordinator
         scrollView.documentView = textView
 
@@ -424,6 +436,7 @@ struct ReaderView: NSViewRepresentable {
             textView.onCompositionEnd = nil
             textView.onInsertNewline = nil
             textView.onWrapSelection = nil
+            textView.onApplyHeading = nil
             if textView.delegate === coordinator {
                 textView.delegate = nil
             }
@@ -585,23 +598,19 @@ struct ReaderView: NSViewRepresentable {
                 baseURL: document.fileURL?.deletingLastPathComponent(),
                 revealedSourceRange: revealedSourceRange
             )
-            let changedReveals = [previousReveal, revealedSourceRange].compactMap { $0 }
-            let before: RevealTransitionSnapshot?
-            let transitionRanges: [NSRange]
+            let prepared: PreparedRevealTransition?
             if let editTransition {
-                before = editTransition.before
-                transitionRanges = editTransition.sourceRanges
+                prepared = editTransition
             } else if animatesReveal {
-                before = captureRevealTransition(
+                prepared = captureRevealTransition(
                     textUnchanged: textUnchanged,
                     previous: previousPresentation,
                     revealChanged: previousReveal != revealedSourceRange,
-                    sourceRanges: changedReveals
+                    sourceRanges: [previousReveal, revealedSourceRange].compactMap { $0 }
                 )
-                transitionRanges = changedReveals
             } else {
-                before = skipRevealTransition("not a caret move")
-                transitionRanges = []
+                skipRevealTransition("not a caret move")
+                prepared = nil
             }
             sourceMap = map
             presentation = built
@@ -618,22 +627,23 @@ struct ReaderView: NSViewRepresentable {
                 textView.setSelectedRange(NSRange(location: readerOffset, length: 0))
                 isApplyingPresentation = false
             }
-            if let before {
-                startRevealTransition(from: before, built: built, sourceRanges: transitionRanges)
+            if let prepared {
+                startRevealTransition(from: prepared.before, built: built, sourceRanges: prepared.sourceRanges)
             }
         }
 
         // MARK: - Reveal transition
 
-        /// Measures the paragraphs the reveal change touches while the storage
-        /// still holds the old build. Returns nil, with the reason recorded,
-        /// when the change should swap instantly.
+        /// Measures the paragraphs the reveal change touches, and the visible
+        /// ones below them, while the storage still holds the old build.
+        /// Returns nil, with the reason recorded, when the change should swap
+        /// instantly.
         private func captureRevealTransition(
             textUnchanged: Bool,
             previous: ReaderPresentation?,
             revealChanged: Bool,
             sourceRanges: [NSRange]
-        ) -> RevealTransitionSnapshot? {
+        ) -> PreparedRevealTransition? {
             guard textUnchanged, let previous else {
                 return skipRevealTransition("text changed")
             }
@@ -646,21 +656,29 @@ struct ReaderView: NSViewRepresentable {
             guard ModeMorphPolicy.canMorph(sourceLength: (document.rawText as NSString).length) else {
                 return skipRevealTransition("policy")
             }
+            let measured = RevealTransitionPlanner.sourceRangesExtendedToVisibleBottom(
+                sourceRanges,
+                in: textView,
+                map: previous.offsetMap
+            )
             do {
-                return try RevealTransitionPlanner.snapshot(
+                let before = try RevealTransitionPlanner.snapshot(
                     in: textView,
                     offsetMap: previous.offsetMap,
-                    sourceRanges: sourceRanges
+                    sourceRanges: measured
                 )
+                return PreparedRevealTransition(before: before, sourceRanges: measured)
             } catch {
                 return skipRevealTransition("measuring the old layout threw \(error)")
             }
         }
 
-        /// Measures the paragraph an edit is about to replace while the
-        /// storage still holds the old text, keyed by the new text's offsets.
-        /// Returns nil, with the reason recorded, when the edit should swap
-        /// instantly.
+        /// Measures the paragraph an edit is about to replace, and the visible
+        /// ones below it, while the storage still holds the old text, keyed by
+        /// the new text's offsets. The same paragraphs are measured after the
+        /// rebuild, shifted by the edit, so a glyph at the bottom edge slides
+        /// out of view instead of fading. Returns nil, with the reason
+        /// recorded, when the edit should swap instantly.
         private func captureEditTransition(_ request: RoutedEditTransition) -> PreparedRevealTransition? {
             finishRevealTransition()
             guard let textView, textView.window != nil, let presentation else {
@@ -671,15 +689,26 @@ struct ReaderView: NSViewRepresentable {
                 skipRevealTransition("policy")
                 return nil
             }
+            let measured = RevealTransitionPlanner.sourceRangesExtendedToVisibleBottom(
+                [request.oldRange],
+                in: textView,
+                map: presentation.offsetMap
+            )
             do {
                 let snapshot = try RevealTransitionPlanner.snapshot(
                     in: textView,
                     offsetMap: presentation.offsetMap,
-                    sourceRanges: [request.oldRange]
+                    sourceRanges: measured
                 )
+                // Everything measured beyond the edit lies after it and shifts.
+                let extended = measured.dropFirst().map { range -> NSRange in
+                    let start = request.newOffset(range.location) ?? range.location
+                    let end = request.newOffset(NSMaxRange(range)) ?? NSMaxRange(range)
+                    return NSRange(location: start, length: max(0, end - start))
+                }
                 return PreparedRevealTransition(
                     before: snapshot.remapped(through: request.newOffset),
-                    sourceRanges: [request.newRange]
+                    sourceRanges: [request.newRange] + extended
                 )
             } catch {
                 skipRevealTransition("measuring the old layout threw \(error)")
@@ -712,7 +741,7 @@ struct ReaderView: NSViewRepresentable {
         }
 
         @discardableResult
-        private func skipRevealTransition(_ reason: String) -> RevealTransitionSnapshot? {
+        private func skipRevealTransition(_ reason: String) -> PreparedRevealTransition? {
             lastRevealTransitionOutcome = "skipped: " + reason
             if reason != "not a caret move" {
                 Self.log.info("reveal transition skipped: \(reason, privacy: .public)")
@@ -965,7 +994,27 @@ struct ReaderView: NSViewRepresentable {
                 refuse("reader \(readerRange) is not routable")
                 return false
             }
-            return routeSourceEdit(sourceRange: sourceRange, replacement: replacement, readerRange: readerRange)
+            // A keystroke that changes the line's block syntax (`# `, `> `,
+            // `- `) changes what block the line is and animates like a
+            // command; any other keystroke stays instant and measures nothing.
+            var transition: RoutedEditTransition?
+            let source = document.rawText as NSString
+            if let sourceMap,
+               !MarkdownBlockPrefix.isInsideRawBlock(sourceMap, offset: sourceRange.location),
+               MarkdownBlockPrefix.changes(in: source, replacing: sourceRange, with: replacement) {
+                let edit = MarkdownSourceEdit(range: sourceRange, replacement: replacement, selection: sourceRange, kept: [])
+                transition = RoutedEditTransition(
+                    oldRange: edit.range,
+                    newRange: edit.newRange,
+                    newOffset: edit.newOffset(forOldOffset:)
+                )
+            }
+            return routeSourceEdit(
+                sourceRange: sourceRange,
+                replacement: replacement,
+                readerRange: readerRange,
+                transition: transition
+            )
         }
 
         /// `sourceSelection` is the selection to show after the rebuild, as a
@@ -994,12 +1043,8 @@ struct ReaderView: NSViewRepresentable {
             let cursor = sourceSelection?.location
                 ?? sourceRange.location + (replacement as NSString).length
             performRebuild(themeKey: themeKey, sourceCursor: cursor, editTransition: prepared)
-            if let sourceSelection, sourceSelection.length > 0, let presentation {
-                let start = presentation.offsetMap.readerOffset(forSourceOffset: sourceSelection.location)
-                let end = presentation.offsetMap.readerOffset(forSourceOffset: NSMaxRange(sourceSelection))
-                isApplyingPresentation = true
-                textView.setSelectedRange(NSRange(location: min(start, end), length: abs(end - start)))
-                isApplyingPresentation = false
+            if let sourceSelection, sourceSelection.length > 0 {
+                selectSource(sourceSelection)
             }
             textView.scrollRangeToVisible(textView.selectedRange())
             Self.log.debug(
@@ -1054,10 +1099,56 @@ struct ReaderView: NSViewRepresentable {
                 sourceSelection: edit.selection,
                 transition: RoutedEditTransition(
                     oldRange: edit.range,
-                    newRange: NSRange(location: edit.range.location, length: (edit.replacement as NSString).length),
+                    newRange: edit.newRange,
                     newOffset: edit.newOffset(forOldOffset:)
                 )
             )
+        }
+
+        /// Makes the lines the selection touches headings of `level` (0 for
+        /// paragraphs), then selects their content. The caret lands on the
+        /// heading line, so its prefix is revealed and fades in while the
+        /// text crossfades to its new size and the paragraphs below slide.
+        func applyHeading(level: Int) {
+            guard let textView, let presentation else {
+                refuse("no presentation for heading")
+                return
+            }
+            let readerRange = textView.selectedRange()
+            guard let sourceRange = presentation.offsetMap.sourceRange(forReaderRange: readerRange) else {
+                refuse("reader \(readerRange) is not routable")
+                return
+            }
+            let source = document.rawText as NSString
+            guard let edit = MarkdownHeadingEdit.edit(in: source, selection: sourceRange, level: level) else {
+                refuse("heading \(level) cannot rewrite source \(sourceRange)")
+                return
+            }
+            guard source.substring(with: edit.range) != edit.replacement else {
+                selectSource(edit.selection)
+                return
+            }
+            routeSourceEdit(
+                sourceRange: edit.range,
+                replacement: edit.replacement,
+                readerRange: readerRange,
+                sourceSelection: edit.selection,
+                transition: RoutedEditTransition(
+                    oldRange: edit.range,
+                    newRange: edit.newRange,
+                    newOffset: edit.newOffset(forOldOffset:)
+                )
+            )
+        }
+
+        /// Selects a source range in the reader without touching the reveal.
+        private func selectSource(_ sourceSelection: NSRange) {
+            guard let textView, let presentation else { return }
+            let start = presentation.offsetMap.readerOffset(forSourceOffset: sourceSelection.location)
+            let end = presentation.offsetMap.readerOffset(forSourceOffset: NSMaxRange(sourceSelection))
+            isApplyingPresentation = true
+            textView.setSelectedRange(NSRange(location: min(start, end), length: abs(end - start)))
+            isApplyingPresentation = false
         }
 
         private func refuse(_ reason: String) {

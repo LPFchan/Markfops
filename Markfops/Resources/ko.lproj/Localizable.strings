@@ -63,6 +63,7 @@
 
 /* Format menu */
 "Format" = "서식";
+"Paragraph" = "본문";
 "Heading 1" = "제목 1";
 "Heading 2" = "제목 2";
 "Heading 3" = "제목 3";

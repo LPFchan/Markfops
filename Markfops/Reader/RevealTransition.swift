@@ -24,6 +24,7 @@ struct RevealMeasuredGlyph {
 struct RevealTransitionSnapshot {
     let glyphs: [RevealGlyphKey: RevealMeasuredGlyph]
     let measuredRanges: [NSRange]
+    let measuredParagraphCount: Int
     /// Glyphs an edit removed, under their keys in the old build: measured
     /// there, gone from the new build, so they only ever fade out.
     let deleted: [RevealGlyphKey: RevealMeasuredGlyph]
@@ -31,11 +32,17 @@ struct RevealTransitionSnapshot {
     init(
         glyphs: [RevealGlyphKey: RevealMeasuredGlyph],
         measuredRanges: [NSRange],
+        measuredParagraphCount: Int = 0,
         deleted: [RevealGlyphKey: RevealMeasuredGlyph] = [:]
     ) {
         self.glyphs = glyphs
         self.measuredRanges = measuredRanges
+        self.measuredParagraphCount = measuredParagraphCount
         self.deleted = deleted
+    }
+
+    var measuredCharacterCount: Int {
+        measuredRanges.reduce(0) { $0 + $1.length }
     }
 
     /// The same glyphs keyed by where an edit moves their source offsets, so
@@ -61,7 +68,12 @@ struct RevealTransitionSnapshot {
                 removed[key] = glyph
             }
         }
-        return RevealTransitionSnapshot(glyphs: moved, measuredRanges: measuredRanges, deleted: removed)
+        return RevealTransitionSnapshot(
+            glyphs: moved,
+            measuredRanges: measuredRanges,
+            measuredParagraphCount: measuredParagraphCount,
+            deleted: removed
+        )
     }
 }
 
@@ -109,6 +121,9 @@ struct RevealTransitionPlan {
     let crossfadeCount: Int
     let fadeInCount: Int
     let fadeOutCount: Int
+    /// What the new build measured, viewport extension included.
+    let measuredCharacterCount: Int
+    let measuredParagraphCount: Int
 }
 
 enum RevealTransitionError: Error {
@@ -121,10 +136,45 @@ enum RevealTransitionError: Error {
 /// cross-surface `MorphPlanner` is not reused; here both builds live in the
 /// same text view with the same fonts, so pairing is by source identity alone.
 enum RevealTransitionPlanner {
-    static let characterBudget = 2_000
+    /// Characters one snapshot may measure, the viewport extension included.
+    /// Over budget, the whole transition swaps instantly; there is no
+    /// partial animation.
+    static let characterBudget = 4_000
     /// Displacement below which a character stays where it is and keeps its
     /// real glyph instead of getting a layer.
     static let stillTolerance: CGFloat = 0.5
+
+    /// `sourceRanges` plus the paragraphs below them that intersect the text
+    /// view's visible rect, so glyphs a height change pushes down or pulls up
+    /// slide instead of jumping; characters that end up still cost no layer.
+    /// In source offsets so an edit can measure the same paragraphs in the
+    /// old text and, shifted, in the new one. Paragraphs above the viewport
+    /// are skipped: nothing visible depends on them.
+    static func sourceRangesExtendedToVisibleBottom(
+        _ sourceRanges: [NSRange],
+        in textView: NSTextView,
+        map: ReaderOffsetMap
+    ) -> [NSRange] {
+        guard let last = sourceRanges.max(by: { NSMaxRange($0) < NSMaxRange($1) }),
+              let layoutManager = textView.layoutManager,
+              let container = textView.textContainer,
+              let storage = textView.textStorage else { return sourceRanges }
+        var visible = textView.visibleRect
+        guard !visible.isEmpty else { return sourceRanges }
+        visible.origin.x -= textView.textContainerOrigin.x
+        visible.origin.y -= textView.textContainerOrigin.y
+        let glyphs = layoutManager.glyphRange(forBoundingRect: visible, in: container)
+        guard glyphs.length > 0 else { return sourceRanges }
+        let string = storage.string as NSString
+        let visibleParagraphs = string.paragraphRange(
+            for: layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+        )
+        let visibleStart = map.sourceOffset(forReaderOffset: visibleParagraphs.location)
+        let visibleEnd = map.sourceOffset(forReaderOffset: NSMaxRange(visibleParagraphs))
+        let start = max(NSMaxRange(last), visibleStart)
+        guard visibleEnd > start else { return sourceRanges }
+        return sourceRanges + [NSRange(location: start, length: visibleEnd - start)]
+    }
 
     /// The reader paragraphs holding the given source ranges, in the reader
     /// string of `map`. Overlapping or touching paragraphs merge; distant
@@ -172,6 +222,7 @@ enum RevealTransitionPlanner {
 
         var glyphs: [RevealGlyphKey: RevealMeasuredGlyph] = [:]
         glyphs.reserveCapacity(total)
+        var paragraphs = 0
         for range in ranges {
             let geometry = try GlyphGeometry.measure(in: textView, characterRange: range)
             for (readerIndex, key) in keys(in: range, map: offsetMap) {
@@ -180,8 +231,13 @@ enum RevealTransitionPlanner {
                 guard box.attributed.string.utf16.first != 0xFFFC else { continue }
                 glyphs[key] = RevealMeasuredGlyph(readerIndex: readerIndex, box: box)
             }
+            var cursor = range.location
+            while cursor < NSMaxRange(range) {
+                paragraphs += 1
+                cursor = max(cursor + 1, NSMaxRange(string.paragraphRange(for: NSRange(location: cursor, length: 0))))
+            }
         }
-        return RevealTransitionSnapshot(glyphs: glyphs, measuredRanges: ranges)
+        return RevealTransitionSnapshot(glyphs: glyphs, measuredRanges: ranges, measuredParagraphCount: paragraphs)
     }
 
     /// Pairing keys for the reader characters in `range`. One-to-one records
@@ -270,7 +326,9 @@ enum RevealTransitionPlanner {
             moverCount: movers,
             crossfadeCount: crossfades,
             fadeInCount: fadeIns,
-            fadeOutCount: fadeOuts
+            fadeOutCount: fadeOuts,
+            measuredCharacterCount: after.measuredCharacterCount,
+            measuredParagraphCount: after.measuredParagraphCount
         )
     }
 
@@ -352,8 +410,9 @@ final class RevealTransitionOverlay: NSView {
     /// finished first.
     func run(_ plan: RevealTransitionPlan, in textView: NSTextView) {
         finishImmediately()
+        let measured = "measured \(plan.measuredCharacterCount) characters in \(plan.measuredParagraphCount) paragraphs"
         guard !plan.entries.isEmpty else {
-            record("skipped: nothing moved")
+            record("skipped: nothing moved, \(measured)")
             return
         }
         guard textView.window != nil else {
@@ -444,7 +503,7 @@ final class RevealTransitionOverlay: NSView {
             layoutManager.hiddenCharacterRanges = plan.hiddenRanges
         }
         record(
-            "animating: \(active.count) layers (\(plan.moverCount) moving, \(plan.crossfadeCount) restyling, \(plan.fadeInCount) appearing, \(plan.fadeOutCount) disappearing), hiding \(plan.hiddenRanges.count) ranges"
+            "animating: \(active.count) layers (\(plan.moverCount) moving, \(plan.crossfadeCount) restyling, \(plan.fadeInCount) appearing, \(plan.fadeOutCount) disappearing), hiding \(plan.hiddenRanges.count) ranges, \(measured)"
         )
     }
 

@@ -63,6 +63,7 @@
 
 /* Format menu */
 "Format" = "格式";
+"Paragraph" = "正文";
 "Heading 1" = "标题 1";
 "Heading 2" = "标题 2";
 "Heading 3" = "标题 3";

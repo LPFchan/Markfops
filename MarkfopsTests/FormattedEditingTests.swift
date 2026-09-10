@@ -652,6 +652,21 @@ final class FormattedEditingContainerTests: XCTestCase {
             index += 1
         }
         let host = try makeHost(text: text)
+
+        // A reveal in view, with the rest of the viewport below it: the
+        // paragraphs below are measured so they can slide if the reveal
+        // re-wraps the paragraph.
+        let visibleTarget = try host.readerRange(of: "bold 1")
+        let visibleReveal = ContinuousClock().measure {
+            host.placeCaret(at: visibleTarget.location + 2)
+        }
+        let visibleMilliseconds = Double(visibleReveal.components.seconds) * 1_000
+            + Double(visibleReveal.components.attoseconds) / 1e15
+        print("Formatted editing 10,000-character reveal rebuild in view: \(visibleMilliseconds) ms")
+        print("Formatted editing 10,000-character reveal transition in view: \(host.coordinator.lastRevealTransitionOutcome)")
+        XCTAssertTrue(host.reader.string.contains("**bold 1**"))
+        host.pump(seconds: 0.3)
+
         let target = try host.readerRange(of: "bold 40")
         var elapsed: Duration = .zero
         elapsed = ContinuousClock().measure {
@@ -670,6 +685,15 @@ final class FormattedEditingContainerTests: XCTestCase {
             + Double(typing.components.attoseconds) / 1e15
         print("Formatted editing 10,000-character keystroke: \(typingMilliseconds) ms")
         XCTAssertTrue(host.document.rawText.contains("**boXld 40**"))
+
+        let heading = ContinuousClock().measure {
+            host.reader.applyHeading1()
+        }
+        let headingMilliseconds = Double(heading.components.seconds) * 1_000
+            + Double(heading.components.attoseconds) / 1e15
+        print("Formatted editing 10,000-character heading command: \(headingMilliseconds) ms")
+        print("Formatted editing 10,000-character heading transition: \(host.coordinator.lastRevealTransitionOutcome)")
+        XCTAssertTrue(host.document.rawText.contains("# Paragraph 40 with **boXld 40**"))
     }
 
     // MARK: - Reveal transition
@@ -958,6 +982,196 @@ final class FormattedEditingContainerTests: XCTestCase {
         XCTAssertEqual(stars.filter { $0.entry.from == nil }.count, 4, "the last paragraph's syntax fades in")
         host.pump(seconds: 0.4)
         XCTAssertFalse(overlay.isRunning)
+    }
+
+    // MARK: - Heading commands
+
+    private func pointSize(_ font: NSFont?) -> CGFloat {
+        font?.pointSize ?? 0
+    }
+
+    /// Movers in the paragraph below a changed heading, by their first letter.
+    private func below(_ host: Host, letter: String) -> [RevealTransitionOverlay.ActiveEntry] {
+        host.transitionEntries(for: letter).filter { $0.entry.isMover && !$0.entry.crossfades }
+    }
+
+    func testHeadingOneOnAParagraphCrossfadesTheWordsFadesThePrefixInAndSlidesTheParagraphBelow() throws {
+        try skipUnlessTransitionsRun()
+        let host = try makeHost(text: "Hello world\n\nBelow paragraph\n")
+        host.placeCaret(at: 3)
+
+        host.reader.applyHeading1()
+
+        XCTAssertEqual(host.document.rawText, "# Hello world\n\nBelow paragraph\n")
+        XCTAssertEqual(host.reader.string, "# Hello world\n\nBelow paragraph\n", "the prefix is revealed")
+        XCTAssertEqual(host.reader.selectedRange(), try host.readerRange(of: "Hello world"))
+        let overlay = try XCTUnwrap(host.coordinator.revealTransition)
+        XCTAssertTrue(overlay.isRunning, host.coordinator.lastRevealTransitionOutcome)
+        XCTAssertTrue(overlay.lastOutcome.contains("paragraphs"), overlay.lastOutcome)
+
+        let hash = host.transitionEntries(for: "#")
+        XCTAssertEqual(hash.count, 1)
+        XCTAssertTrue(hash.allSatisfy { $0.entry.from == nil && $0.entry.to != nil }, "the hash fades in")
+        let prefixSpace = host.transitionEntries(for: " ").filter { $0.entry.key == .source(1) }
+        XCTAssertEqual(prefixSpace.count, 1)
+        XCTAssertTrue(prefixSpace.allSatisfy { $0.entry.from == nil }, "the space after it fades in")
+        let word = ["H", "e", "l", "o"].flatMap { host.transitionEntries(for: $0) }
+            .filter { (2..<7).map(RevealGlyphKey.source).contains($0.entry.key) }
+        XCTAssertEqual(word.count, 5)
+        XCTAssertTrue(word.allSatisfy { $0.entry.crossfades })
+        for glyph in word {
+            XCTAssertLessThan(pointSize(glyph.entry.from?.font), pointSize(glyph.entry.to?.font), "body to heading size")
+            XCTAssertNotNil(glyph.fromLayer)
+        }
+        let belowMovers = below(host, letter: "B")
+        XCTAssertEqual(belowMovers.count, 1, "the paragraph below moves")
+        let mover = try XCTUnwrap(belowMovers.first)
+        XCTAssertNotEqual(mover.from.y, mover.to.y)
+        XCTAssertEqual(mover.from.x, mover.to.x, accuracy: 0.5)
+
+        host.pump(seconds: 0.06)
+        XCTAssertTrue(overlay.isRunning, "still animating after 60 ms")
+        let y = try XCTUnwrap(mover.layer.presentation()?.position.y)
+        XCTAssertGreaterThan(y, min(mover.from.y, mover.to.y))
+        XCTAssertLessThan(y, max(mover.from.y, mover.to.y))
+
+        host.pump(seconds: 0.4)
+        XCTAssertFalse(overlay.isRunning)
+        XCTAssertNil(overlay.superview)
+        XCTAssertEqual(overlay.layer?.sublayers?.count ?? 0, 0)
+        XCTAssertEqual(host.layoutManager?.hiddenCharacterRanges ?? [NSRange()], [])
+        XCTAssertEqual(host.reader.string, "# Hello world\n\nBelow paragraph\n")
+        XCTAssertEqual(host.reader.selectedRange(), try host.readerRange(of: "Hello world"))
+        XCTAssertEqual(host.coordinator.refusedEditCount, 0)
+    }
+
+    func testHeadingTwoOnAHeadingKeepsTheHashAndFadesASecondOneIn() throws {
+        try skipUnlessTransitionsRun()
+        let host = try makeHost(text: "Hello world\n\nBelow paragraph\n")
+        host.placeCaret(at: 3)
+        host.reader.applyHeading1()
+        host.pump(seconds: 0.4)
+
+        host.reader.applyHeading2()
+
+        XCTAssertEqual(host.document.rawText, "## Hello world\n\nBelow paragraph\n")
+        XCTAssertEqual(host.reader.string, "## Hello world\n\nBelow paragraph\n")
+        let overlay = try XCTUnwrap(host.coordinator.revealTransition)
+        XCTAssertTrue(overlay.isRunning, host.coordinator.lastRevealTransitionOutcome)
+        let hashes = host.transitionEntries(for: "#")
+        XCTAssertEqual(hashes.count, 2)
+        XCTAssertEqual(hashes.filter { $0.entry.from == nil }.count, 1, "one hash appears")
+        XCTAssertEqual(hashes.filter { $0.entry.from != nil && $0.entry.to != nil }.count, 1, "the other stays")
+        XCTAssertTrue(hashes.allSatisfy { $0.entry.to != nil }, "no hash fades out")
+        let word = host.transitionEntries(for: "H")
+        XCTAssertEqual(word.count, 1)
+        XCTAssertTrue(word.allSatisfy { $0.entry.crossfades })
+        XCTAssertGreaterThan(pointSize(word.first?.entry.from?.font), pointSize(word.first?.entry.to?.font))
+        XCTAssertEqual(below(host, letter: "B").count, 1, "the paragraph below slides up")
+
+        host.pump(seconds: 0.4)
+        XCTAssertFalse(overlay.isRunning)
+        XCTAssertEqual(host.reader.selectedRange(), try host.readerRange(of: "Hello world"))
+    }
+
+    func testParagraphOnAHeadingFadesThePrefixOutAndCrossfadesBackToTheBodyFont() throws {
+        try skipUnlessTransitionsRun()
+        let host = try makeHost(text: "## Hello world\n\nBelow paragraph\n")
+        let hello = try host.readerRange(of: "Hello")
+        host.placeCaret(at: hello.location + 1)
+        host.pump(seconds: 0.4)
+        XCTAssertEqual(host.reader.string, "## Hello world\n\nBelow paragraph\n")
+
+        host.reader.applyParagraph()
+
+        XCTAssertEqual(host.document.rawText, "Hello world\n\nBelow paragraph\n")
+        XCTAssertEqual(host.reader.string, "Hello world\n\nBelow paragraph\n")
+        XCTAssertEqual(host.reader.selectedRange(), try host.readerRange(of: "Hello world"))
+        let overlay = try XCTUnwrap(host.coordinator.revealTransition)
+        XCTAssertTrue(overlay.isRunning, host.coordinator.lastRevealTransitionOutcome)
+        let hashes = host.transitionEntries(for: "#")
+        XCTAssertEqual(hashes.count, 2)
+        XCTAssertTrue(hashes.allSatisfy { $0.entry.from != nil && $0.entry.to == nil }, "the prefix fades out")
+        let word = host.transitionEntries(for: "H")
+        XCTAssertEqual(word.count, 1)
+        XCTAssertTrue(word.allSatisfy { $0.entry.crossfades })
+        XCTAssertGreaterThan(pointSize(word.first?.entry.from?.font), pointSize(word.first?.entry.to?.font))
+        XCTAssertEqual(below(host, letter: "B").count, 1)
+
+        host.pump(seconds: 0.4)
+        XCTAssertFalse(overlay.isRunning)
+        XCTAssertEqual(host.layoutManager?.hiddenCharacterRanges ?? [NSRange()], [])
+    }
+
+    func testHeadingCommandOnAnUnchangedLineOnlySelectsTheContent() throws {
+        let host = try makeHost(text: "# Title\n\nbody")
+        host.placeCaret(at: 2)
+        host.pump(seconds: 0.4)
+        let revision = host.document.textRevision
+        host.reader.applyHeading1()
+        XCTAssertEqual(host.document.textRevision, revision)
+        XCTAssertEqual(host.reader.selectedRange(), try host.readerRange(of: "Title"))
+        XCTAssertEqual(host.coordinator.refusedEditCount, 0)
+        XCTAssertFalse(host.document.undoManager.canUndo)
+    }
+
+    func testTypingAHashIntoARevealedPrefixAnimatesAndTypingElsewhereDoesNot() throws {
+        try skipUnlessTransitionsRun()
+        let host = try makeHost(text: "# Title\n\nbody")
+        host.placeCaret(at: 3)
+        host.pump(seconds: 0.4)
+        XCTAssertEqual(host.reader.string, "# Title\n\nbody")
+        host.placeCaret(at: 0)
+        XCTAssertFalse(host.coordinator.revealTransition?.isRunning ?? false, "the reveal is unchanged")
+
+        host.type("#")
+
+        XCTAssertEqual(host.document.rawText, "## Title\n\nbody")
+        XCTAssertEqual(host.reader.string, "## Title\n\nbody")
+        XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 1, length: 0))
+        let overlay = try XCTUnwrap(host.coordinator.revealTransition)
+        XCTAssertTrue(overlay.isRunning, host.coordinator.lastRevealTransitionOutcome)
+        let hashes = host.transitionEntries(for: "#")
+        XCTAssertEqual(hashes.count, 2)
+        XCTAssertEqual(hashes.filter { $0.entry.from == nil }.count, 1, "the typed hash fades in")
+        XCTAssertEqual(hashes.filter { $0.entry.isMover }.count, 1, "the old hash slides right")
+        XCTAssertTrue(host.transitionEntries(for: "T").allSatisfy { $0.entry.crossfades }, "the title changes size")
+        host.pump(seconds: 0.4)
+        XCTAssertFalse(overlay.isRunning)
+
+        let body = try host.readerRange(of: "body")
+        host.placeCaret(at: body.location + 2)
+        host.pump(seconds: 0.4)
+        host.type("x")
+        XCTAssertEqual(host.document.rawText, "## Title\n\nboxdy")
+        XCTAssertEqual(host.coordinator.lastRevealTransitionOutcome, "skipped: not a caret move")
+        XCTAssertFalse(host.coordinator.revealTransition?.isRunning ?? false)
+    }
+
+    func testTypingDashSpaceStartsAListWithTheBulletFadingIn() throws {
+        try skipUnlessTransitionsRun()
+        let host = try makeHost(text: "Hello")
+        host.placeCaret(at: 0)
+        host.type("-")
+        XCTAssertEqual(host.document.rawText, "-Hello")
+        XCTAssertEqual(host.coordinator.lastRevealTransitionOutcome, "skipped: not a caret move", "a dash alone is plain text")
+
+        host.type(" ")
+
+        XCTAssertEqual(host.document.rawText, "- Hello")
+        XCTAssertEqual(host.reader.string, "\u{2022} Hello")
+        let overlay = try XCTUnwrap(host.coordinator.revealTransition)
+        XCTAssertTrue(overlay.isRunning, host.coordinator.lastRevealTransitionOutcome)
+        let dash = host.transitionEntries(for: "-")
+        XCTAssertEqual(dash.count, 1)
+        XCTAssertTrue(dash.allSatisfy { $0.entry.to == nil }, "the dash fades out")
+        let bullet = host.transitionEntries(for: "\u{2022}")
+        XCTAssertEqual(bullet.count, 1)
+        XCTAssertTrue(bullet.allSatisfy { $0.entry.from == nil }, "the bullet fades in")
+        XCTAssertTrue(host.transitionEntries(for: "H").allSatisfy { $0.entry.isMover })
+        host.pump(seconds: 0.4)
+        XCTAssertFalse(overlay.isRunning)
+        XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 2, length: 0))
     }
 
     func testHiddenCharacterRangesLeaveNoInkWhereTheGlyphsWere() throws {

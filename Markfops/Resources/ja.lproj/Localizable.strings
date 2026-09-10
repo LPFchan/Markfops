@@ -63,6 +63,7 @@
 
 /* Format menu */
 "Format" = "フォーマット";
+"Paragraph" = "本文";
 "Heading 1" = "見出し 1";
 "Heading 2" = "見出し 2";
 "Heading 3" = "見出し 3";

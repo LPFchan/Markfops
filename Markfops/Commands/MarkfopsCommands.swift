@@ -214,6 +214,11 @@ struct MarkfopsCommands: Commands {
 
         // MARK: Format menu
         CommandMenu("Format") {
+            Button("Paragraph") {
+                applyHeading(level: 0)
+            }
+            .keyboardShortcut("0", modifiers: [.command, .option])
+
             Button("Heading 1") {
                 applyHeading(level: 1)
             }
@@ -287,9 +292,10 @@ struct MarkfopsCommands: Commands {
     }
 
     private func applyHeading(level: Int) {
-        guard activeMode == .edit else { return }
         let selector: Selector
         switch level {
+        case 0:
+            selector = #selector(NSTextView.applyParagraph)
         case 1:
             selector = #selector(NSTextView.applyHeading1)
         case 2:
@@ -327,5 +333,22 @@ extension NSTextView {
     }
     @objc func wrapCode() {
         (self as? MarkdownNSTextView)?.wrapSelection(prefix: "`", suffix: "`")
+        (self as? ReaderNSTextView)?.wrapSelection(prefix: "`", suffix: "`")
+    }
+    @objc func applyParagraph() {
+        dispatchHeading(level: 0)
+    }
+    @objc func applyHeading1() {
+        dispatchHeading(level: 1)
+    }
+    @objc func applyHeading2() {
+        dispatchHeading(level: 2)
+    }
+    @objc func applyHeading3() {
+        dispatchHeading(level: 3)
+    }
+    private func dispatchHeading(level: Int) {
+        (self as? MarkdownNSTextView)?.applyHeading(level: level)
+        (self as? ReaderNSTextView)?.applyHeading(level: level)
     }
 }
