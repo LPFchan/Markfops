@@ -259,7 +259,10 @@ final class ModeAwareHighlighter: NSObject, NSTextStorageDelegate {
         storage.addAttribute(.font, value: font, range: range)
         storage.addAttribute(.foregroundColor, value: color, range: range)
 
-        let paragraphStyle = paragraphStyle(for: blockKind, listDepth: context.listDepth)
+        let paragraphStyle = paragraphStyle(
+            for: blockKind,
+            listDepth: context.listDepth
+        )
         storage.addAttribute(.paragraphStyle, value: paragraphStyle, range: range)
 
         if codeSpan {
@@ -375,22 +378,39 @@ final class ModeAwareHighlighter: NSObject, NSTextStorageDelegate {
 
     // MARK: - Paragraph styles
 
-    private func paragraphStyle(for blockKind: MarkdownSourceMap.Kind?, listDepth: Int) -> NSParagraphStyle {
+    private func paragraphStyle(
+        for blockKind: MarkdownSourceMap.Kind?,
+        listDepth: Int
+    ) -> NSParagraphStyle {
         let style = NSMutableParagraphStyle()
-        style.lineHeightMultiple = configuration.lineHeightMultiple
+        // Blank lines in the markdown source provide the visual separation
+        // between blocks; paragraph spacing here would double that gap.
+        style.lineHeightMultiple = 1.65
+        style.paragraphSpacing = 0
+        style.paragraphSpacingBefore = 0
 
-        if case .blockQuote = blockKind {
-            style.firstLineHeadIndent = 16
-            style.headIndent = 16
-        }
-        if case .listItem = blockKind {
-            let indent = 24 + CGFloat(listDepth) * 24
-            style.firstLineHeadIndent = indent
-            style.headIndent = indent
-        }
-        if case .codeBlock = blockKind {
-            style.firstLineHeadIndent = 12
-            style.headIndent = 12
+        switch blockKind {
+        case let .heading(level):
+            style.lineHeightMultiple = 1.3
+        case .listItem:
+            let depth = max(0, listDepth)
+            let markerIndent = theme.bodyFontSize * 2 * CGFloat(depth)
+            style.firstLineHeadIndent = markerIndent
+            style.headIndent = markerIndent + theme.bodyFontSize * 2
+            style.tabStops = [NSTextTab(
+                textAlignment: .left,
+                location: markerIndent + theme.bodyFontSize * 2
+            )]
+        case .blockQuote:
+            style.firstLineHeadIndent = theme.bodyFontSize
+            style.headIndent = theme.bodyFontSize
+        case .codeBlock:
+            style.lineHeightMultiple = 1.6
+            style.firstLineHeadIndent = theme.bodyFontSize * 1.25
+            style.headIndent = theme.bodyFontSize * 1.25
+            style.tailIndent = -theme.bodyFontSize * 1.25
+        default:
+            break
         }
 
         return style
