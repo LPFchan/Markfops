@@ -21,19 +21,27 @@ final class ModeAwareHighlighter: NSObject, NSTextStorageDelegate {
     private var sourceMap: MarkdownSourceMap?
     private var lastParsedRevision: UInt64 = .max
     private var isHighlighting = false
-    private var needsDeferredHighlight = false
-    private var pendingDeferredRange: NSRange?
+    private(set) var needsFullHighlight = true
     private var pendingCompositionRange: NSRange?
+    var isEnabled = true
+
+    var needsDeferredHighlight: Bool {
+        needsFullHighlight || pendingCompositionRange != nil
+    }
 
     func updateConfiguration(_ configuration: EditorConfiguration) -> Bool {
         guard !configuration.isHighlightingEquivalent(to: self.configuration) else { return false }
         self.configuration = configuration
+        if !isEnabled {
+            needsFullHighlight = true
+        }
         return true
     }
 
     func updateMode(_ mode: EditMode) {
         guard mode != self.mode else { return }
         self.mode = mode
+        needsFullHighlight = true
     }
 
     func updateReveal() {
@@ -51,6 +59,10 @@ final class ModeAwareHighlighter: NSObject, NSTextStorageDelegate {
         changeInLength delta: Int
     ) {
         guard editedMask.contains(.editedCharacters) else { return }
+        guard isEnabled else {
+            needsFullHighlight = true
+            return
+        }
         guard !isHighlighting else { return }
 
         if hasActiveComposition {
@@ -58,7 +70,9 @@ final class ModeAwareHighlighter: NSObject, NSTextStorageDelegate {
             return
         }
 
-        let range = lineRange(in: textStorage.string, for: editedRange)
+        let combinedRange = pendingCompositionRange.map { NSUnionRange($0, editedRange) } ?? editedRange
+        pendingCompositionRange = nil
+        let range = lineRange(in: textStorage.string, for: combinedRange)
         highlight(textStorage, in: range)
     }
 
@@ -66,7 +80,7 @@ final class ModeAwareHighlighter: NSObject, NSTextStorageDelegate {
         textView?.isComposingText ?? false
     }
 
-    private weak var textView: MarkdownNSTextView?
+    private(set) weak var textView: MarkdownNSTextView?
 
     func attach(textView: MarkdownNSTextView) {
         self.textView = textView
@@ -78,22 +92,39 @@ final class ModeAwareHighlighter: NSObject, NSTextStorageDelegate {
     }
 
     func flushDeferredHighlight(in storage: NSTextStorage) {
-        guard needsDeferredHighlight else { return }
-        needsDeferredHighlight = false
-        guard let range = pendingDeferredRange else { return }
-        pendingDeferredRange = nil
-        highlight(storage, in: range)
+        guard isEnabled, !hasActiveComposition else { return }
+        if needsFullHighlight {
+            highlightAll(in: storage)
+            return
+        }
+        guard let pendingCompositionRange else { return }
+        self.pendingCompositionRange = nil
+        let safeLocation = min(pendingCompositionRange.location, storage.length)
+        let safeEnd = min(NSMaxRange(pendingCompositionRange), storage.length)
+        let safeRange = NSRange(location: safeLocation, length: max(0, safeEnd - safeLocation))
+        highlight(storage, in: lineRange(in: storage.string, for: safeRange))
     }
 
     func highlightAll(in storage: NSTextStorage) {
+        guard isEnabled else { return }
+        guard !hasActiveComposition else {
+            needsFullHighlight = true
+            return
+        }
         let fullRange = NSRange(location: 0, length: storage.length)
+        guard fullRange.length > 0 else {
+            needsFullHighlight = false
+            return
+        }
         highlight(storage, in: fullRange)
+        needsFullHighlight = false
+        pendingCompositionRange = nil
     }
 
     // MARK: - Attribute computation
 
     private func highlight(_ storage: NSTextStorage, in range: NSRange) {
-        guard range.length > 0, NSMaxRange(range) <= storage.length else { return }
+        guard isEnabled, range.length > 0, NSMaxRange(range) <= storage.length else { return }
         isHighlighting = true
         storage.beginEditing()
         defer {
@@ -266,7 +297,7 @@ final class ModeAwareHighlighter: NSObject, NSTextStorageDelegate {
         }
 
         var hidden: [NSRange] = []
-        collectSyntaxRanges(in: sourceMap.span, into: &hidden)
+        collectSyntaxRanges(in: sourceMap.span, storage: storage, into: &hidden)
 
         if let revealed = revealedSourceRange {
             hidden = hidden.filter { NSIntersectionRange($0, revealed).length == 0 }
@@ -275,20 +306,44 @@ final class ModeAwareHighlighter: NSObject, NSTextStorageDelegate {
         textView?.markdownLayoutManager?.hiddenCharacterRanges = hidden
     }
 
-    private func collectSyntaxRanges(in span: MarkdownSourceMap.Span, into result: inout [NSRange]) {
+    private func collectSyntaxRanges(
+        in span: MarkdownSourceMap.Span,
+        storage: NSTextStorage,
+        into result: inout [NSRange]
+    ) {
         if span.role == .content {
+            // Front matter collapses to its closing rule; the whole block is
+            // hidden, including trailing newlines so no empty lines remain.
+            if case .frontMatter = span.kind {
+                result.append(extendedThroughNewline(span.range, storage: storage))
+            }
             for child in span.children where child.role == .syntax {
                 switch child.kind {
                 case .listItem, .thematicBreak, .frontMatter:
                     continue
+                case .codeBlock:
+                    // Fence lines disappear with their newline so the code
+                    // block's background sits flush with surrounding text.
+                    result.append(extendedThroughNewline(child.range, storage: storage))
                 default:
                     result.append(child.range)
                 }
             }
         }
         for child in span.children {
-            collectSyntaxRanges(in: child, into: &result)
+            collectSyntaxRanges(in: child, storage: storage, into: &result)
         }
+    }
+
+    /// Extends a hidden range through the newline that ends its line. The
+    /// layout manager collapses a fully hidden line's fragment to zero height,
+    /// so hiding the newline is what removes the empty line.
+    private func extendedThroughNewline(_ range: NSRange, storage: NSTextStorage) -> NSRange {
+        let text = storage.string as NSString
+        var end = NSMaxRange(range)
+        if end < text.length, text.character(at: end) == 0x0D { end += 1 }
+        if end < text.length, text.character(at: end) == 0x0A { end += 1 }
+        return NSRange(location: range.location, length: end - range.location)
     }
 
     // MARK: - Font building

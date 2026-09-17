@@ -325,15 +325,12 @@ struct MarkfopsCommands: Commands {
 extension NSTextView {
     @objc func wrapBold() {
         (self as? MarkdownNSTextView)?.wrapSelection(prefix: "**", suffix: "**")
-        (self as? ReaderNSTextView)?.wrapSelection(prefix: "**", suffix: "**")
     }
     @objc func wrapItalic() {
         (self as? MarkdownNSTextView)?.wrapSelection(prefix: "*", suffix: "*")
-        (self as? ReaderNSTextView)?.wrapSelection(prefix: "*", suffix: "*")
     }
     @objc func wrapCode() {
         (self as? MarkdownNSTextView)?.wrapSelection(prefix: "`", suffix: "`")
-        (self as? ReaderNSTextView)?.wrapSelection(prefix: "`", suffix: "`")
     }
     @objc func applyParagraph() {
         dispatchHeading(level: 0)
@@ -349,6 +346,5 @@ extension NSTextView {
     }
     private func dispatchHeading(level: Int) {
         (self as? MarkdownNSTextView)?.applyHeading(level: level)
-        (self as? ReaderNSTextView)?.applyHeading(level: level)
     }
 }

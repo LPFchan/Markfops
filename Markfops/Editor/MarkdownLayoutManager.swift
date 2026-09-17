@@ -1,5 +1,42 @@
 import AppKit
 
+extension NSAttributedString.Key {
+    static let readerCodeSpan = NSAttributedString.Key("com.markfops.reader.codeSpan")
+    static let readerCodeBlock = NSAttributedString.Key("com.markfops.reader.codeBlock")
+    static let readerBlockQuote = NSAttributedString.Key("com.markfops.reader.blockQuote")
+    static let readerHeadingLevel = NSAttributedString.Key("com.markfops.reader.headingLevel")
+    static let readerThematicBreak = NSAttributedString.Key("com.markfops.reader.thematicBreak")
+    static let readerFrontMatter = NSAttributedString.Key("com.markfops.reader.frontMatter")
+}
+
+/// Colors and metrics for preview-mode decorations. Was the reader theme;
+/// now the layout manager and highlighter share it.
+struct ReaderTheme {
+    var bodyFontSize: CGFloat
+    var bodyColor: NSColor
+    var backgroundColor: NSColor
+    var secondaryColor: NSColor
+    var linkColor: NSColor
+    var codeBackgroundColor: NSColor
+    var separatorColor: NSColor
+    var contentInsets: NSEdgeInsets
+    var maxContentWidth: CGFloat
+
+    static var `default`: ReaderTheme {
+        ReaderTheme(
+            bodyFontSize: 16,
+            bodyColor: .textColor,
+            backgroundColor: .textBackgroundColor,
+            secondaryColor: .secondaryLabelColor,
+            linkColor: .linkColor,
+            codeBackgroundColor: NSColor.textColor.withAlphaComponent(0.06),
+            separatorColor: .separatorColor,
+            contentInsets: NSEdgeInsets(top: 40, left: 32, bottom: 80, right: 32),
+            maxContentWidth: 780
+        )
+    }
+}
+
 /// Layout manager for the single-renderer architecture. Merges the reader's
 /// decorations (code blocks, capsules, quote bars, heading rules, front matter,
 /// thematic breaks) with hidden-syntax support for formatted mode.
@@ -17,7 +54,37 @@ final class MarkdownLayoutManager: NSLayoutManager {
         didSet {
             for range in oldValue + hiddenCharacterRanges where range.length > 0 {
                 invalidateDisplay(forCharacterRange: range)
+                invalidateLayout(forCharacterRange: range, actualCharacterRange: nil)
             }
+        }
+    }
+
+    /// A hidden character range that ends in a newline is a fully hidden line
+    /// (front matter, fenced-code fence lines in preview). Nothing is drawn in
+    /// its place, so the empty line fragment must collapse to zero height;
+    /// NSLayoutManager still gives invisible newlines a full-height line
+    /// fragment otherwise.
+    override func setLineFragmentRect(
+        _ fragmentRect: NSRect,
+        forGlyphRange glyphRange: NSRange,
+        usedRect: NSRect
+    ) {
+        var fragmentRect = fragmentRect
+        var usedRect = usedRect
+        if glyphRange.length == 1, glyphAtIndexIsFullyHiddenLineBreak(glyphRange.location) {
+            fragmentRect.size.height = 0
+            usedRect.size.height = 0
+        }
+        super.setLineFragmentRect(fragmentRect, forGlyphRange: glyphRange, usedRect: usedRect)
+    }
+
+    private func glyphAtIndexIsFullyHiddenLineBreak(_ glyphIndex: Int) -> Bool {
+        let characterIndex = characterIndexForGlyph(at: glyphIndex)
+        guard let storage = textStorage,
+              characterIndex < storage.length,
+              (storage.string as NSString).character(at: characterIndex) == 0x0A else { return false }
+        return hiddenCharacterRanges.contains { range in
+            range.location <= characterIndex && characterIndex < NSMaxRange(range)
         }
     }
 

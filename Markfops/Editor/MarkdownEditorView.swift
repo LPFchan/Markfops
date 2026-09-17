@@ -464,14 +464,18 @@ struct EditorView: NSViewRepresentable {
         scrollView.drawsBackground = true
         scrollView.backgroundColor = configuration.backgroundColor
 
-        // Wire syntax highlighter
-        context.coordinator.highlighter.updateConfiguration(configuration)
-        context.coordinator.highlighter.isEnabled = isActive
-        context.coordinator.highlighter.textView = textView
-        textView.syntaxHighlighter = context.coordinator.highlighter
+        // Wire the single-renderer highlighter: one attribute pass serves both
+        // edit and preview styling on the shared text storage.
+        let modeHighlighter = context.coordinator.modeHighlighter
+        _ = modeHighlighter.updateConfiguration(configuration)
+        modeHighlighter.isEnabled = isActive
+        modeHighlighter.attach(textView: textView)
+        modeHighlighter.updateMode(context.coordinator.mode)
+        textView.document = document
+        textView.markdownLayoutManager?.showsDecorations = (context.coordinator.mode == .preview)
         context.coordinator.isActive = isActive
         textView.isDocumentActive = isActive
-        textView.textStorage?.delegate = context.coordinator.highlighter
+        textView.textStorage?.delegate = modeHighlighter
         context.coordinator.textView = textView
         context.coordinator.attach(scrollView: scrollView)
         textView.onWindowAttachment = { [weak coordinator = context.coordinator] in
@@ -488,7 +492,7 @@ struct EditorView: NSViewRepresentable {
                 document: document,
                 active: true
             )
-            context.coordinator.highlighter.highlightAll(in: storage)
+            modeHighlighter.highlightAll(in: storage)
             TabSwitchProfiler.endInterval(
                 "Syntax Highlight",
                 signpostID: highlightSignpost
@@ -535,7 +539,10 @@ struct EditorView: NSViewRepresentable {
         } else {
             context.coordinator.document = document
         }
-        context.coordinator.highlighter.isEnabled = isActive
+        let modeHighlighter = context.coordinator.modeHighlighter
+        modeHighlighter.isEnabled = isActive
+        modeHighlighter.attach(textView: textView)
+        textView.document = document
         context.coordinator.isActive = isActive
         textView.isDocumentActive = isActive
         scrollView.drawsBackground = true
@@ -543,7 +550,7 @@ struct EditorView: NSViewRepresentable {
         if becameActive {
             context.coordinator.scheduleFocusIfAppropriate()
         }
-        let highlightingConfigurationChanged = context.coordinator.highlighter.updateConfiguration(configuration)
+        let highlightingConfigurationChanged = modeHighlighter.updateConfiguration(configuration)
         let configurationSignpost = TabSwitchProfiler.beginInterval(
             "Editor Configuration",
             document: document,
@@ -562,7 +569,7 @@ struct EditorView: NSViewRepresentable {
             context.coordinator.lastAppliedTextRevision = document.textRevision
         }
 
-        if isActive && (context.coordinator.highlighter.needsDeferredHighlight || highlightingConfigurationChanged),
+        if isActive && (modeHighlighter.needsDeferredHighlight || highlightingConfigurationChanged),
                   let storage = textView.textStorage,
                   storage.length > 0 {
             let highlightSignpost = TabSwitchProfiler.beginInterval(
@@ -571,9 +578,9 @@ struct EditorView: NSViewRepresentable {
                 active: true
             )
             if highlightingConfigurationChanged {
-                context.coordinator.highlighter.highlightAll(in: storage)
+                modeHighlighter.highlightAll(in: storage)
             } else {
-                context.coordinator.highlighter.flushDeferredHighlight(in: storage)
+                modeHighlighter.flushDeferredHighlight(in: storage)
             }
             TabSwitchProfiler.endInterval(
                 "Syntax Highlight",
@@ -597,8 +604,8 @@ struct EditorView: NSViewRepresentable {
         if let textView = scrollView.documentView as? MarkdownNSTextView {
             textView.onWindowAttachment = nil
             textView.syntaxHighlighter = nil
-            coordinator.highlighter.textView = nil
-            if textView.textStorage?.delegate === coordinator.highlighter {
+            textView.document = nil
+            if textView.textStorage?.delegate === coordinator.modeHighlighter {
                 textView.textStorage?.delegate = nil
             }
         }

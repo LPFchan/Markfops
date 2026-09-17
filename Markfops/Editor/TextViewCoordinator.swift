@@ -20,12 +20,14 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
     var textView: MarkdownNSTextView?
     var isActive = true
     var lastAppliedTextRevision: UInt64
-    let highlighter = MarkdownSyntaxHighlighter()
     let modeHighlighter = ModeAwareHighlighter()
     var mode: EditMode = .edit {
         didSet {
             modeHighlighter.updateMode(mode)
             textView?.markdownLayoutManager?.showsDecorations = (mode == .preview)
+            if let textView, let storage = textView.textStorage, storage.length > 0 {
+                modeHighlighter.highlightAll(in: storage)
+            }
         }
     }
     private var headingDebounceItem: DispatchWorkItem?
@@ -56,6 +58,16 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
         observedScrollView = scrollView
         cancelUserScrollIdleReset()
         userScrollGesture.end()
+    }
+
+    /// Keeps the highlighter's cursor position current so formatted mode
+    /// reveals the syntax of the construct the cursor sits in.
+    func textViewDidChangeSelection(_ notification: Notification) {
+        guard let textView,
+              notification.object as? NSTextView === textView else { return }
+        let selection = textView.selectedRange()
+        guard selection.location != NSNotFound else { return }
+        modeHighlighter.sourceCursor = selection.location
     }
 
     func undoManager(for view: NSTextView) -> UndoManager? {
@@ -600,13 +612,6 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
             NSSound.beep()
             return false
         }
-
-        // Check if the edit changes block syntax (heading prefix, quote marker, etc.).
-        let changesBlock = MarkdownBlockPrefix.changes(
-            in: document.rawText as NSString,
-            replacing: sourceRange,
-            with: replacement
-        )
 
         // Apply the edit directly to the shared storage.
         guard markdownTextView.shouldChangeText(in: sourceRange, replacementString: replacement) else {

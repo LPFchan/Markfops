@@ -701,38 +701,6 @@ final class UndoManagerTests: XCTestCase {
         XCTAssertEqual(document.userContentScrollGeneration, 0)
     }
 
-    func testReaderViewportRestoreBuffersBeforeCoordinatorAttaches() {
-        let bridge = ReaderBridge()
-        bridge.setPendingViewportRestore(
-            sourceLine: 84,
-            ratio: 0.42,
-            applyImmediately: false
-        )
-
-        let coordinator = ReaderView.Coordinator(
-            document: Document(rawText: ""),
-            theme: .default
-        )
-        bridge.coordinator = coordinator
-
-        XCTAssertEqual(coordinator.pendingViewportSourceLine, 84)
-        XCTAssertEqual(coordinator.pendingScrollRatio ?? -1, 0.42, accuracy: 0.001)
-    }
-
-    func testReaderHeadingBuffersBeforeCoordinatorAttaches() {
-        let bridge = ReaderBridge()
-        let heading = HeadingNode(level: 2, title: "Target", lineNumber: 84)
-        bridge.scrollToHeading(heading)
-
-        let coordinator = ReaderView.Coordinator(
-            document: Document(rawText: ""),
-            theme: .default
-        )
-        bridge.coordinator = coordinator
-
-        XCTAssertEqual(coordinator.pendingHeading, heading)
-    }
-
     func testUserScrollGestureStateStartsOnlyOnceUntilEnded() {
         var gesture = UserScrollGestureState()
 
