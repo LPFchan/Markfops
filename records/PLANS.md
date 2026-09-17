@@ -115,6 +115,8 @@ Each slice must end with something visible in the app and its own tests.
   - What goes: ReaderView, ModeMorphOverlay, MorphPlanner, ReaderPresentation as a separate builder, the entire glyph-pairing and crossfade path
   - Expected value: the morph becomes a property animation instead of a crossfade; no more two-font visual artifacts; simpler mental model (one view, one storage, one styling pass); smaller codebase (~2,000 lines deleted, ~500 modified)
   - Dependencies: ABC Areal bundled (landed on the areal branch)
+  - Status: landed on the areal branch. One NSTextView serves both modes; ModeAwareHighlighter is the single attribute pass; MarkdownLayoutManager draws decorations and hides syntax; the morph overlay, ReaderView, and ReaderPresentation are deleted. The mode switch restyles in place; MONO-axis animation is the remaining piece.
+  - Open: animate the MONO axis during mode switches; preview-mode font size/insets differ from edit mode and need a mode-aware ramp; list markers and images render as raw source in preview
   - Related ids: `DEC-20260909-001`, `DEC-20260909-002`, `DEC-20260910-001`
 
 - Initiative: tune the morph by eye on real documents: swap window, duration, per-word threshold, and how decorations (capsules, panels, bars) enter and leave
