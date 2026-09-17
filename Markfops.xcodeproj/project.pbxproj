@@ -22,9 +22,11 @@
 		18A362F4EEA42276BD14AB4C /* ReaderPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9417D7C1E56DE6005A844AAF /* ReaderPresentation.swift */; };
 		1A1E30D045927BEA8F94271C /* ToolbarItems.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100148C8EC6ECFEE19ACB63E /* ToolbarItems.swift */; };
 		1CBFD8563DE8AC10A9D37BB9 /* FindReplaceBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF2BCBDD65A92722203488B3 /* FindReplaceBar.swift */; };
+		1FAC5E15937BB63A5264882D /* ArealFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B673677E4CBA1F90ADF157 /* ArealFont.swift */; };
 		244ECCE7A99431A581667DE0 /* EditMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9DC1A7625D654E0BA585E10 /* EditMode.swift */; };
 		2ABB16294DDEBCD737A1FCB4 /* MarkdownSourceEdit.swift in Sources */ = {isa = PBXBuildFile; fileRef = E62AADE05360A5A70F3978EB /* MarkdownSourceEdit.swift */; };
 		2EDF355345EDAA2BBECA00F5 /* LocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F507C158D47BDA814445DFC /* LocalizationTests.swift */; };
+		350BB28B44CE5D79BDFD6E99 /* ABCArealSuperfamilyVariable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 1A0954BF66E69641F4F1D087 /* ABCArealSuperfamilyVariable.ttf */; };
 		36A692166D34A49F17331E5E /* MarkdownHeadingEdit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B47C77E436D9981A350BDD4 /* MarkdownHeadingEdit.swift */; };
 		3F2BDA9D46E8FF6AC6D6DF9B /* MarkfopsCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C916E9DBBDC508AC9B40C6 /* MarkfopsCommands.swift */; };
 		41F3F6082F4640F55296D775 /* DocumentWatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A7E87A04E672A1F0AF77A75 /* DocumentWatcherTests.swift */; };
@@ -88,6 +90,7 @@
 		100148C8EC6ECFEE19ACB63E /* ToolbarItems.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarItems.swift; sourceTree = "<group>"; };
 		14011151494BB8C871B4D646 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		1718CA6749B071C9BE4C8CEB /* ModeMorphTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeMorphTests.swift; sourceTree = "<group>"; };
+		1A0954BF66E69641F4F1D087 /* ABCArealSuperfamilyVariable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = ABCArealSuperfamilyVariable.ttf; sourceTree = "<group>"; };
 		2138F5AC97A090E4B6272FB3 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		22613C8BBDC3817EF580EBDC /* ReaderReveal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderReveal.swift; sourceTree = "<group>"; };
 		3278FD6BACC51D7888962371 /* MarkdownHeadingEditTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownHeadingEditTests.swift; sourceTree = "<group>"; };
@@ -129,6 +132,7 @@
 		9F507C158D47BDA814445DFC /* LocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationTests.swift; sourceTree = "<group>"; };
 		A205B3BE50E306D74019122E /* ReaderPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderPresentationTests.swift; sourceTree = "<group>"; };
 		A68CE2DA2091BB9E61384381 /* EditorConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorConfiguration.swift; sourceTree = "<group>"; };
+		B1B673677E4CBA1F90ADF157 /* ArealFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArealFont.swift; sourceTree = "<group>"; };
 		B2C916E9DBBDC508AC9B40C6 /* MarkfopsCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkfopsCommands.swift; sourceTree = "<group>"; };
 		B4625617133DDEF9653F91CA /* HeadingNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeadingNode.swift; sourceTree = "<group>"; };
 		B9DC1A7625D654E0BA585E10 /* EditMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditMode.swift; sourceTree = "<group>"; };
@@ -224,6 +228,7 @@
 				764FC1B5791BFD1271202CF7 /* Diagnostics */,
 				5BB6F5B1AC328EA80C25A38C /* Editor */,
 				C1E940C3A47CCAAD33C2FECB /* FileIO */,
+				AE412885D531D1F17865AD56 /* Fonts */,
 				7529D52ADD1EE840152954B4 /* Parsing */,
 				233CAB8EFD94A24A07A1B70F /* Reader */,
 				1B4EF84B44CE2183A43FE81E /* Renderer */,
@@ -290,6 +295,15 @@
 				DAD2AA09699D1444F08346FB /* Localizable.strings */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		AE412885D531D1F17865AD56 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				1A0954BF66E69641F4F1D087 /* ABCArealSuperfamilyVariable.ttf */,
+				B1B673677E4CBA1F90ADF157 /* ArealFont.swift */,
+			);
+			path = Fonts;
 			sourceTree = "<group>";
 		};
 		B7C1A532B2A92E924E97C122 /* MarkfopsTests */ = {
@@ -429,6 +443,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				350BB28B44CE5D79BDFD6E99 /* ABCArealSuperfamilyVariable.ttf in Resources */,
 				11F9895B75EDAB5CD3D00990 /* Assets.xcassets in Resources */,
 				51151CAB4FFDDC744AD66BFB /* Localizable.strings in Resources */,
 			);
@@ -442,6 +457,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4773F129D7E392E1E516AC2B /* AppDelegate.swift in Sources */,
+				1FAC5E15937BB63A5264882D /* ArealFont.swift in Sources */,
 				F021B53584B3F0AB0B80B8DB /* AuxiliaryWindowCloseHandler.swift in Sources */,
 				6F510D2C422BA6E3BBAF526F /* ContentView.swift in Sources */,
 				02BBEC589FB91DCD1A819A3D /* Document.swift in Sources */,

@@ -67,7 +67,7 @@ final class ReaderPresentationTests: XCTestCase {
             presentation.attributedString.attribute(.font, at: codeLocation, effectiveRange: nil)
                 as? NSFont
         )
-        XCTAssertTrue(codeFont.fontDescriptor.symbolicTraits.contains(.monoSpace))
+        XCTAssertTrue(codeFont.fontDescriptor.symbolicTraits.contains(.monoSpace) || ArealFont.isAreal(codeFont))
         XCTAssertNotNil(
             presentation.attributedString.attribute(
                 .readerCodeSpan,
@@ -230,7 +230,7 @@ final class ReaderPresentationTests: XCTestCase {
                 effectiveRange: nil
             ) as? NSFont
         )
-        XCTAssertTrue(titleFont.fontDescriptor.symbolicTraits.contains(.monoSpace))
+        XCTAssertTrue(titleFont.fontDescriptor.symbolicTraits.contains(.monoSpace) || ArealFont.isAreal(titleFont))
         XCTAssertEqual(
             presentation.attributedString.attribute(
                 .readerFrontMatter,
@@ -543,7 +543,7 @@ final class ReaderPresentationTests: XCTestCase {
             let font = try XCTUnwrap(
                 revealed.attributedString.attribute(.font, at: location, effectiveRange: nil) as? NSFont
             )
-            XCTAssertTrue(font.fontDescriptor.symbolicTraits.contains(.monoSpace))
+            XCTAssertTrue(font.fontDescriptor.symbolicTraits.contains(.monoSpace) || ArealFont.isAreal(font))
         }
         XCTAssertEqual(
             revealed.attributedString.attribute(.foregroundColor, at: rendered.range(of: "let x").location, effectiveRange: nil) as? NSColor,

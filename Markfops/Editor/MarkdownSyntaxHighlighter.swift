@@ -158,7 +158,8 @@ final class MarkdownSyntaxHighlighter: NSObject, NSTextStorageDelegate {
         // Bold font weight for headings
         for match in Self.headingRule.matches(in: textStorage.string, range: range) {
             guard NSMaxRange(match.range) <= textStorage.length else { continue }
-            let boldFont = NSFont.monospacedSystemFont(ofSize: configuration.fontSize, weight: .bold)
+            let boldFont = ArealFont.font(size: configuration.fontSize, weight: .bold, mono: 100)
+                ?? NSFont.monospacedSystemFont(ofSize: configuration.fontSize, weight: .bold)
             textStorage.addAttribute(.font, value: boldFont, range: match.range)
         }
 

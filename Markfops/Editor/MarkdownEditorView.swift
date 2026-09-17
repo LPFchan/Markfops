@@ -220,12 +220,16 @@ final class MarkdownNSTextView: NSTextView {
         let style = NSMutableParagraphStyle()
         style.lineHeightMultiple = configuration.lineHeightMultiple
         defaultParagraphStyle = style
-        typingAttributes = [
+        var attributes: [NSAttributedString.Key: Any] = [
             .font: configuration.font,
             .foregroundColor: configuration.textColor,
             .paragraphStyle: style,
             .ligature: 0,
         ]
+        if ArealFont.isAvailable {
+            attributes[.kern] = ArealFont.monoTracking
+        }
+        typingAttributes = attributes
     }
 
     // Cmd+B / Cmd+I formatting shortcuts

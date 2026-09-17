@@ -15,12 +15,16 @@ struct EditorConfiguration {
             editorInsets: NSEdgeInsets(top: 24, left: 32, bottom: 24, right: 32),
             backgroundColor: .textBackgroundColor,
             textColor: .textColor,
-            fontFamily: "SF Mono"
+            fontFamily: "ABC Areal"
         )
     }
 
     var font: NSFont {
-        NSFont(name: fontFamily, size: fontSize)
+        if fontFamily == "ABC Areal", ArealFont.isAvailable,
+           let areal = ArealFont.font(size: fontSize, weight: .regular, mono: 100) {
+            return areal
+        }
+        return NSFont(name: fontFamily, size: fontSize)
             ?? NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
     }
 

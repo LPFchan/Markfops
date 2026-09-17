@@ -1352,6 +1352,11 @@ private final class ReaderPresentationBuilder {
             .ligature: 0,
         ]
 
+        // Tighten full-mono runs; tuned by eye in the Areal prototype.
+        if isCode, ArealFont.isAvailable {
+            attributes[.kern] = ArealFont.monoTracking
+        }
+
         if codeSpan {
             attributes[.readerCodeSpan] = true
         }
@@ -1412,6 +1417,15 @@ private final class ReaderPresentationBuilder {
         italic: Bool,
         monospaced: Bool
     ) -> NSFont {
+        if ArealFont.isAvailable,
+           let areal = ArealFont.font(
+               size: size,
+               weight: weight,
+               italic: italic,
+               mono: monospaced ? 100 : 0
+           ) {
+            return areal
+        }
         let base = monospaced
             ? NSFont.monospacedSystemFont(ofSize: size, weight: weight)
             : NSFont.systemFont(ofSize: size, weight: weight)

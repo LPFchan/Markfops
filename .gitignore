@@ -48,3 +48,6 @@ Sparkle_private*.key
 # Coverage output
 *.profraw
 *.profdata
+
+# Licensed fonts (Dinamo EULA §10 forbids public repos)
+Markfops/Fonts/*.ttf
