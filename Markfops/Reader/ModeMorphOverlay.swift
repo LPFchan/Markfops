@@ -28,12 +28,54 @@ struct ModeMorphRequest {
 final class MorphGlyphLayer: CALayer {
     var text: NSAttributedString?
     var descent: CGFloat = 0
+    /// When both endpoints use the Areal variable font, the layer can render
+    /// intermediate MONO-axis values instead of crossfading two fonts.
+    /// Values are 0...100 on the MONO axis.
+    var monoFrom: CGFloat?
+    var monoTo: CGFloat?
+
+    /// Current interpolation progress, 0...1. Drives the MONO axis when set.
+    /// Written by the animation loop during the morph.
+    var progress: CGFloat = 0 {
+        didSet { setNeedsDisplay() }
+    }
 
     override func draw(in context: CGContext) {
         guard let text else { return }
-        let line = CTLineCreateWithAttributedString(text)
+        let line = CTLineCreateWithAttributedString(displayText)
         context.textPosition = CGPoint(x: 0, y: descent)
         CTLineDraw(line, context)
+    }
+
+    /// The attributed string to render, with the MONO axis interpolated when
+    /// the layer is mid-morph between two Areal variations.
+    private var displayText: NSAttributedString {
+        guard let text,
+              let monoFrom, let monoTo,
+              progress > 0, progress < 1
+        else { return text ?? NSAttributedString() }
+        let mono = monoFrom + (monoTo - monoFrom) * progress
+        let result = NSMutableAttributedString(attributedString: text)
+        let fullRange = NSRange(location: 0, length: result.length)
+        result.enumerateAttribute(.font, in: fullRange) { value, range, _ in
+            guard let font = value as? NSFont, ArealFont.isAreal(font) else { return }
+            let descriptor = CTFontDescriptorCreateWithAttributes([
+                kCTFontNameAttribute: font.fontName as CFString,
+                kCTFontVariationAttribute: [
+                    ArealFont.monoAxisID: mono,
+                    ArealFont.wghtAxisID: font.pointSize > 0 ? currentWeight(of: font) : 400,
+                ] as CFDictionary,
+            ] as CFDictionary)
+            let morphed = CTFontCreateWithFontDescriptor(descriptor, font.pointSize, nil) as NSFont
+            result.addAttribute(.font, value: morphed, range: range)
+        }
+        return result
+    }
+
+    private func currentWeight(of font: NSFont) -> CGFloat {
+        let weight = NSFontManager.shared.weight(of: font)
+        // NSFontManager weight: 0-14 scale, 5 = regular (400), 9 = bold (700)
+        return 400 + CGFloat(weight - 5) * 75
     }
 }
 
@@ -140,6 +182,7 @@ final class ModeMorphOverlay: NSView {
     private var pendingRequestGeneration = 0
     private let animationDuration: CFTimeInterval = 0.36
     private let swapWindow: CFTimeInterval = 0.45
+    private var morphTimer: Timer?
 
     init(
         document: Document,
@@ -312,6 +355,21 @@ final class ModeMorphOverlay: NSView {
             let toLayer = renderable.toBox.flatMap {
                 makeGlyphLayer(box: $0, text: renderable.toText, scale: scale)
             }
+            // When both endpoints are Areal at different MONO values, tag the
+            // layers so the animation can interpolate the axis instead of
+            // crossfading two typefaces.
+            if let fromFont = renderable.fromBox?.font,
+               let toFont = renderable.toBox?.font,
+               ArealFont.isAreal(fromFont), ArealFont.isAreal(toFont) {
+                let fromMono = ArealFont.variationValue(of: fromFont, axis: ArealFont.monoAxisID) ?? 0
+                let toMono = ArealFont.variationValue(of: toFont, axis: ArealFont.monoAxisID) ?? 0
+                if fromMono != toMono {
+                    fromLayer?.monoFrom = fromMono
+                    fromLayer?.monoTo = toMono
+                    toLayer?.monoFrom = fromMono
+                    toLayer?.monoTo = toMono
+                }
+            }
             if let fromLayer { layer?.addSublayer(fromLayer) }
             if let toLayer { layer?.addSublayer(toLayer) }
 
@@ -469,11 +527,34 @@ final class ModeMorphOverlay: NSView {
                     layerFont: to.font
                 ))
             }
-            fade(active.fromLayer, to: 0)
-            fade(active.toLayer, to: 1)
+            // When both endpoints are Areal at different MONO values, keep the
+            // from-layer visible and interpolate its font instead of crossfading.
+            let canInterpolateFont = active.fromLayer?.monoFrom != nil
+                && active.fromLayer?.monoTo != nil
+                && active.fromLayer?.monoFrom != active.fromLayer?.monoTo
+            if canInterpolateFont {
+                fade(active.toLayer, to: 0)
+            } else {
+                fade(active.fromLayer, to: 0)
+                fade(active.toLayer, to: 1)
+            }
         }
         fade(readerTextView.layer, to: targetReaderOpacity)
         CATransaction.commit()
+
+        // Drive the MONO-axis interpolation on a timer so the font morphs
+        // smoothly alongside the position animation.
+        morphTimer?.invalidate()
+        let startTime = CACurrentMediaTime()
+        morphTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 120.0, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            let elapsed = CACurrentMediaTime() - startTime
+            let progress = min(1, elapsed / self.animationDuration)
+            for active in self.activeRenderables {
+                active.fromLayer?.progress = progress
+            }
+            if progress >= 1 { timer.invalidate() }
+        }
     }
 
     private func finish(_ request: ModeMorphRequest) {
@@ -533,6 +614,8 @@ final class ModeMorphOverlay: NSView {
     }
 
     private func cancelRunningMorph() {
+        morphTimer?.invalidate()
+        morphTimer = nil
         guard let request = activeRequest, activeRequestID == request.id else {
             clearLayers()
             return
@@ -550,6 +633,8 @@ final class ModeMorphOverlay: NSView {
     }
 
     private func clearLayers() {
+        morphTimer?.invalidate()
+        morphTimer = nil
         layer?.removeAllAnimations()
         layer?.sublayers?.forEach { $0.removeFromSuperlayer() }
         activeRenderables.removeAll(keepingCapacity: true)

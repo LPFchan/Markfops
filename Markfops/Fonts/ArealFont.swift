@@ -14,9 +14,9 @@ enum ArealFont {
     static let monoTracking: CGFloat = -0.20
 
     // Axis identifiers: four-character tags read as big-endian integers.
-    private static let monoAxisID: Int = 0x4D4F4E4F   // 'MONO'
-    private static let wghtAxisID: Int = 0x77676874   // 'wght'
-    private static let slntAxisID: Int = 0x736C6E74   // 'slnt'
+    static let monoAxisID: Int = 0x4D4F4E4F   // 'MONO'
+    static let wghtAxisID: Int = 0x77676874   // 'wght'
+    static let slntAxisID: Int = 0x736C6E74   // 'slnt'
 
     private static let resourceName = "ABCArealSuperfamilyVariable"
     private static var postScriptName: String?
@@ -48,6 +48,13 @@ enum ArealFont {
     /// report even at MONO 100.
     static func isAreal(_ font: NSFont) -> Bool {
         font.familyName?.hasPrefix("ABC Areal") == true
+    }
+
+    /// Reads the current value of a variation axis from a font.
+    /// Returns nil when the font is not variable or the axis is absent.
+    static func variationValue(of font: NSFont, axis axisID: Int) -> CGFloat? {
+        guard let variations = CTFontCopyVariation(font as CTFont) as? [Int: CGFloat] else { return nil }
+        return variations[axisID]
     }
 
     /// Builds an Areal font at the given size. `mono` ranges 0...100;
