@@ -87,7 +87,7 @@ final class EditorBridge {
 
 final class MarkdownNSTextView: NSTextView {
     var onWindowAttachment: (() -> Void)?
-    weak var syntaxHighlighter: MarkdownSyntaxHighlighter?
+    weak var modeHighlighter: ModeAwareHighlighter?
     /// The document this view renders. Set by the container so the
     /// highlighter can read the current revision for parse caching.
     weak var document: Document?
@@ -151,8 +151,8 @@ final class MarkdownNSTextView: NSTextView {
             guard let self,
                   !self.isComposingText,
                   let storage = self.textStorage,
-                  self.syntaxHighlighter?.needsDeferredHighlight == true else { return }
-            self.syntaxHighlighter?.flushDeferredHighlight(in: storage)
+                  self.modeHighlighter?.needsDeferredHighlight == true else { return }
+            self.modeHighlighter?.flushDeferredHighlight(in: storage)
         }
     }
 
@@ -471,6 +471,7 @@ struct EditorView: NSViewRepresentable {
         modeHighlighter.isEnabled = isActive
         modeHighlighter.attach(textView: textView)
         modeHighlighter.updateMode(context.coordinator.mode)
+        textView.modeHighlighter = modeHighlighter
         textView.document = document
         textView.markdownLayoutManager?.showsDecorations = (context.coordinator.mode == .preview)
         context.coordinator.isActive = isActive
@@ -603,7 +604,7 @@ struct EditorView: NSViewRepresentable {
 
         if let textView = scrollView.documentView as? MarkdownNSTextView {
             textView.onWindowAttachment = nil
-            textView.syntaxHighlighter = nil
+            textView.modeHighlighter = nil
             textView.document = nil
             if textView.textStorage?.delegate === coordinator.modeHighlighter {
                 textView.textStorage?.delegate = nil
