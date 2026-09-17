@@ -81,7 +81,6 @@ final class Document: Identifiable {
     /// EditorContainerView and ancestors like ContentView can drive scroll-anchor
     /// capture/restore through the same instances.
     @ObservationIgnored lazy var sharedEditorBridge = EditorBridge()
-    @ObservationIgnored lazy var sharedReaderBridge = ReaderBridge()
 
     init(id: UUID = UUID(), fileURL: URL? = nil, rawText: String = "") {
         let initialH1Title = MarkdownSourceMap.parse(rawText).firstH1Title

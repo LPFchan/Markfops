@@ -15,40 +15,25 @@ final class ViewportAnchorSync {
         case reader
     }
 
-    /// The editor and reader surfaces for one document. Bridges are class references
-    /// (weakly bound to live coordinators), so the pair can be created before the
-    /// views exist and safely passed in from an ancestor like ContentView.
+    /// The shared surface for one document. In the single-renderer architecture
+    /// both modes use the same text view, so only the editor bridge is needed.
     struct Context {
         let document: Document
         let editorBridge: EditorBridge
-        let readerBridge: ReaderBridge
 
-        init(
-            document: Document,
-            editorBridge: EditorBridge,
-            readerBridge: ReaderBridge
-        ) {
+        init(document: Document, editorBridge: EditorBridge) {
             self.document = document
             self.editorBridge = editorBridge
-            self.readerBridge = readerBridge
         }
 
-        /// Lazily creates (or returns) the shared bridges held by the document, so
-        /// ContentView, EditorContainerView, and this helper all talk to the same
-        /// underlying coordinators.
         static func shared(for document: Document) -> Context {
             Context(
                 document: document,
-                editorBridge: document.sharedEditorBridge,
-                readerBridge: document.sharedReaderBridge
+                editorBridge: document.sharedEditorBridge
             )
         }
     }
 
-    /// A captured center-of-viewport anchor. sourceLine is preferred because it
-    /// survives reflow; ratio is the fallback for content with no clear line mapping.
-    /// sourceCursor is the text cursor as a source offset (a range selection is
-    /// collapsed to its start) so the incoming surface can place its own cursor there.
     struct Anchor {
         let sourceLine: Int?
         let ratio: Double
@@ -63,33 +48,17 @@ final class ViewportAnchorSync {
 
     // MARK: - Capture
 
-    /// Reads the current center-of-viewport anchor from whichever surface is live.
     static func capture(context: Context, surface: Surface? = nil) -> Anchor {
         let document = context.document
-        let liveSurface = surface ?? {
-            document.mode == .preview ? .reader : .editor
-        }()
-        switch liveSurface {
-        case .editor:
-            return Anchor(
-                sourceLine: context.editorBridge.currentSourceLineAtViewportCenter(),
-                ratio: context.editorBridge.currentScrollRatio() ?? document.scrollRatio,
-                sourceCursor: context.editorBridge.currentSourceCursor()
-            )
-        case .reader:
-            return Anchor(
-                sourceLine: context.readerBridge.currentSourceLineAtViewportCenter(),
-                ratio: context.readerBridge.currentScrollRatio() ?? document.scrollRatio,
-                sourceCursor: context.readerBridge.currentSourceCursor()
-            )
-        }
+        return Anchor(
+            sourceLine: context.editorBridge.currentSourceLineAtViewportCenter(),
+            ratio: context.editorBridge.currentScrollRatio() ?? document.scrollRatio,
+            sourceCursor: context.editorBridge.currentSourceCursor()
+        )
     }
 
     // MARK: - Restore
 
-    /// Re-centers the live surface on a previously captured anchor. For the editor the
-    /// caller decides when layout has settled; the reader queues the restore until its
-    /// presentation is ready.
     static func restore(
         _ anchor: Anchor,
         context: Context,
@@ -98,30 +67,16 @@ final class ViewportAnchorSync {
         let document = context.document
         document.scrollRatio = anchor.ratio
 
-        if document.mode != .edit {
-            context.readerBridge.setPendingViewportRestore(
-                sourceLine: anchor.sourceLine,
-                ratio: anchor.ratio,
-                applyImmediately: true
-            )
-        } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + editorDelay) {
-                guard document.mode == .edit else { return }
-                if anchor.sourceLine
-                    .map({ context.editorBridge.scrollToSourceLineCentered($0) }) != true {
-                    context.editorBridge.scrollToRatio(anchor.ratio)
-                }
+        DispatchQueue.main.asyncAfter(deadline: .now() + editorDelay) {
+            if anchor.sourceLine
+                .map({ context.editorBridge.scrollToSourceLineCentered($0) }) != true {
+                context.editorBridge.scrollToRatio(anchor.ratio)
             }
         }
     }
 
     // MARK: - Sidebar / compact toggle
 
-    /// Captures the center anchor before the sidebar layout change. The caller fires
-    /// the returned session once the transition has visually settled; the restore then
-    /// re-centers on the anchor. Driving the restore from the settle signal (rather
-    /// than a fixed timer) means there is no window where the reflowed layout is
-    /// visible at a drifted scroll offset before the correction lands.
     @discardableResult
     static func captureForLayoutTransition(
         context: Context
@@ -131,9 +86,6 @@ final class ViewportAnchorSync {
         return session
     }
 
-    /// Holds a captured anchor until the caller reports the layout transition has
-    /// settled, then performs the restore. Cancellable so a superseding toggle or a
-    /// mode switch can drop a stale restore.
     final class LayoutTransitionSession {
         private(set) var isCancelled = false
         private var pendingAnchor: Anchor?
@@ -145,8 +97,6 @@ final class ViewportAnchorSync {
             pendingContext = context
         }
 
-        /// Fires the restore for the armed anchor, if any. No-op when cancelled or
-        /// when capture has not completed yet.
         func fire() {
             guard !isCancelled,
                   let anchor = pendingAnchor,

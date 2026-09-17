@@ -14,15 +14,12 @@ final class FindController {
     var activeMode: EditMode = .edit
 
     @ObservationIgnored weak var editorBridge: EditorBridge?
-    @ObservationIgnored weak var readerBridge: ReaderBridge?
 
     func attach(
         editorBridge: EditorBridge,
-        readerBridge: ReaderBridge,
         mode: EditMode
     ) {
         self.editorBridge = editorBridge
-        self.readerBridge = readerBridge
         activeMode = mode
     }
 
@@ -82,9 +79,7 @@ final class FindController {
     }
 
     func useSelectionForFind() {
-        let selection = activeMode == .edit
-            ? editorBridge?.selectedText()
-            : readerBridge?.selectedText()
+        let selection = editorBridge?.selectedText()
         guard let selection, !selection.isEmpty else { return }
         searchText = selection
         showFind()
@@ -107,9 +102,7 @@ final class FindController {
             lastMatchFound = true
             return
         }
-        lastMatchFound = activeMode == .edit
-            ? editorBridge?.find(searchText, forward: forward) ?? false
-            : readerBridge?.find(searchText, forward: forward) ?? false
+        lastMatchFound = editorBridge?.find(searchText, forward: forward) ?? false
     }
 }
 

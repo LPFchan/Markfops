@@ -7,6 +7,11 @@ import SwiftUI
 final class EditorBridge {
     weak var coordinator: TextViewCoordinator?
 
+    var mode: EditMode {
+        get { coordinator?.mode ?? .edit }
+        set { coordinator?.mode = newValue }
+    }
+
     /// Releases a slide-time text-wrap freeze immediately (re-wraps at the final width).
     func releaseWrapFreeze() { coordinator?.textView?.releaseWrapFreeze() }
 
@@ -83,6 +88,14 @@ final class EditorBridge {
 final class MarkdownNSTextView: NSTextView {
     var onWindowAttachment: (() -> Void)?
     weak var syntaxHighlighter: MarkdownSyntaxHighlighter?
+    /// The document this view renders. Set by the container so the
+    /// highlighter can read the current revision for parse caching.
+    weak var document: Document?
+    /// The mode-aware layout manager, when installed. Used by the
+    /// highlighter to update hidden syntax ranges.
+    var markdownLayoutManager: MarkdownLayoutManager? {
+        layoutManager as? MarkdownLayoutManager
+    }
     private(set) var isUpdatingMarkedText = false
 
     var isComposingText: Bool {
@@ -186,7 +199,7 @@ final class MarkdownNSTextView: NSTextView {
         super.setFrameSize(newSize)
     }
     convenience init(textStorage: NSTextStorage) {
-        let layoutManager = NSLayoutManager()
+        let layoutManager = MarkdownLayoutManager()
         textStorage.addLayoutManager(layoutManager)
         let textContainer = NSTextContainer(
             size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)

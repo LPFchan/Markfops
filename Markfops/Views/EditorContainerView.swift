@@ -8,9 +8,7 @@ struct EditorContainerView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var isDragTargeted = false
-    @State private var morphRequest: ModeMorphRequest?
     private var editorBridge: EditorBridge { document.sharedEditorBridge }
-    private var readerBridge: ReaderBridge { document.sharedReaderBridge }
     @State private var findController = FindController()
 
     private var findOverlayReservedTopInset: CGFloat {
@@ -19,7 +17,6 @@ struct EditorContainerView: View {
     }
 
     var body: some View {
-        let isMorphing = morphRequest != nil
         ZStack(alignment: .top) {
             EditorView(
                 text: $document.rawText,
@@ -27,47 +24,15 @@ struct EditorContainerView: View {
                 configuration: configuration,
                 scrollToLine: scrollToHeading?.lineNumber,
                 editorBridge: editorBridge,
-                isActive: isSelected && document.mode == .edit,
-                isVisible: isSelected && (isMorphing || document.mode == .edit)
+                isActive: isSelected,
+                isVisible: isSelected
             )
             .id(document.id)
             .padding(.top, findOverlayReservedTopInset)
-            .opacity(isMorphing || document.mode == .edit ? 1 : 0)
-            .allowsHitTesting(!isMorphing && document.mode == .edit)
-            .accessibilityHidden(isMorphing || document.mode != .edit)
+            .opacity(isSelected ? 1 : 0)
+            .allowsHitTesting(isSelected)
+            .accessibilityHidden(!isSelected)
             .focusedValue(\.editorBridge, editorBridge)
-
-            ReaderView(
-                document: document,
-                theme: ReaderTheme.default,
-                themeKey: colorScheme == .dark ? "dark" : "light",
-                readerBridge: readerBridge,
-                isActive: isSelected && document.mode == .preview,
-                isVisible: isSelected && (isMorphing || document.mode == .preview)
-            )
-            .id(document.id)
-            .padding(.top, findOverlayReservedTopInset)
-            .opacity(isMorphing || document.mode == .preview ? 1 : 0)
-            .allowsHitTesting(!isMorphing && document.mode == .preview)
-            .accessibilityHidden(isMorphing || document.mode != .preview)
-            .focusedValue(\.readerBridge, readerBridge)
-
-            if let morphRequest {
-                ModeMorphOverlayRepresentable(
-                    request: morphRequest,
-                    document: document,
-                    themeKey: colorScheme == .dark ? "dark" : "light",
-                    editorBridge: editorBridge,
-                    readerBridge: readerBridge,
-                    onFinished: { finishedID in
-                        guard self.morphRequest?.id == finishedID else { return }
-                        self.morphRequest = nil
-                    }
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-                .zIndex(1)
-            }
 
             if findController.isVisible {
                 FindReplaceBar(controller: findController)
@@ -85,77 +50,45 @@ struct EditorContainerView: View {
         .modifier(SelectedDocumentFocusValues(
             isSelected: isSelected,
             editorBridge: editorBridge,
-            readerBridge: readerBridge,
             findController: findController
         ))
         .onAppear {
-            findController.attach(editorBridge: editorBridge, readerBridge: readerBridge, mode: document.mode)
+            findController.attach(editorBridge: editorBridge, mode: document.mode)
         }
         .onDrop(of: [.fileURL], isTargeted: $isDragTargeted) { providers in
             handleDrop(providers: providers)
         }
         .onChange(of: document.mode) { oldMode, newMode in
             findController.modeDidChange(to: newMode)
+            editorBridge.mode = newMode
 
-            let sourceSurface: ViewportAnchorSync.Surface = oldMode == .preview
-                ? .reader
-                : .editor
             let context = anchorContext()
             let anchor = ViewportAnchorSync.capture(
                 context: context,
-                surface: sourceSurface
+                surface: oldMode == .preview ? .reader : .editor
             )
             deliverCursor(anchor.sourceCursor, to: newMode)
-            let shouldMorph = ModeMorphPolicy.canMorph(
-                sourceLength: document.textStorage.length
-            )
-            if shouldMorph {
-                morphRequest = ModeMorphRequest(
-                    documentID: document.id,
-                    from: oldMode,
-                    to: newMode,
-                    anchor: anchor
-                )
-            } else {
-                morphRequest = nil
-                ModeMorphOverlay.resetSurfaceState(
-                    editorBridge: editorBridge,
-                    readerBridge: readerBridge,
-                    mode: newMode
-                )
-            }
             ViewportAnchorSync.restore(
                 anchor,
                 context: context,
-                editorDelay: shouldMorph ? 0 : 0.05
+                editorDelay: 0.05
             )
         }
         .onChange(of: scrollToHeading) { _, heading in
-            guard document.mode == .preview, let heading else { return }
-            readerBridge.scrollToHeading(heading)
+            guard let heading else { return }
+            editorBridge.scrollToSourceLineCentered(heading.lineNumber)
         }
     }
 
-    /// Hands the captured source cursor to the incoming surface so its first
-    /// frame and its focus already have the cursor. The editor takes it now
-    /// (its text view is always mounted). The reader takes it now when SwiftUI
-    /// has already rebuilt it for the new mode, otherwise at that build; the
-    /// order of this handler and the child updates is not guaranteed.
     private func deliverCursor(_ sourceCursor: Int?, to mode: EditMode) {
         guard let sourceCursor else { return }
-        switch mode {
-        case .edit:
-            editorBridge.setSourceCursor(sourceCursor)
-        case .preview:
-            readerBridge.setPendingSourceCursor(sourceCursor)
-        }
+        editorBridge.setSourceCursor(sourceCursor)
     }
 
     private func anchorContext() -> ViewportAnchorSync.Context {
         ViewportAnchorSync.Context(
             document: document,
-            editorBridge: editorBridge,
-            readerBridge: readerBridge
+            editorBridge: editorBridge
         )
     }
 
@@ -182,13 +115,11 @@ struct EditorContainerView: View {
 private struct SelectedDocumentFocusValues: ViewModifier {
     let isSelected: Bool
     let editorBridge: EditorBridge
-    let readerBridge: ReaderBridge
     let findController: FindController
 
     func body(content: Content) -> some View {
         content
             .focusedSceneValue(\.editorBridge, isSelected ? editorBridge : nil)
-            .focusedSceneValue(\.readerBridge, isSelected ? readerBridge : nil)
             .focusedSceneValue(\.findController, isSelected ? findController : nil)
     }
 }

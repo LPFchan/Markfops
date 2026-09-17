@@ -1371,10 +1371,6 @@ struct EditorBridgeFocusKey: FocusedValueKey {
     typealias Value = EditorBridge
 }
 
-struct ReaderBridgeFocusKey: FocusedValueKey {
-    typealias Value = ReaderBridge
-}
-
 struct FindControllerFocusKey: FocusedValueKey {
     typealias Value = FindController
 }
@@ -1393,11 +1389,6 @@ extension FocusedValues {
     var editorBridge: EditorBridge? {
         get { self[EditorBridgeFocusKey.self] }
         set { self[EditorBridgeFocusKey.self] = newValue }
-    }
-
-    var readerBridge: ReaderBridge? {
-        get { self[ReaderBridgeFocusKey.self] }
-        set { self[ReaderBridgeFocusKey.self] = newValue }
     }
 
     var findController: FindController? {

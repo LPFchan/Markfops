@@ -21,6 +21,13 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
     var isActive = true
     var lastAppliedTextRevision: UInt64
     let highlighter = MarkdownSyntaxHighlighter()
+    let modeHighlighter = ModeAwareHighlighter()
+    var mode: EditMode = .edit {
+        didSet {
+            modeHighlighter.updateMode(mode)
+            textView?.markdownLayoutManager?.showsDecorations = (mode == .preview)
+        }
+    }
     private var headingDebounceItem: DispatchWorkItem?
     private weak var observedScrollView: NSScrollView?
     private var scrollAnimationTimer: Timer?
@@ -537,5 +544,189 @@ final class TextViewCoordinator: NSObject, NSTextViewDelegate {
 
     private func flashFindMatch(in range: NSRange) {
         textView?.flashFindHighlight(for: range)
+    }
+
+    // MARK: - Formatted-mode edit routing
+
+    /// Whether the text view should accept direct edits (edit mode) or route
+    /// them through the source map (formatted mode).
+    var acceptsDirectEdits: Bool { mode == .edit }
+
+    func textView(
+        _ textView: NSTextView,
+        shouldChangeTextIn affectedCharRange: NSRange,
+        replacementString: String?
+    ) -> Bool {
+        guard acceptsDirectEdits else {
+            return handleFormattedEdit(
+                textView: textView,
+                range: affectedCharRange,
+                replacement: replacementString
+            )
+        }
+        return true
+    }
+
+    func textView(
+        _ textView: NSTextView,
+        shouldChangeTextInRanges affectedRanges: [NSValue],
+        replacementStrings: [String]?
+    ) -> Bool {
+        guard affectedRanges.count == 1 else { return false }
+        return self.textView(
+            textView,
+            shouldChangeTextIn: affectedRanges[0].rangeValue,
+            replacementString: replacementStrings?.first
+        )
+    }
+
+    /// Routes a formatted-mode edit through the source map to the exact
+    /// Markdown range, applies it, and restyles.
+    private func handleFormattedEdit(
+        textView: NSTextView,
+        range: NSRange,
+        replacement: String?
+    ) -> Bool {
+        guard let markdownTextView = self.textView, textView === markdownTextView else { return false }
+        if markdownTextView.isUpdatingMarkedText || markdownTextView.hasMarkedText() {
+            return true
+        }
+        guard let replacement else { return false }
+
+        // In the single-renderer model, source offsets == storage offsets.
+        // The source map is the same one the highlighter uses.
+        let sourceMap = MarkdownSourceMap.parse(document.rawText)
+        guard let sourceRange = sourceRange(forStorageRange: range, in: sourceMap) else {
+            NSSound.beep()
+            return false
+        }
+
+        // Check if the edit changes block syntax (heading prefix, quote marker, etc.).
+        let changesBlock = MarkdownBlockPrefix.changes(
+            in: document.rawText as NSString,
+            replacing: sourceRange,
+            with: replacement
+        )
+
+        // Apply the edit directly to the shared storage.
+        guard markdownTextView.shouldChangeText(in: sourceRange, replacementString: replacement) else {
+            return false
+        }
+        markdownTextView.replaceCharacters(in: sourceRange, with: replacement)
+        markdownTextView.didChangeText()
+
+        // Restore cursor.
+        let cursor = sourceRange.location + (replacement as NSString).length
+        markdownTextView.setSelectedRange(NSRange(location: cursor, length: 0))
+        markdownTextView.scrollRangeToVisible(NSRange(location: cursor, length: 0))
+
+        // Update the highlighter's source cursor for reveal tracking.
+        modeHighlighter.sourceCursor = cursor
+
+        return true
+    }
+
+    /// Maps a storage range to a source range. In the single-renderer model
+    /// this is 1:1 for non-substituted content; substituted content (list
+    /// markers, thematic breaks, front matter, images) returns nil.
+    private func sourceRange(
+        forStorageRange storageRange: NSRange,
+        in sourceMap: MarkdownSourceMap
+    ) -> NSRange? {
+        // Check if the range overlaps any substituted construct.
+        for run in sourceMap.runs(in: storageRange) {
+            switch run.kind {
+            case .thematicBreak, .frontMatter, .image:
+                // These are substituted in the current architecture; typing
+                // over them is refused.
+                return nil
+            case .listItem where run.role == .syntax:
+                return nil
+            default:
+                continue
+            }
+        }
+        return storageRange
+    }
+
+    /// Enter key in formatted mode: routes through ReaderNewline for
+    /// paragraph breaks, list continuation, and quote continuation.
+    func insertNewline() {
+        guard let textView, mode == .preview else {
+            textView?.insertNewline(nil)
+            return
+        }
+
+        let selection = textView.selectedRange()
+        let sourceMap = MarkdownSourceMap.parse(document.rawText)
+        let edit = ReaderNewline.edit(
+            in: document.rawText as NSString,
+            sourceMap: sourceMap,
+            selection: selection
+        )
+
+        guard textView.shouldChangeText(in: edit.range, replacementString: edit.replacement) else { return }
+        textView.replaceCharacters(in: edit.range, with: edit.replacement)
+        textView.didChangeText()
+        textView.setSelectedRange(edit.selection)
+        textView.scrollRangeToVisible(edit.selection)
+        modeHighlighter.sourceCursor = edit.selection.location
+    }
+
+    /// Wraps the selection in Markdown delimiters (bold, italic, etc.).
+    func wrapSelection(prefix: String, suffix: String) {
+        guard let textView else { return }
+        let selection = textView.selectedRange()
+        let sourceMap = MarkdownSourceMap.parse(document.rawText)
+        let edit = MarkdownWrapToggle.edit(
+            in: document.rawText as NSString,
+            sourceMap: sourceMap,
+            selection: selection,
+            prefix: prefix,
+            suffix: suffix
+        )
+
+        guard textView.shouldChangeText(in: edit.range, replacementString: edit.replacement) else { return }
+        textView.replaceCharacters(in: edit.range, with: edit.replacement)
+        textView.didChangeText()
+        textView.setSelectedRange(edit.selection)
+        modeHighlighter.sourceCursor = edit.selection.location
+    }
+
+    /// Applies a heading level to the selected lines.
+    func applyHeading(level: Int) {
+        guard let textView else { return }
+        let selection = textView.selectedRange()
+        let text = document.rawText as NSString
+        guard let edit = MarkdownHeadingEdit.edit(in: text, selection: selection, level: level) else { return }
+
+        if text.substring(with: edit.range) != edit.replacement {
+            guard textView.shouldChangeText(in: edit.range, replacementString: edit.replacement) else { return }
+            textView.replaceCharacters(in: edit.range, with: edit.replacement)
+            textView.didChangeText()
+        }
+        textView.setSelectedRange(edit.selection)
+        textView.scrollRangeToVisible(edit.selection)
+        modeHighlighter.sourceCursor = edit.selection.location
+    }
+
+    /// Applies a source edit from an external caller (e.g. the FindReplaceBar
+    /// or a menu command) and restyles.
+    @discardableResult
+    func applySourceEdit(in range: NSRange, with replacement: String) -> Bool {
+        guard let textView else { return false }
+        guard textView.shouldChangeText(in: range, replacementString: replacement) else { return false }
+        textView.replaceCharacters(in: range, with: replacement)
+        textView.didChangeText()
+        let cursor = range.location + (replacement as NSString).length
+        textView.setSelectedRange(NSRange(location: cursor, length: 0))
+        modeHighlighter.sourceCursor = cursor
+        return true
+    }
+
+    /// Sets the source cursor for reveal tracking in formatted mode.
+    func setSourceCursor(_ cursor: Int) {
+        modeHighlighter.sourceCursor = cursor
+        textView?.setSelectedRange(NSRange(location: cursor, length: 0))
     }
 }
