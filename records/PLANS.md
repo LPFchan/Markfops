@@ -108,6 +108,15 @@ Each slice must end with something visible in the app and its own tests.
 
 ### Near Term
 
+- Initiative: collapse the two-surface architecture into a single text view with mode-aware styling
+  - Why now: ABC Areal's continuous MONO axis makes the crossfade morph between two typefaces obsolete; a single renderer can slide the same glyphs between mono and proportional without pairing layers
+  - What changes: one NSTextView with one NSTextStorage serves both modes; mode is a styling variable, not a second view. The syntax highlighter and ReaderPresentation merge into a single mode-aware attribute pass. Mode switch recomputes attributes on the shared storage and animates the MONO axis on affected runs.
+  - What stays: MarkdownSourceMap, ReaderReveal, the offset map for scroll sync, formatted-mode editing through the source map, undo sharing, all slice 4/5 behaviors
+  - What goes: ReaderView, ModeMorphOverlay, MorphPlanner, ReaderPresentation as a separate builder, the entire glyph-pairing and crossfade path
+  - Expected value: the morph becomes a property animation instead of a crossfade; no more two-font visual artifacts; simpler mental model (one view, one storage, one styling pass); smaller codebase (~2,000 lines deleted, ~500 modified)
+  - Dependencies: ABC Areal bundled (landed on the areal branch)
+  - Related ids: `DEC-20260909-001`, `DEC-20260909-002`, `DEC-20260910-001`
+
 - Initiative: tune the morph by eye on real documents: swap window, duration, per-word threshold, and how decorations (capsules, panels, bars) enter and leave
   - Why now: the feel is the product; the operator's first look on 2026-09-10 fixed a snapped animation, an empty first frame, and oversized paragraph gaps, and the remaining dials are still untouched
   - Dependencies: none
