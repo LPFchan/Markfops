@@ -363,6 +363,19 @@ final class ReaderOffsetMapEditingTests: XCTestCase {
         XCTAssertEqual(try style("Later").firstLineHeadIndent, intro.headIndent, accuracy: 0.5)
         XCTAssertEqual(try style("Later").headIndent, intro.headIndent, accuracy: 0.5)
         XCTAssertEqual(try style("code").headIndent, intro.headIndent + ReaderTheme.default.bodyFontSize * 1.25, accuracy: 0.5)
+        let blank = try XCTUnwrap(output.attribute(.paragraphStyle, at: rendered.range(of: "Intro\n").location + 6, effectiveRange: nil) as? NSParagraphStyle)
+        XCTAssertEqual(blank.firstLineHeadIndent, intro.headIndent, accuracy: 0.5, "an empty line in the item sits at its widened text column")
+    }
+
+    func testEmptyLineInsideAListItemSitsAtTheItemText() throws {
+        let text = "- item\n\n  continuation\n"
+        let output = presentation(text).attributedString
+        let rendered = output.string as NSString
+        let item = try XCTUnwrap(output.attribute(.paragraphStyle, at: rendered.range(of: "item").location, effectiveRange: nil) as? NSParagraphStyle)
+        let blank = try XCTUnwrap(output.attribute(.paragraphStyle, at: rendered.range(of: "item\n").location + 5, effectiveRange: nil) as? NSParagraphStyle)
+        XCTAssertEqual(blank.firstLineHeadIndent, item.headIndent, accuracy: 0.5)
+        XCTAssertEqual(blank.headIndent, item.headIndent, accuracy: 0.5)
+        XCTAssertGreaterThan(blank.maximumLineHeight, 0, "it keeps the empty-line sizing")
     }
 
     func testSourceRangeMapsCharactersAndIncludesHiddenSyntaxStrictlyInside() throws {

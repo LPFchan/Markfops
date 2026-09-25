@@ -1457,16 +1457,15 @@ private final class ReaderPresentationBuilder {
             italic: italic,
             monospaced: isCode
         )
-        let paragraphStyle = blankLine
-            ? blankLineParagraphStyle()
-            : paragraphStyle(
-                for: blockKind,
-                thematicBreak: thematicBreak,
-                blockLine: blockLine,
-                listDepth: context.listDepth,
-                listContinuation: context.listContinuation,
-                quoteDepth: context.quoteDepth
-            )
+        let blockStyle = paragraphStyle(
+            for: blockKind,
+            thematicBreak: thematicBreak,
+            blockLine: blockLine,
+            listDepth: context.listDepth,
+            listContinuation: context.listContinuation || blankLine,
+            quoteDepth: context.quoteDepth
+        )
+        let paragraphStyle = blankLine ? blankLineParagraphStyle(indentedLike: blockStyle) : blockStyle
 
         var attributes: [NSAttributedString.Key: Any] = [
             .font: font,
@@ -1649,8 +1648,13 @@ private final class ReaderPresentationBuilder {
     /// An empty source line stays in the reader text so source and reader lines
     /// keep pairing. It has no spacing of its own; its height is decided once
     /// the neighbours are known, in `absorbSpacingIntoBlankLines`.
-    private func blankLineParagraphStyle() -> NSParagraphStyle {
+    /// Keeps the surrounding block's indents, so a caret on an empty line
+    /// inside a list item sits at the item's text column.
+    private func blankLineParagraphStyle(indentedLike block: NSParagraphStyle) -> NSParagraphStyle {
         let style = NSMutableParagraphStyle()
+        style.firstLineHeadIndent = block.firstLineHeadIndent
+        style.headIndent = block.headIndent
+        style.tabStops = block.tabStops
         style.lineHeightMultiple = 1
         style.paragraphSpacingBefore = 0
         style.paragraphSpacing = 0
