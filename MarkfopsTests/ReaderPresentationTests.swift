@@ -44,6 +44,22 @@ final class ReaderPresentationTests: XCTestCase {
         XCTAssertNil(noBar)
     }
 
+    func testEachQuoteLevelAddsItsInset() throws {
+        let em = ReaderTheme.default.bodyFontSize
+        func headIndent(_ text: String, at fragment: String) throws -> CGFloat {
+            let output = ReaderPresentation.build(text: text, sourceMap: MarkdownSourceMap.parse(text)).attributedString
+            let location = (output.string as NSString).range(of: fragment).location
+            return try XCTUnwrap(output.attribute(.paragraphStyle, at: location, effectiveRange: nil) as? NSParagraphStyle).headIndent
+        }
+        XCTAssertEqual(try headIndent("> > deep", at: "deep"), em * 2, accuracy: 0.5)
+        XCTAssertEqual(try headIndent("> > - item", at: "item"), em * 2 + em * 2, accuracy: 0.5)
+        XCTAssertEqual(
+            try headIndent("> > ```\n> > code\n> > ```\n", at: "code"),
+            try headIndent("> ```\n> code\n> ```\n", at: "code") + em,
+            accuracy: 0.5
+        )
+    }
+
     func testPresentationHidesSyntaxAndStylesSupportedConstructs() throws {
         let text = """
         # Heading

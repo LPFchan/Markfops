@@ -1465,7 +1465,7 @@ private final class ReaderPresentationBuilder {
                 blockLine: blockLine,
                 listDepth: context.listDepth,
                 listContinuation: context.listContinuation,
-                inQuote: context.quoteDepth > 0
+                quoteDepth: context.quoteDepth
             )
 
         var attributes: [NSAttributedString.Key: Any] = [
@@ -1555,9 +1555,9 @@ private final class ReaderPresentationBuilder {
         blockLine: (isFirst: Bool, isLast: Bool)? = nil,
         listDepth: Int = 0,
         listContinuation: Bool = false,
-        inQuote: Bool = false
+        quoteDepth: Int = 0
     ) -> NSParagraphStyle {
-        let key = "\(String(describing: blockKind))|\(thematicBreak)|\(blockLine?.isFirst ?? false)|\(blockLine?.isLast ?? false)|\(listDepth)|\(listContinuation)|\(inQuote)"
+        let key = "\(String(describing: blockKind))|\(thematicBreak)|\(blockLine?.isFirst ?? false)|\(blockLine?.isLast ?? false)|\(listDepth)|\(listContinuation)|\(quoteDepth)"
         if let cached = paragraphStyleCache[key] { return cached }
         let style = buildParagraphStyle(
             for: blockKind,
@@ -1565,7 +1565,7 @@ private final class ReaderPresentationBuilder {
             blockLine: blockLine,
             listDepth: listDepth,
             listContinuation: listContinuation,
-            inQuote: inQuote
+            quoteDepth: quoteDepth
         )
         paragraphStyleCache[key] = style
         return style
@@ -1577,12 +1577,12 @@ private final class ReaderPresentationBuilder {
         blockLine: (isFirst: Bool, isLast: Bool)? = nil,
         listDepth: Int = 0,
         listContinuation: Bool = false,
-        inQuote: Bool = false
+        quoteDepth: Int = 0
     ) -> NSParagraphStyle {
         let style = NSMutableParagraphStyle()
         // Where a panel inside a list or quote starts: the text column around it.
-        let listIndent = theme.bodyFontSize * 2 * CGFloat(listDepth)
-            + (inQuote ? theme.bodyFontSize : 0)
+        let quoteInset = theme.bodyFontSize * CGFloat(quoteDepth)
+        let listIndent = theme.bodyFontSize * 2 * CGFloat(listDepth) + quoteInset
         style.lineHeightMultiple = 1.65
         style.paragraphSpacing = theme.bodyFontSize * 0.75
         style.paragraphSpacingBefore = theme.bodyFontSize * 0.75
@@ -1600,10 +1600,10 @@ private final class ReaderPresentationBuilder {
             style.paragraphSpacingBefore = theme.bodyFontSize * (level == 1 ? 1.5 : 1.1)
             style.paragraphSpacing = theme.bodyFontSize * 0.5
         case .listItem, .blockQuote where listDepth > 0:
-            // A list inside a quote is laid out like any list, one quote inset in.
+            // A list inside quotes is laid out like any list, one inset in per quote.
             let depth = max(0, listDepth - 1)
             let markerIndent = theme.bodyFontSize * 2 * CGFloat(depth)
-                + (inQuote ? theme.bodyFontSize : 0)
+                + quoteInset
             style.paragraphSpacingBefore = theme.bodyFontSize * 0.25
             style.paragraphSpacing = theme.bodyFontSize * 0.25
             style.headIndent = markerIndent + theme.bodyFontSize * 2
@@ -1616,8 +1616,8 @@ private final class ReaderPresentationBuilder {
         case .blockQuote:
             style.paragraphSpacingBefore = theme.bodyFontSize * 0.25
             style.paragraphSpacing = theme.bodyFontSize * 0.25
-            style.firstLineHeadIndent = theme.bodyFontSize
-            style.headIndent = theme.bodyFontSize
+            style.firstLineHeadIndent = quoteInset
+            style.headIndent = quoteInset
         case .codeBlock:
             style.lineHeightMultiple = 1.6
             style.paragraphSpacingBefore = blockLine?.isFirst == true
