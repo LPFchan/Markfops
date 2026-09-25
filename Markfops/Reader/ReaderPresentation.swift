@@ -357,7 +357,7 @@ private final class ReaderPresentationBuilder {
     /// Reader offsets of the lone newlines that stand for empty source lines,
     /// sized after emission by `absorbSpacingIntoBlankLines`.
     private var blankLineReaderOffsets: [Int] = []
-    private var listMarkers: [(range: NSRange, revealed: Bool)] = []
+    private var listMarkers: [(range: NSRange, revealed: Bool, item: NSRange?)] = []
     /// Fonts and paragraph styles repeat across thousands of runs; creating
     /// them per run (italic goes through a descriptor lookup) dominated the
     /// build time, which now runs on every keystroke in formatted mode.
@@ -388,7 +388,6 @@ private final class ReaderPresentationBuilder {
         for run in sourceMap.runs(in: fullRange) {
             emit(run)
         }
-        fitListMarkersToGutter()
         absorbSpacingIntoBlankLines()
 
         // The source map covers the complete source. This fill is defensive for
@@ -402,6 +401,8 @@ private final class ReaderPresentationBuilder {
                 nextReaderOffset = sourceToReader[index]
             }
         }
+        // After the fill: a widened item reaches its end through the map.
+        fitListMarkersToGutter()
 
         return ReaderPresentation(
             attributedString: output,
@@ -653,7 +654,7 @@ private final class ReaderPresentationBuilder {
             if isRevealed(run.range) {
                 let start = output.length
                 emitHiddenSyntax(run, context: context)
-                listMarkers.append((NSRange(location: start, length: output.length - start), true))
+                listMarkers.append((NSRange(location: start, length: output.length - start), true, context.listItemRange))
                 return
             }
             let start = output.length
@@ -665,7 +666,7 @@ private final class ReaderPresentationBuilder {
                 attributes: attributes(for: run.kind, context: context),
                 isSubstitution: true
             )
-            listMarkers.append((NSRange(location: start, length: output.length - start), false))
+            listMarkers.append((NSRange(location: start, length: output.length - start), false, context.listItemRange))
         case .thematicBreak:
             append(
                 "\u{200B}",
@@ -853,12 +854,13 @@ private final class ReaderPresentationBuilder {
     /// Lands each item's first line on its head indent. A revealed marker's
     /// last character is kerned out to the gutter (a substituted marker's tab
     /// does that on its own); a marker too wide for the gutter widens the
-    /// item's head indent instead, so wrapped lines still start with the text.
+    /// item's head indent instead, so wrapped lines still start with the text;
+    /// the rest of the item (later paragraphs, panels, nested lists) shifts with it.
     private func fitListMarkersToGutter() {
         let gutter = theme.bodyFontSize * 2
         let minimumGap = theme.bodyFontSize * 0.4
         let string = output.string as NSString
-        for (range, revealed) in listMarkers where range.length > 0 {
+        for (range, revealed, item) in listMarkers where range.length > 0 {
             let glyphs = revealed ? range : NSRange(location: range.location, length: range.length - 1)
             let width = output.attributedSubstring(from: glyphs).size().width
             if revealed, width < gutter {
@@ -870,9 +872,24 @@ private final class ReaderPresentationBuilder {
                   let style = output.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle
             else { continue }
             let indent = style.firstLineHeadIndent + needed
-            adjustParagraphStyles(in: string.paragraphRange(for: range)) {
+            let delta = indent - style.headIndent
+            let markerParagraph = string.paragraphRange(for: range)
+            adjustParagraphStyles(in: markerParagraph) {
                 $0.headIndent = indent
                 $0.tabStops = [NSTextTab(textAlignment: .left, location: indent)]
+            }
+            guard let item else { continue }
+            let itemEnd = min(output.length, sourceToReader[min(NSMaxRange(item), text.length)])
+            guard itemEnd > NSMaxRange(markerParagraph) else { continue }
+            adjustParagraphStyles(in: NSRange(
+                location: NSMaxRange(markerParagraph),
+                length: itemEnd - NSMaxRange(markerParagraph)
+            )) {
+                $0.headIndent += delta
+                $0.firstLineHeadIndent += delta
+                $0.tabStops = $0.tabStops.map {
+                    NSTextTab(textAlignment: $0.alignment, location: $0.location + delta, options: $0.options)
+                }
             }
         }
     }
@@ -1582,9 +1599,11 @@ private final class ReaderPresentationBuilder {
             style.lineHeightMultiple = 1.3
             style.paragraphSpacingBefore = theme.bodyFontSize * (level == 1 ? 1.5 : 1.1)
             style.paragraphSpacing = theme.bodyFontSize * 0.5
-        case .listItem:
+        case .listItem, .blockQuote where listDepth > 0:
+            // A list inside a quote is laid out like any list, one quote inset in.
             let depth = max(0, listDepth - 1)
             let markerIndent = theme.bodyFontSize * 2 * CGFloat(depth)
+                + (inQuote ? theme.bodyFontSize : 0)
             style.paragraphSpacingBefore = theme.bodyFontSize * 0.25
             style.paragraphSpacing = theme.bodyFontSize * 0.25
             style.headIndent = markerIndent + theme.bodyFontSize * 2

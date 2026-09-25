@@ -324,6 +324,47 @@ final class ReaderOffsetMapEditingTests: XCTestCase {
         }
     }
 
+    func testQuotedListItemWrapsWithItsText() throws {
+        let words = Array(repeating: "wrapping words", count: 12).joined(separator: " ")
+        let text = "> - \(words)"
+        let output = presentation(text).attributedString
+        let storage = NSTextStorage(attributedString: output)
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(size: NSSize(width: 400, height: 100_000))
+        container.lineFragmentPadding = 0
+        layout.addTextContainer(container)
+        storage.addLayoutManager(layout)
+        layout.ensureLayout(for: container)
+        let first = (storage.string as NSString).range(of: "wrapping").location
+        var lineStarts: [CGFloat] = []
+        layout.enumerateLineFragments(forGlyphRange: layout.glyphRange(for: container)) { rect, _, _, glyphs, _ in
+            let start = max(glyphs.location, layout.glyphIndexForCharacter(at: first))
+            lineStarts.append(rect.minX + layout.location(forGlyphAt: start).x)
+        }
+        XCTAssertGreaterThan(lineStarts.count, 1)
+        for x in lineStarts.dropFirst() {
+            XCTAssertEqual(x, lineStarts[0], accuracy: 0.5)
+        }
+        XCTAssertNotNil(output.attribute(.readerBlockQuote, at: first, effectiveRange: nil))
+        let style = try XCTUnwrap(output.attribute(.paragraphStyle, at: first, effectiveRange: nil) as? NSParagraphStyle)
+        XCTAssertEqual(style.firstLineHeadIndent, ReaderTheme.default.bodyFontSize, accuracy: 0.5, "the marker sits one quote inset in")
+    }
+
+    func testWideMarkerWidensTheWholeItem() throws {
+        let pad = String(repeating: " ", count: 11)
+        let text = "123456789. Intro\n\n\(pad)Later paragraph.\n\n\(pad)```\n\(pad)code\n\(pad)```\n"
+        let output = presentation(text).attributedString
+        let rendered = output.string as NSString
+        func style(_ fragment: String) throws -> NSParagraphStyle {
+            try XCTUnwrap(output.attribute(.paragraphStyle, at: rendered.range(of: fragment).location, effectiveRange: nil) as? NSParagraphStyle)
+        }
+        let intro = try style("Intro")
+        XCTAssertGreaterThan(intro.headIndent, ReaderTheme.default.bodyFontSize * 2, "the marker widened the gutter")
+        XCTAssertEqual(try style("Later").firstLineHeadIndent, intro.headIndent, accuracy: 0.5)
+        XCTAssertEqual(try style("Later").headIndent, intro.headIndent, accuracy: 0.5)
+        XCTAssertEqual(try style("code").headIndent, intro.headIndent + ReaderTheme.default.bodyFontSize * 1.25, accuracy: 0.5)
+    }
+
     func testSourceRangeMapsCharactersAndIncludesHiddenSyntaxStrictlyInside() throws {
         let text = "Some **bold** and `code` [link](https://x.y) here\n- item\n\nsee ![alt](missing.png)"
         let built = presentation(text)
