@@ -6,7 +6,7 @@ Do not use it as a transcript or a scratchpad.
 
 ## Snapshot
 
-- Last updated: 2026-09-11
+- Last updated: 2026-09-26
 - Overall posture: `active`
 - Current focus: formatted mode is editable through the source map (`DEC-20260910-001`); slices 4a through 5d landed; next is the morph tuning pass and the formatted-mode gap list
 - Highest-priority blocker: none; the public `1.1.2` DMG and Sparkle update are verified
@@ -42,6 +42,11 @@ Markfops is a working native macOS Markdown app with XcodeGen project generation
 - Related ids: `DEC-20260409-002`, `DEC-20260409-003`, `DEC-20260909-001`, `RSH-20260909-001`, `IBX-20260409-001`, `IBX-20260409-002`, `IBX-20260409-003`, `IBX-20260409-004`
 
 ## Recent Changes To Project Reality
+
+- Date: 2026-09-26
+  - Change: opening files no longer leaves hidden duplicate windows behind, and quitting keeps the saved tabs; formatted mode renders code blocks and later paragraphs inside list items, hangs list text on the item indent, and indents nested items
+  - Why it matters: after a cold launch with files, hidden copies of the document window made every mode switch land on the wrong section, and the recovery file was saved empty on every quit
+  - Related ids: `DEC-20260910-001`
 
 - Date: 2026-09-11
   - Change: undo and find work in formatted mode, and a list item's marker reveals under the cursor like a heading's hashes
