@@ -583,6 +583,7 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
     @ObservationIgnored private var closingWindowIDs: Set<UUID> = []
     @ObservationIgnored private var notificationTokens: [NSObjectProtocol] = []
     @ObservationIgnored private var isLaunching = true
+    @ObservationIgnored private var isTerminating = false
 
     var pendingInitialWindowID: UUID? {
         pendingWindowFocus.keys.first(where: { sessions[$0]?.window == nil })
@@ -883,6 +884,12 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
         requestedPresentationIDs.formUnion(pendingPresentationIDs)
     }
 
+    /// Saves the session as it stands and freezes it for the rest of the quit.
+    func prepareForTermination() {
+        persistSession()
+        isTerminating = true
+    }
+
     func persistSession() {
         loadRecoveryIfNeeded()
         let windows = sessions.values.compactMap { session -> RecoveryWindowSnapshot? in
@@ -995,6 +1002,8 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
     }
 
     private func deregister(window: NSWindow) {
+        // Quitting closes every window; the session saved at the quit must survive that.
+        guard !isTerminating else { return }
         guard let id = sessions.first(where: { $0.value.window === window })?.key else { return }
         if isLaunching, let session = sessions[id] {
             session.window = nil

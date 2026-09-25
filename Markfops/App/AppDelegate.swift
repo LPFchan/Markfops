@@ -32,8 +32,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Returns .terminateLater so we can show a sheet; replies via NSApp.reply after user decides.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let dirty = coordinator.sessions.values.flatMap { $0.store.documents }.filter(\.isDirty)
-        guard !dirty.isEmpty else { return .terminateNow }
-        coordinator.reviewUnsavedForQuit { shouldQuit in
+        guard !dirty.isEmpty else {
+            coordinator.prepareForTermination()
+            return .terminateNow
+        }
+        coordinator.reviewUnsavedForQuit { [coordinator] shouldQuit in
+            if shouldQuit { coordinator.prepareForTermination() }
             NSApp.reply(toApplicationShouldTerminate: shouldQuit)
         }
         return .terminateLater
