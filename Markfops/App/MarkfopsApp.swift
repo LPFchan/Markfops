@@ -9,6 +9,11 @@ struct MarkfopsApp: App {
         WindowGroup("Markfops", id: "document", for: UUID.self) { $windowID in
             DocumentWindowScene(windowID: $windowID, coordinator: appDelegate.coordinator)
         }
+        // File opens are routed by the coordinator into an existing window.
+        // Without this, SwiftUI also opens one window of its own per opened
+        // file; those stray windows stay hidden but still react to the
+        // document they end up showing.
+        .handlesExternalEvents(matching: [])
         .windowToolbarStyle(.unified)
         .commands {
             MarkfopsCommands(
