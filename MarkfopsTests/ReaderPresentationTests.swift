@@ -49,10 +49,20 @@ final class ReaderPresentationTests: XCTestCase {
             "> <div>\n> body\n> </div>\n",
             "> | a | b |\n> | - | - |\n> | 1 | 2 |\n",
             "> > <div>\n> > body\n> > </div>\n",
+            "> > ```\n>  > code\n> > ```\n",
+            "- > ```\n  > code\n  > ```\n",
+            "> > <div>\n>   > body\n> > </div>\n",
         ] {
             let output = ReaderPresentation.build(text: text, sourceMap: MarkdownSourceMap.parse(text)).attributedString.string
             let leaked = output.split(separator: "\n").filter { $0.hasPrefix(">") }
             XCTAssertEqual(leaked, [], "quote markers leak into \(output.debugDescription)")
+        }
+    }
+
+    func testQuotedCodeKeepsALiteralMarkerAfterTheQuotePrefix() {
+        for text in ["> > ```\n>> >literal\n> > ```\n", "> > <div>\n>> >literal\n> > </div>\n"] {
+            let output = ReaderPresentation.build(text: text, sourceMap: MarkdownSourceMap.parse(text)).attributedString.string
+            XCTAssertTrue(output.contains(">literal"), "the content's own `>` is kept in \(output.debugDescription)")
         }
     }
 

@@ -999,6 +999,34 @@ private final class ReaderPresentationBuilder {
         ))
     }
 
+    /// Length of a line's container prefix: `quotes` quote markers, each
+    /// with up to three spaces before it and one optional space after, and
+    /// up to `indent` columns of indentation between them.
+    private func containerPrefixLength(in line: NSString, from start: Int, to end: Int, quotes: Int, indent: Int) -> Int {
+        var index = start, quotesLeft = quotes, indentLeft = indent
+        while index < end {
+            if quotesLeft > 0 {
+                var marker = index
+                while marker < end, marker - index < 3, isBlank(line.character(at: marker)) { marker += 1 }
+                if marker < end, line.character(at: marker) == 0x3E {
+                    indentLeft = max(0, indentLeft - (marker - index))
+                    quotesLeft -= 1
+                    index = marker + 1
+                    if index < end, isBlank(line.character(at: index)) { index += 1 }
+                    continue
+                }
+            }
+            guard indentLeft > 0, isBlank(line.character(at: index)) else { break }
+            indentLeft -= 1
+            index += 1
+        }
+        return index - start
+    }
+
+    private func isBlank(_ character: unichar) -> Bool {
+        character == 0x20 || character == 0x09
+    }
+
     private func appendBlockText(
         _ string: String,
         sourceRange: NSRange,
@@ -1009,13 +1037,24 @@ private final class ReaderPresentationBuilder {
         edgeLines: (first: Bool, last: Bool) = (true, true)
     ) {
         // A block inside a list item or quote repeats the container's prefix
-        // (indentation, `>` markers) on every source line; up to the block's
-        // own column that is layout, not text.
-        let prefixCharacters: Set<unichar> = context.quoteDepth > 0 ? [0x20, 0x09, 0x3E] : [0x20, 0x09]
+        // on every source line: one `>` per quote level plus indentation up
+        // to the block's own column. That is layout, not text.
         var containerIndent = 0
         if let block = context.blockRange {
             let lineStart = text.lineRange(for: NSRange(location: block.location, length: 0)).location
-            containerIndent = block.location - lineStart
+            var quoteWidth = 0, quotes = 0, index = lineStart
+            while index < block.location {
+                if quotes < context.quoteDepth, text.character(at: index) == 0x3E {
+                    quotes += 1
+                    quoteWidth += 1
+                    if index + 1 < block.location, isBlank(text.character(at: index + 1)) {
+                        quoteWidth += 1
+                        index += 1
+                    }
+                }
+                index += 1
+            }
+            containerIndent = block.location - lineStart - quoteWidth
         }
 
         let source = string as NSString
@@ -1028,10 +1067,13 @@ private final class ReaderPresentationBuilder {
             let lineStart = sourceRange.location + localStart
             var indent = 0
             if lineStart == 0 || text.character(at: lineStart - 1) == 0x0A {
-                while indent < containerIndent, localStart + indent < localEnd,
-                      prefixCharacters.contains(source.character(at: localStart + indent)) {
-                    indent += 1
-                }
+                indent = containerPrefixLength(
+                    in: source,
+                    from: localStart,
+                    to: localEnd,
+                    quotes: context.quoteDepth,
+                    indent: containerIndent
+                )
             }
             lines.append((
                 NSRange(location: lineStart, length: indent),

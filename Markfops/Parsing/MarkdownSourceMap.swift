@@ -241,7 +241,8 @@ struct MarkdownSourceMap {
                             }
 
                             builder.children = frame.children
-                            addSyntaxChildren(to: builder, source: source)
+                            let quoteDepth = 1 + stack.filter { cmark_node_get_type($0.node) == CMARK_NODE_BLOCK_QUOTE }.count
+                            addSyntaxChildren(to: builder, source: source, quoteDepth: quoteDepth)
 
                             if case let .heading(level) = builder.kind {
                                 let title = plainText(in: builder)
@@ -546,7 +547,7 @@ struct MarkdownSourceMap {
         }
     }
 
-    private static func addSyntaxChildren(to builder: SpanBuilder, source: SourceText) {
+    private static func addSyntaxChildren(to builder: SpanBuilder, source: SourceText, quoteDepth: Int = 1) {
         switch builder.kind {
         case let .heading(level):
             addHeadingSyntax(to: builder, level: level, source: source)
@@ -561,7 +562,7 @@ struct MarkdownSourceMap {
         case .listItem:
             addListMarkerSyntax(to: builder, source: source)
         case .blockQuote:
-            addBlockQuoteSyntax(to: builder, source: source)
+            addBlockQuoteSyntax(to: builder, depth: quoteDepth, source: source)
         case let .codeBlock(fenced):
             if fenced {
                 addFencedCodeSyntax(to: builder, source: source)
@@ -835,28 +836,33 @@ struct MarkdownSourceMap {
         builder.addSyntax(utf8Start: marker, utf8End: markerEnd, kind: builder.kind, source: source)
     }
 
-    private static func addBlockQuoteSyntax(to builder: SpanBuilder, source: SourceText) {
+    /// Marks this quote's own `>` on each line: the `depth`-th marker in the
+    /// line's prefix, so outer levels and a literal `>` after the prefix
+    /// (inside a quoted code block) are left alone.
+    private static func addBlockQuoteSyntax(to builder: SpanBuilder, depth: Int, source: SourceText) {
         let firstLine = builder.location.startLine
         let lastLine = builder.location.endLine
         guard firstLine <= lastLine else { return }
 
         for lineNumber in firstLine...lastLine {
             let line = source.line(lineNumber)
-            var index = line.startByte
-            while index < line.contentEnd(in: source.bytes), source.isHorizontalWhitespace(source.bytes[index]) {
-                index += 1
-            }
-            while index < line.contentEnd(in: source.bytes), source.bytes[index] == ascii(">") {
-                let markerEnd = min(line.contentEnd(in: source.bytes), index + 1)
-                builder.addSyntax(utf8Start: index, utf8End: markerEnd, kind: builder.kind, source: source)
-                index = markerEnd
-                if index < line.contentEnd(in: source.bytes), source.isHorizontalWhitespace(source.bytes[index]) {
+            let end = line.contentEnd(in: source.bytes)
+            var index = lineNumber == firstLine ? builder.location.utf8Start : line.startByte
+            var markersLeft = lineNumber == firstLine ? 1 : depth
+            while index < end {
+                while index < end, source.isHorizontalWhitespace(source.bytes[index]) {
+                    index += 1
+                }
+                guard index < end, source.bytes[index] == ascii(">") else { break }
+                markersLeft -= 1
+                if markersLeft == 0 {
                     builder.addSyntax(utf8Start: index, utf8End: index + 1, kind: builder.kind, source: source)
-                    index += 1
+                    if index + 1 < end, source.isHorizontalWhitespace(source.bytes[index + 1]) {
+                        builder.addSyntax(utf8Start: index + 1, utf8End: index + 2, kind: builder.kind, source: source)
+                    }
+                    break
                 }
-                while index < line.contentEnd(in: source.bytes), source.isHorizontalWhitespace(source.bytes[index]) {
-                    index += 1
-                }
+                index += 1
             }
         }
     }
