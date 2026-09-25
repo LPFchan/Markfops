@@ -584,8 +584,7 @@ private final class ReaderPresentationBuilder {
                 : NSMaxRange(newline)
             var localRange = NSRange(location: localStart, length: localEnd - localStart)
             localStart = localEnd
-            let atLineStart = sourceRange.location + localRange.location == 0
-                || text.character(at: sourceRange.location + localRange.location - 1) == 0x0A
+            let atLineStart = isAtLineStart(sourceRange.location + localRange.location, inQuote: context.quoteDepth > 0)
 
             // A source line's indentation (a nested item's, a continuation
             // line's) is layout in Markdown; the paragraph indents carry it here.
@@ -612,7 +611,7 @@ private final class ReaderPresentationBuilder {
             let lineContext = self.context(at: absoluteRange.location)
             let line = source.substring(with: localRange)
             let isBlankLine = line == "\n"
-                && (lineContext.blockKind == nil || isListItem(lineContext.blockKind))
+                && (lineContext.blockKind == nil || isListItem(lineContext.blockKind) || lineContext.listDepth > 0)
                 && atLineStart
             if isBlankLine {
                 blankLineReaderOffsets.append(output.length)
@@ -1021,6 +1020,19 @@ private final class ReaderPresentationBuilder {
             index += 1
         }
         return index - start
+    }
+
+    /// Whether only a container prefix (indentation, and `>` markers inside
+    /// a quote) precedes `location` on its source line.
+    private func isAtLineStart(_ location: Int, inQuote: Bool) -> Bool {
+        var index = location
+        while index > 0 {
+            let character = text.character(at: index - 1)
+            if character == 0x0A { return true }
+            guard isBlank(character) || inQuote && character == 0x3E else { return false }
+            index -= 1
+        }
+        return true
     }
 
     private func isBlank(_ character: unichar) -> Bool {

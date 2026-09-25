@@ -368,14 +368,15 @@ final class ReaderOffsetMapEditingTests: XCTestCase {
     }
 
     func testEmptyLineInsideAListItemSitsAtTheItemText() throws {
-        let text = "- item\n\n  continuation\n"
-        let output = presentation(text).attributedString
-        let rendered = output.string as NSString
-        let item = try XCTUnwrap(output.attribute(.paragraphStyle, at: rendered.range(of: "item").location, effectiveRange: nil) as? NSParagraphStyle)
-        let blank = try XCTUnwrap(output.attribute(.paragraphStyle, at: rendered.range(of: "item\n").location + 5, effectiveRange: nil) as? NSParagraphStyle)
-        XCTAssertEqual(blank.firstLineHeadIndent, item.headIndent, accuracy: 0.5)
-        XCTAssertEqual(blank.headIndent, item.headIndent, accuracy: 0.5)
-        XCTAssertGreaterThan(blank.maximumLineHeight, 0, "it keeps the empty-line sizing")
+        for text in ["- item\n\n  continuation\n", "> - item\n>\n>   continuation\n"] {
+            let output = presentation(text).attributedString
+            let rendered = output.string as NSString
+            let item = try XCTUnwrap(output.attribute(.paragraphStyle, at: rendered.range(of: "item").location, effectiveRange: nil) as? NSParagraphStyle)
+            let blank = try XCTUnwrap(output.attribute(.paragraphStyle, at: rendered.range(of: "item\n").location + 5, effectiveRange: nil) as? NSParagraphStyle)
+            XCTAssertEqual(blank.firstLineHeadIndent, item.headIndent, accuracy: 0.5, text)
+            XCTAssertEqual(blank.headIndent, item.headIndent, accuracy: 0.5, text)
+            XCTAssertGreaterThan(blank.maximumLineHeight, 0, "it keeps the empty-line sizing in \(text.debugDescription)")
+        }
     }
 
     func testSourceRangeMapsCharactersAndIncludesHiddenSyntaxStrictlyInside() throws {
