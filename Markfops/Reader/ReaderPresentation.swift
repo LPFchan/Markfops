@@ -1008,8 +1008,10 @@ private final class ReaderPresentationBuilder {
         raw: Bool = false,
         edgeLines: (first: Bool, last: Bool) = (true, true)
     ) {
-        // A block inside a list item repeats the item's indentation on every
-        // source line; up to the block's own column that is layout, not text.
+        // A block inside a list item or quote repeats the container's prefix
+        // (indentation, `>` markers) on every source line; up to the block's
+        // own column that is layout, not text.
+        let prefixCharacters: Set<unichar> = context.quoteDepth > 0 ? [0x20, 0x09, 0x3E] : [0x20, 0x09]
         var containerIndent = 0
         if let block = context.blockRange {
             let lineStart = text.lineRange(for: NSRange(location: block.location, length: 0)).location
@@ -1027,7 +1029,7 @@ private final class ReaderPresentationBuilder {
             var indent = 0
             if lineStart == 0 || text.character(at: lineStart - 1) == 0x0A {
                 while indent < containerIndent, localStart + indent < localEnd,
-                      [0x20, 0x09].contains(source.character(at: localStart + indent)) {
+                      prefixCharacters.contains(source.character(at: localStart + indent)) {
                     indent += 1
                 }
             }

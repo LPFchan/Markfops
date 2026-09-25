@@ -44,6 +44,18 @@ final class ReaderPresentationTests: XCTestCase {
         XCTAssertNil(noBar)
     }
 
+    func testRawBlocksInsideAQuoteHideTheQuoteMarkers() {
+        for text in [
+            "> <div>\n> body\n> </div>\n",
+            "> | a | b |\n> | - | - |\n> | 1 | 2 |\n",
+            "> > <div>\n> > body\n> > </div>\n",
+        ] {
+            let output = ReaderPresentation.build(text: text, sourceMap: MarkdownSourceMap.parse(text)).attributedString.string
+            let leaked = output.split(separator: "\n").filter { $0.hasPrefix(">") }
+            XCTAssertEqual(leaked, [], "quote markers leak into \(output.debugDescription)")
+        }
+    }
+
     func testEachQuoteLevelAddsItsInset() throws {
         let em = ReaderTheme.default.bodyFontSize
         func headIndent(_ text: String, at fragment: String) throws -> CGFloat {
