@@ -571,7 +571,29 @@ private final class ReaderPresentationBuilder {
             let localEnd = newline.location == NSNotFound
                 ? source.length
                 : NSMaxRange(newline)
-            let localRange = NSRange(location: localStart, length: localEnd - localStart)
+            var localRange = NSRange(location: localStart, length: localEnd - localStart)
+            localStart = localEnd
+            let atLineStart = sourceRange.location + localRange.location == 0
+                || text.character(at: sourceRange.location + localRange.location - 1) == 0x0A
+
+            // A source line's indentation (a nested item's, a continuation
+            // line's) is layout in Markdown; the paragraph indents carry it here.
+            var indent = 0
+            while atLineStart, indent < localRange.length,
+                  [0x20, 0x09].contains(source.character(at: localRange.location + indent)) {
+                indent += 1
+            }
+            if indent > 0 {
+                markOmitted(
+                    NSRange(location: sourceRange.location + localRange.location, length: indent),
+                    kind: kind,
+                    role: .syntax
+                )
+                localRange.location += indent
+                localRange.length -= indent
+            }
+            guard localRange.length > 0 else { continue }
+
             let absoluteRange = NSRange(
                 location: sourceRange.location + localRange.location,
                 length: localRange.length
@@ -580,8 +602,7 @@ private final class ReaderPresentationBuilder {
             let line = source.substring(with: localRange)
             let isBlankLine = line == "\n"
                 && lineContext.blockKind == nil
-                && (absoluteRange.location == 0
-                    || text.character(at: absoluteRange.location - 1) == 0x0A)
+                && atLineStart
             if isBlankLine {
                 blankLineReaderOffsets.append(output.length)
             }
@@ -596,7 +617,6 @@ private final class ReaderPresentationBuilder {
                     blankLine: isBlankLine
                 )
             )
-            localStart = localEnd
         }
     }
 
@@ -621,7 +641,9 @@ private final class ReaderPresentationBuilder {
         switch run.kind {
         case let .listItem(ordered, taskState):
             if isRevealed(run.range) {
+                let start = output.length
                 emitHiddenSyntax(run, context: context)
+                padRevealedListMarker(NSRange(location: start, length: output.length - start))
                 return
             }
             append(
@@ -816,6 +838,21 @@ private final class ReaderPresentationBuilder {
         return span.role == .content && span.kind == kind ? span : nil
     }
 
+    /// Widens the revealed marker's last character so the item's first line
+    /// starts at its head indent, the same place the substituted marker's tab
+    /// puts it.
+    private func padRevealedListMarker(_ range: NSRange) {
+        guard range.length > 0 else { return }
+        let gutter = theme.bodyFontSize * 2
+        let width = output.attributedSubstring(from: range).size().width
+        guard width < gutter else { return }
+        output.addAttribute(
+            .kern,
+            value: gutter - width,
+            range: NSRange(location: NSMaxRange(range) - 1, length: 1)
+        )
+    }
+
     private func listMarker(
         for range: NSRange,
         ordered: Bool,
@@ -833,23 +870,25 @@ private final class ReaderPresentationBuilder {
             }
             if end < marker.endIndex,
                marker[end] == "." || marker[end] == ")" {
-                marker = String(marker[...end]) + " "
+                marker = String(marker[...end])
             } else {
-                marker = "1. "
+                marker = "1."
             }
         } else {
-            marker = "• "
+            marker = "•"
         }
 
         if let taskState {
-            let box = taskState == .checked ? "☑ " : "☐ "
+            let box = taskState == .checked ? "☑" : "☐"
             if ordered {
-                marker += box
+                marker += " " + box
             } else {
                 marker = box
             }
         }
-        return marker
+        // The tab lands the text on the item's head indent, so the first line
+        // starts where its wrapped lines do.
+        return marker + "\t"
     }
 
     private func append(
@@ -1475,6 +1514,7 @@ private final class ReaderPresentationBuilder {
                 textAlignment: .left,
                 location: markerIndent + theme.bodyFontSize * 2
             )]
+            style.defaultTabInterval = theme.bodyFontSize * 0.5
         case .blockQuote:
             style.paragraphSpacingBefore = theme.bodyFontSize * 0.25
             style.paragraphSpacing = theme.bodyFontSize * 0.25

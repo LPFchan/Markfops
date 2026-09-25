@@ -25,9 +25,9 @@ final class ReaderPresentationTests: XCTestCase {
         let rendered = presentation.attributedString.string
 
         XCTAssertTrue(rendered.contains("Heading"))
-        XCTAssertTrue(rendered.contains("• item"))
-        XCTAssertTrue(rendered.contains("1. ordered"))
-        XCTAssertTrue(rendered.contains("☐ todo"))
+        XCTAssertTrue(rendered.contains("•\titem"))
+        XCTAssertTrue(rendered.contains("1.\tordered"))
+        XCTAssertTrue(rendered.contains("☐\ttodo"))
         XCTAssertTrue(rendered.contains("quote"))
         XCTAssertTrue(rendered.contains("let value = 1"))
         XCTAssertTrue(rendered.contains("\u{200B}"))

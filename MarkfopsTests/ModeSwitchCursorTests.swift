@@ -336,7 +336,7 @@ final class ModeSwitchCursorTests: XCTestCase {
 
     func testWrapOnAnUnroutableSelectionIsRefused() throws {
         let host = try makeHost(text: "- item\n- two", mode: .preview)
-        host.reader.setSelectedRange(try host.readerRange(of: "• item"))
+        host.reader.setSelectedRange(try host.readerRange(of: "•\titem"))
         host.reader.wrapSelection(prefix: "**", suffix: "**")
         XCTAssertEqual(host.document.rawText, "- item\n- two")
         XCTAssertEqual(host.coordinator.refusedEditCount, 1)
