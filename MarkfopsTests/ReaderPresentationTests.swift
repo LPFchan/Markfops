@@ -26,6 +26,24 @@ final class ReaderPresentationTests: XCTestCase {
         XCTAssertEqual(continuation.headIndent, item.headIndent)
     }
 
+    func testCodeBlockInsideAQuoteKeepsTheQuoteIndentAndBar() throws {
+        let quoted = "> Before\n>\n> ```\n> code\n> ```\n"
+        let topLevel = "```\ncode\n```\n"
+        func codeStyle(_ text: String) throws -> (NSParagraphStyle, Any?) {
+            let output = ReaderPresentation.build(text: text, sourceMap: MarkdownSourceMap.parse(text)).attributedString
+            let location = (output.string as NSString).range(of: "code").location
+            return (
+                try XCTUnwrap(output.attribute(.paragraphStyle, at: location, effectiveRange: nil) as? NSParagraphStyle),
+                output.attribute(.readerBlockQuote, at: location, effectiveRange: nil)
+            )
+        }
+        let (inQuote, bar) = try codeStyle(quoted)
+        let (alone, noBar) = try codeStyle(topLevel)
+        XCTAssertEqual(inQuote.headIndent - alone.headIndent, ReaderTheme.default.bodyFontSize, accuracy: 0.5)
+        XCTAssertNotNil(bar, "the quote bar runs beside the panel")
+        XCTAssertNil(noBar)
+    }
+
     func testPresentationHidesSyntaxAndStylesSupportedConstructs() throws {
         let text = """
         # Heading

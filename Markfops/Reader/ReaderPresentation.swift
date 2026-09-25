@@ -322,6 +322,7 @@ private struct ReaderSemanticContext {
     /// A paragraph after the first in its list item: it has no marker, so its
     /// first line hangs with the rest.
     var listContinuation: Bool
+    var quoteDepth: Int
 
     static var empty: ReaderSemanticContext {
         ReaderSemanticContext(
@@ -332,7 +333,8 @@ private struct ReaderSemanticContext {
             imageRange: nil,
             listDepth: 0,
             listItemRange: nil,
-            listContinuation: false
+            listContinuation: false,
+            quoteDepth: 0
         )
     }
 }
@@ -355,6 +357,7 @@ private final class ReaderPresentationBuilder {
     /// Reader offsets of the lone newlines that stand for empty source lines,
     /// sized after emission by `absorbSpacingIntoBlankLines`.
     private var blankLineReaderOffsets: [Int] = []
+    private var listMarkers: [(range: NSRange, revealed: Bool)] = []
     /// Fonts and paragraph styles repeat across thousands of runs; creating
     /// them per run (italic goes through a descriptor lookup) dominated the
     /// build time, which now runs on every keystroke in formatted mode.
@@ -385,6 +388,7 @@ private final class ReaderPresentationBuilder {
         for run in sourceMap.runs(in: fullRange) {
             emit(run)
         }
+        fitListMarkersToGutter()
         absorbSpacingIntoBlankLines()
 
         // The source map covers the complete source. This fill is defensive for
@@ -649,9 +653,10 @@ private final class ReaderPresentationBuilder {
             if isRevealed(run.range) {
                 let start = output.length
                 emitHiddenSyntax(run, context: context)
-                padRevealedListMarker(NSRange(location: start, length: output.length - start))
+                listMarkers.append((NSRange(location: start, length: output.length - start), true))
                 return
             }
+            let start = output.length
             append(
                 listMarker(for: run.range, ordered: ordered, taskState: taskState),
                 sourceRange: run.range,
@@ -660,6 +665,7 @@ private final class ReaderPresentationBuilder {
                 attributes: attributes(for: run.kind, context: context),
                 isSubstitution: true
             )
+            listMarkers.append((NSRange(location: start, length: output.length - start), false))
         case .thematicBreak:
             append(
                 "\u{200B}",
@@ -844,19 +850,31 @@ private final class ReaderPresentationBuilder {
         return span.role == .content && span.kind == kind ? span : nil
     }
 
-    /// Widens the revealed marker's last character so the item's first line
-    /// starts at its head indent, the same place the substituted marker's tab
-    /// puts it.
-    private func padRevealedListMarker(_ range: NSRange) {
-        guard range.length > 0 else { return }
+    /// Lands each item's first line on its head indent. A revealed marker's
+    /// last character is kerned out to the gutter (a substituted marker's tab
+    /// does that on its own); a marker too wide for the gutter widens the
+    /// item's head indent instead, so wrapped lines still start with the text.
+    private func fitListMarkersToGutter() {
         let gutter = theme.bodyFontSize * 2
-        let width = output.attributedSubstring(from: range).size().width
-        guard width < gutter else { return }
-        output.addAttribute(
-            .kern,
-            value: gutter - width,
-            range: NSRange(location: NSMaxRange(range) - 1, length: 1)
-        )
+        let minimumGap = theme.bodyFontSize * 0.4
+        let string = output.string as NSString
+        for (range, revealed) in listMarkers where range.length > 0 {
+            let glyphs = revealed ? range : NSRange(location: range.location, length: range.length - 1)
+            let width = output.attributedSubstring(from: glyphs).size().width
+            if revealed, width < gutter {
+                output.addAttribute(.kern, value: gutter - width, range: NSRange(location: NSMaxRange(range) - 1, length: 1))
+                continue
+            }
+            let needed = revealed ? width : width + minimumGap
+            guard needed > gutter,
+                  let style = output.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle
+            else { continue }
+            let indent = style.firstLineHeadIndent + needed
+            adjustParagraphStyles(in: string.paragraphRange(for: range)) {
+                $0.headIndent = indent
+                $0.tabStops = [NSTextTab(textAlignment: .left, location: indent)]
+            }
+        }
     }
 
     private func listMarker(
@@ -1321,6 +1339,8 @@ private final class ReaderPresentationBuilder {
                 next.listDepth += 1
                 next.listItemRange = span.range
                 next.listContinuation = false
+            case .blockQuote:
+                next.quoteDepth += 1
             case .paragraph:
                 if let item = next.listItemRange, span.range.location > item.location {
                     let lead = NSRange(location: item.location, length: span.range.location - item.location)
@@ -1427,7 +1447,8 @@ private final class ReaderPresentationBuilder {
                 thematicBreak: thematicBreak,
                 blockLine: blockLine,
                 listDepth: context.listDepth,
-                listContinuation: context.listContinuation
+                listContinuation: context.listContinuation,
+                inQuote: context.quoteDepth > 0
             )
 
         var attributes: [NSAttributedString.Key: Any] = [
@@ -1450,7 +1471,8 @@ private final class ReaderPresentationBuilder {
         if case let .heading(level) = blockKind {
             attributes[.readerHeadingLevel] = level
         }
-        if case .blockQuote = blockKind {
+        // A panel inside a quote keeps the quote's bar running beside it.
+        if context.quoteDepth > 0 {
             attributes[.readerBlockQuote] = true
         }
         if thematicBreak {
@@ -1515,16 +1537,18 @@ private final class ReaderPresentationBuilder {
         thematicBreak: Bool,
         blockLine: (isFirst: Bool, isLast: Bool)? = nil,
         listDepth: Int = 0,
-        listContinuation: Bool = false
+        listContinuation: Bool = false,
+        inQuote: Bool = false
     ) -> NSParagraphStyle {
-        let key = "\(String(describing: blockKind))|\(thematicBreak)|\(blockLine?.isFirst ?? false)|\(blockLine?.isLast ?? false)|\(listDepth)|\(listContinuation)"
+        let key = "\(String(describing: blockKind))|\(thematicBreak)|\(blockLine?.isFirst ?? false)|\(blockLine?.isLast ?? false)|\(listDepth)|\(listContinuation)|\(inQuote)"
         if let cached = paragraphStyleCache[key] { return cached }
         let style = buildParagraphStyle(
             for: blockKind,
             thematicBreak: thematicBreak,
             blockLine: blockLine,
             listDepth: listDepth,
-            listContinuation: listContinuation
+            listContinuation: listContinuation,
+            inQuote: inQuote
         )
         paragraphStyleCache[key] = style
         return style
@@ -1535,11 +1559,13 @@ private final class ReaderPresentationBuilder {
         thematicBreak: Bool,
         blockLine: (isFirst: Bool, isLast: Bool)? = nil,
         listDepth: Int = 0,
-        listContinuation: Bool = false
+        listContinuation: Bool = false,
+        inQuote: Bool = false
     ) -> NSParagraphStyle {
         let style = NSMutableParagraphStyle()
-        // Where a panel inside a list starts: the text column of its item.
+        // Where a panel inside a list or quote starts: the text column around it.
         let listIndent = theme.bodyFontSize * 2 * CGFloat(listDepth)
+            + (inQuote ? theme.bodyFontSize : 0)
         style.lineHeightMultiple = 1.65
         style.paragraphSpacing = theme.bodyFontSize * 0.75
         style.paragraphSpacingBefore = theme.bodyFontSize * 0.75

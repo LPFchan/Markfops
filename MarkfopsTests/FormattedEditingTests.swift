@@ -298,6 +298,32 @@ final class ReaderOffsetMapEditingTests: XCTestCase {
         }
     }
 
+    func testWideOrderedMarkerKeepsWrappedLinesWithTheText() throws {
+        let words = Array(repeating: "wrapping words", count: 12).joined(separator: " ")
+        let text = "123456789. \(words)"
+        let map = MarkdownSourceMap.parse(text)
+        for reveal in [nil, ReaderReveal.range(in: map, sourceCursor: 14)] {
+            let storage = NSTextStorage(attributedString: presentation(text, reveal: reveal).attributedString)
+            let layout = NSLayoutManager()
+            let container = NSTextContainer(size: NSSize(width: 400, height: 100_000))
+            container.lineFragmentPadding = 0
+            layout.addTextContainer(container)
+            storage.addLayoutManager(layout)
+            layout.ensureLayout(for: container)
+
+            let first = (storage.string as NSString).range(of: "wrapping").location
+            var lineStarts: [CGFloat] = []
+            layout.enumerateLineFragments(forGlyphRange: layout.glyphRange(for: container)) { rect, _, _, glyphs, _ in
+                let start = max(glyphs.location, layout.glyphIndexForCharacter(at: first))
+                lineStarts.append(rect.minX + layout.location(forGlyphAt: start).x)
+            }
+            XCTAssertGreaterThan(lineStarts.count, 1)
+            for x in lineStarts.dropFirst() {
+                XCTAssertEqual(x, lineStarts[0], accuracy: 0.5, "reveal \(String(describing: reveal))")
+            }
+        }
+    }
+
     func testSourceRangeMapsCharactersAndIncludesHiddenSyntaxStrictlyInside() throws {
         let text = "Some **bold** and `code` [link](https://x.y) here\n- item\n\nsee ![alt](missing.png)"
         let built = presentation(text)
