@@ -127,6 +127,13 @@ final class ReaderLayoutManager: NSLayoutManager {
 
             guard var blockRect = self.textBox(forGlyphRange: glyphRange, origin: origin) else { return }
 
+            // A panel inside a list starts at its item's text, not the column edge.
+            if let style = storage.attribute(.paragraphStyle, at: fullRange.location, effectiveRange: nil) as? NSParagraphStyle {
+                let inset = max(0, style.headIndent - self.theme.bodyFontSize * 1.25)
+                blockRect.origin.x += inset
+                blockRect.size.width -= inset
+            }
+
             let verticalPadding = self.theme.bodyFontSize * 1.25
             blockRect.origin.y -= verticalPadding
             blockRect.size.height += verticalPadding * 2

@@ -35,13 +35,13 @@ final class MarkdownSyntaxHighlighter: NSObject, NSTextStorageDelegate {
         Rule(regex: try! NSRegularExpression(pattern: #"\*\*[^*\n]+\*\*|__[^_\n]+__"#), color: .text),
         Rule(regex: try! NSRegularExpression(pattern: #"(?<!\*)\*(?!\*)([^*\n]+)(?<!\*)\*(?!\*)|(?<!_)_(?!_)([^_\n]+)(?<!_)_(?!_)"#), color: .purple),
         Rule(regex: try! NSRegularExpression(pattern: #"`[^`\n]+`"#), color: .orange),
-        Rule(regex: try! NSRegularExpression(pattern: #"^```.*$"#, options: [.anchorsMatchLines]), color: .orange),
+        Rule(regex: try! NSRegularExpression(pattern: #"^[ \t]*```.*$"#, options: [.anchorsMatchLines]), color: .orange),
         Rule(regex: try! NSRegularExpression(pattern: #"^>.*"#, options: [.anchorsMatchLines]), color: .gray),
         Rule(regex: try! NSRegularExpression(pattern: #"!\[([^\]]*)\]\([^)]+\)"#), color: .teal),
         Rule(regex: try! NSRegularExpression(pattern: #"\[([^\]]+)\]\([^)]+\)"#), color: .teal),
-        Rule(regex: try! NSRegularExpression(pattern: #"^[\-\*\+] "#, options: [.anchorsMatchLines]), color: .red),
-        Rule(regex: try! NSRegularExpression(pattern: #"^\d+\. "#, options: [.anchorsMatchLines]), color: .red),
-        Rule(regex: try! NSRegularExpression(pattern: #"^[\-\*] \[[ xX]\]"#, options: [.anchorsMatchLines]), color: .yellow),
+        Rule(regex: try! NSRegularExpression(pattern: #"^[ \t]*[\-\*\+] "#, options: [.anchorsMatchLines]), color: .red),
+        Rule(regex: try! NSRegularExpression(pattern: #"^[ \t]*\d+\. "#, options: [.anchorsMatchLines]), color: .red),
+        Rule(regex: try! NSRegularExpression(pattern: #"^[ \t]*[\-\*] \[[ xX]\]"#, options: [.anchorsMatchLines]), color: .yellow),
         Rule(regex: try! NSRegularExpression(pattern: #"^(\*{3,}|-{3,}|_{3,})\s*$"#, options: [.anchorsMatchLines]), color: .gray),
     ]
 

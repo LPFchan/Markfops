@@ -318,6 +318,10 @@ private struct ReaderSemanticContext {
     var linkRange: NSRange?
     var imageRange: NSRange?
     var listDepth: Int
+    var listItemRange: NSRange?
+    /// A paragraph after the first in its list item: it has no marker, so its
+    /// first line hangs with the rest.
+    var listContinuation: Bool
 
     static var empty: ReaderSemanticContext {
         ReaderSemanticContext(
@@ -326,7 +330,9 @@ private struct ReaderSemanticContext {
             inlineKinds: [],
             linkRange: nil,
             imageRange: nil,
-            listDepth: 0
+            listDepth: 0,
+            listItemRange: nil,
+            listContinuation: false
         )
     }
 }
@@ -601,7 +607,7 @@ private final class ReaderPresentationBuilder {
             let lineContext = self.context(at: absoluteRange.location)
             let line = source.substring(with: localRange)
             let isBlankLine = line == "\n"
-                && lineContext.blockKind == nil
+                && (lineContext.blockKind == nil || isListItem(lineContext.blockKind))
                 && atLineStart
             if isBlankLine {
                 blankLineReaderOffsets.append(output.length)
@@ -967,30 +973,47 @@ private final class ReaderPresentationBuilder {
         raw: Bool = false,
         edgeLines: (first: Bool, last: Bool) = (true, true)
     ) {
-        let source = string as NSString
-        var localStart = 0
-        var lineNumber = 0
+        // A block inside a list item repeats the item's indentation on every
+        // source line; up to the block's own column that is layout, not text.
+        var containerIndent = 0
+        if let block = context.blockRange {
+            let lineStart = text.lineRange(for: NSRange(location: block.location, length: 0)).location
+            containerIndent = block.location - lineStart
+        }
 
+        let source = string as NSString
+        var lines: [(indent: NSRange, text: NSRange)] = []
+        var localStart = 0
         while localStart < source.length {
             let remaining = NSRange(location: localStart, length: source.length - localStart)
             let newline = source.range(of: "\n", options: [], range: remaining)
-            let localEnd: Int
-            if newline.location != NSNotFound {
-                localEnd = NSMaxRange(newline)
-            } else {
-                localEnd = source.length
+            let localEnd = newline.location == NSNotFound ? source.length : NSMaxRange(newline)
+            let lineStart = sourceRange.location + localStart
+            var indent = 0
+            if lineStart == 0 || text.character(at: lineStart - 1) == 0x0A {
+                while indent < containerIndent, localStart + indent < localEnd,
+                      [0x20, 0x09].contains(source.character(at: localStart + indent)) {
+                    indent += 1
+                }
             }
+            lines.append((
+                NSRange(location: lineStart, length: indent),
+                NSRange(location: lineStart + indent, length: localEnd - localStart - indent)
+            ))
+            localStart = localEnd
+        }
+        let lastText = lines.lastIndex { $0.text.length > 0 }
 
-            let localRange = NSRange(location: localStart, length: localEnd - localStart)
-            let lineRange = NSRange(
-                location: sourceRange.location + localRange.location,
-                length: localRange.length
-            )
-            let atFirstLine = lineNumber == 0 && edgeLines.first
-            let atLastLine = localEnd == source.length && edgeLines.last
+        for (index, line) in lines.enumerated() {
+            if line.indent.length > 0 {
+                markOmitted(line.indent, kind: kind, role: .syntax)
+            }
+            guard line.text.length > 0 else { continue }
+            let atFirstLine = index == 0 && edgeLines.first
+            let atLastLine = index == lastText && edgeLines.last
             append(
-                source.substring(with: localRange),
-                sourceRange: lineRange,
+                text.substring(with: line.text),
+                sourceRange: line.text,
                 kind: kind,
                 role: role,
                 attributes: attributes(
@@ -1000,8 +1023,6 @@ private final class ReaderPresentationBuilder {
                     blockLine: (atFirstLine, atLastLine)
                 )
             )
-            localStart = localEnd
-            lineNumber += 1
         }
     }
 
@@ -1217,6 +1238,22 @@ private final class ReaderPresentationBuilder {
         return first == 0x0A ? 1 : nil
     }
 
+    /// An empty line between blocks of one list item is the same gap as one
+    /// between top-level blocks.
+    private func isListItem(_ kind: MarkdownSourceMap.Kind?) -> Bool {
+        if case .listItem = kind { return true }
+        return false
+    }
+
+    private func isPanelKind(_ kind: MarkdownSourceMap.Kind) -> Bool {
+        switch kind {
+        case .codeBlock, .table, .htmlBlock:
+            return true
+        default:
+            return false
+        }
+    }
+
     private func isRawKind(_ kind: MarkdownSourceMap.Kind) -> Bool {
         switch kind {
         case .table, .htmlBlock, .inlineHTML, .frontMatter:
@@ -1272,13 +1309,23 @@ private final class ReaderPresentationBuilder {
         // Syntax spans carry their parent's kind (a list marker is a listItem span,
         // an image's "!" is an image span). Only content spans define the context.
         if span.role == .content {
-            if isBlockKind(span.kind), next.blockKind == nil {
+            // The outermost block styles its text, except that a code block,
+            // table, or HTML block inside a list or quote keeps its own panel.
+            if isBlockKind(span.kind),
+               next.blockKind == nil || isPanelKind(span.kind) && !(next.blockKind.map(isPanelKind) ?? false) {
                 next.blockKind = span.kind
                 next.blockRange = span.range
             }
             switch span.kind {
             case .listItem:
                 next.listDepth += 1
+                next.listItemRange = span.range
+                next.listContinuation = false
+            case .paragraph:
+                if let item = next.listItemRange, span.range.location > item.location {
+                    let lead = NSRange(location: item.location, length: span.range.location - item.location)
+                    next.listContinuation = text.range(of: "\n", options: [], range: lead).location != NSNotFound
+                }
             case .emphasis, .strong, .strikethrough, .codeSpan:
                 if !next.inlineKinds.contains(span.kind) {
                     next.inlineKinds.append(span.kind)
@@ -1379,7 +1426,8 @@ private final class ReaderPresentationBuilder {
                 for: blockKind,
                 thematicBreak: thematicBreak,
                 blockLine: blockLine,
-                listDepth: context.listDepth
+                listDepth: context.listDepth,
+                listContinuation: context.listContinuation
             )
 
         var attributes: [NSAttributedString.Key: Any] = [
@@ -1466,15 +1514,17 @@ private final class ReaderPresentationBuilder {
         for blockKind: MarkdownSourceMap.Kind?,
         thematicBreak: Bool,
         blockLine: (isFirst: Bool, isLast: Bool)? = nil,
-        listDepth: Int = 0
+        listDepth: Int = 0,
+        listContinuation: Bool = false
     ) -> NSParagraphStyle {
-        let key = "\(String(describing: blockKind))|\(thematicBreak)|\(blockLine?.isFirst ?? false)|\(blockLine?.isLast ?? false)|\(listDepth)"
+        let key = "\(String(describing: blockKind))|\(thematicBreak)|\(blockLine?.isFirst ?? false)|\(blockLine?.isLast ?? false)|\(listDepth)|\(listContinuation)"
         if let cached = paragraphStyleCache[key] { return cached }
         let style = buildParagraphStyle(
             for: blockKind,
             thematicBreak: thematicBreak,
             blockLine: blockLine,
-            listDepth: listDepth
+            listDepth: listDepth,
+            listContinuation: listContinuation
         )
         paragraphStyleCache[key] = style
         return style
@@ -1484,9 +1534,12 @@ private final class ReaderPresentationBuilder {
         for blockKind: MarkdownSourceMap.Kind?,
         thematicBreak: Bool,
         blockLine: (isFirst: Bool, isLast: Bool)? = nil,
-        listDepth: Int = 0
+        listDepth: Int = 0,
+        listContinuation: Bool = false
     ) -> NSParagraphStyle {
         let style = NSMutableParagraphStyle()
+        // Where a panel inside a list starts: the text column of its item.
+        let listIndent = theme.bodyFontSize * 2 * CGFloat(listDepth)
         style.lineHeightMultiple = 1.65
         style.paragraphSpacing = theme.bodyFontSize * 0.75
         style.paragraphSpacingBefore = theme.bodyFontSize * 0.75
@@ -1508,8 +1561,8 @@ private final class ReaderPresentationBuilder {
             let markerIndent = theme.bodyFontSize * 2 * CGFloat(depth)
             style.paragraphSpacingBefore = theme.bodyFontSize * 0.25
             style.paragraphSpacing = theme.bodyFontSize * 0.25
-            style.firstLineHeadIndent = markerIndent
             style.headIndent = markerIndent + theme.bodyFontSize * 2
+            style.firstLineHeadIndent = listContinuation ? style.headIndent : markerIndent
             style.tabStops = [NSTextTab(
                 textAlignment: .left,
                 location: markerIndent + theme.bodyFontSize * 2
@@ -1528,8 +1581,8 @@ private final class ReaderPresentationBuilder {
             style.paragraphSpacing = blockLine?.isLast == true
                 ? theme.bodyFontSize * 1.25
                 : 0
-            style.firstLineHeadIndent = theme.bodyFontSize * 1.25
-            style.headIndent = theme.bodyFontSize * 1.25
+            style.firstLineHeadIndent = listIndent + theme.bodyFontSize * 1.25
+            style.headIndent = listIndent + theme.bodyFontSize * 1.25
             style.tailIndent = -theme.bodyFontSize * 1.25
         case .table, .htmlBlock:
             style.lineHeightMultiple = 1.6
@@ -1539,8 +1592,8 @@ private final class ReaderPresentationBuilder {
             style.paragraphSpacing = blockLine?.isLast == true
                 ? theme.bodyFontSize * 1.25
                 : 0
-            style.firstLineHeadIndent = theme.bodyFontSize * 1.25
-            style.headIndent = theme.bodyFontSize * 1.25
+            style.firstLineHeadIndent = listIndent + theme.bodyFontSize * 1.25
+            style.headIndent = listIndent + theme.bodyFontSize * 1.25
             style.tailIndent = -theme.bodyFontSize * 1.25
         default:
             break

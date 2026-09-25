@@ -4,6 +4,28 @@ import XCTest
 @testable import Markfops
 
 final class ReaderPresentationTests: XCTestCase {
+    func testBlocksInsideAListItemKeepTheirOwnStyleAtTheItemIndent() throws {
+        let text = "1. Run:\n\n   ```sh\n   mitmweb \\\n     -w out\n   ```\n\n   Reopen it later.\n"
+        let presentation = ReaderPresentation.build(text: text, sourceMap: MarkdownSourceMap.parse(text))
+        let output = presentation.attributedString
+        let rendered = output.string as NSString
+        func style(at fragment: String) -> NSParagraphStyle? {
+            output.attribute(.paragraphStyle, at: rendered.range(of: fragment).location, effectiveRange: nil) as? NSParagraphStyle
+        }
+
+        XCTAssertTrue(output.string.contains("mitmweb \\\n  -w out\n"), "code lines lose only the item's indentation")
+        XCTAssertFalse(output.string.contains("```"))
+        XCTAssertFalse(output.string.contains("   "))
+        XCTAssertNotNil(output.attribute(.readerCodeBlock, at: rendered.range(of: "mitmweb").location, effectiveRange: nil))
+
+        let item = try XCTUnwrap(style(at: "Run:"))
+        let code = try XCTUnwrap(style(at: "mitmweb"))
+        let continuation = try XCTUnwrap(style(at: "Reopen"))
+        XCTAssertEqual(code.headIndent, item.headIndent + ReaderTheme.default.bodyFontSize * 1.25, accuracy: 0.5)
+        XCTAssertEqual(continuation.firstLineHeadIndent, item.headIndent, "a later paragraph hangs with the item text")
+        XCTAssertEqual(continuation.headIndent, item.headIndent)
+    }
+
     func testPresentationHidesSyntaxAndStylesSupportedConstructs() throws {
         let text = """
         # Heading
@@ -483,7 +505,7 @@ final class ReaderPresentationTests: XCTestCase {
         XCTAssertEqual(try style(of: "After", in: presentation).paragraphSpacingBefore, 0)
     }
 
-    func testEmptyLinesInsideCodeAndListsAreNotTouched() throws {
+    func testEmptyLinesInsideCodeAreNotTouched() throws {
         let presentation = build("```\na\n\nb\n```\n- item\n\n  more\n")
         let rendered = presentation.attributedString.string as NSString
         let codeBlank = rendered.range(of: "a\n\nb").location + 2
@@ -496,7 +518,7 @@ final class ReaderPresentationTests: XCTestCase {
         let listStyle = try XCTUnwrap(
             presentation.attributedString.attribute(.paragraphStyle, at: listBlank, effectiveRange: nil) as? NSParagraphStyle
         )
-        XCTAssertEqual(listStyle.maximumLineHeight, 0, "a blank line inside a list item keeps the list style")
+        XCTAssertGreaterThan(listStyle.maximumLineHeight, 0, "a blank line inside a list item is a block gap like any other")
     }
 
     // MARK: - Fences reveal
