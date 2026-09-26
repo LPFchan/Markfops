@@ -228,6 +228,21 @@ final class ModeSwitchCursorTests: XCTestCase {
 
     // MARK: - Without a morph
 
+    func testFirstSwitchToTheReaderStaysAtTheTopOfTheDocument() throws {
+        let paragraph = Array(repeating: "a line of prose that wraps across the page", count: 6).joined(separator: " ")
+        let text = (1...12).map { "## Section \($0)\n\n\(paragraph)\n\n- one\n- two\n" }.joined(separator: "\n")
+        let host = try makeHost(text: "# Title\n\n" + text, mode: .edit)
+        host.editor.setSelectedRange(NSRange(location: 0, length: 0))
+        host.editor.scroll(.zero)
+
+        _ = host.switchMode(to: .preview)
+        host.waitForMorphToFinish()
+        host.pump(seconds: 1)
+
+        let scrollView = try XCTUnwrap(host.reader.enclosingScrollView)
+        XCTAssertEqual(scrollView.contentView.bounds.minY, 0, accuracy: 1, "the reader opens where the editor was: the top")
+    }
+
     func testCursorCrossesASwitchThatDoesNotMorph() throws {
         ModeMorphPolicy.isDisabledForTesting = true
         let host = try makeHost(text: "Some **bold** text\n", mode: .edit)
