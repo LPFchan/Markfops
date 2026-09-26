@@ -3,4 +3,23 @@
 set -eu
 
 repo_root=$(git rev-parse --show-toplevel)
-exec "$repo_root/scripts/check-commit-standards.sh" "$1"
+"$repo_root/scripts/check-commit-standards.sh" "$1"
+
+# Template version gate: a commit that changes scaffold content must also
+# change the Template version line in scaffold/records/REPO.md. Version-only
+# bumps satisfy this trivially (they change the line). Exception commits
+# (bootstrap/migration) already passed the checker and are exempt here too.
+if grep -Eqi '^(bootstrap|migration)(\b| exception\b)' "$1" ||
+   grep -Eqi '^exception: (bootstrap|migration)$' "$1"; then
+  exit 0
+fi
+
+scaffold_changes=$(git -C "$repo_root" diff --cached --name-only -- scaffold/ || true)
+[ -n "$scaffold_changes" ] || exit 0
+
+version_changed=$(git -C "$repo_root" diff --cached -- scaffold/records/REPO.md | grep -c '^[+-]\*\*Template version:' || true)
+if [ "$version_changed" -lt 2 ]; then
+  echo "commit-msg hook failed: scaffold/ content changed but Template version in scaffold/records/REPO.md did not" >&2
+  echo "bump the version in the same commit, or mark the commit as an explicit exception" >&2
+  exit 1
+fi

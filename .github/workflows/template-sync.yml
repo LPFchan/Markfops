@@ -1,0 +1,54 @@
+# Weekly repo-template self-sync. Template-managed: updated by
+# sync-from-template.sh on every run; do not edit locally.
+name: template-sync
+
+on:
+  schedule:
+    - cron: "0 22 * * 0" # Monday 07:00 KST
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync from repo-template
+        id: sync
+        run: |
+          git config user.name "template-sync[bot]"
+          git config user.email "template-sync[bot]@users.noreply.github.com"
+          bash scripts/sync-from-template.sh | tee sync.log
+          grep '^SYNC-' sync.log >> "$GITHUB_OUTPUT"
+
+      - name: Commit changes
+        if: steps.sync.outputs.SYNC-CHANGED == '1'
+        env:
+          SYNC_VERSION: ${{ steps.sync.outputs.SYNC-VERSION }}
+        run: |
+          TS=$(date -u -d '+9 hours' '+%Y-%m-%d %H-%M-%S KST')
+          LOGID="LOG-$(date -u -d '+9 hours' '+%Y%m%d-%H%M%S')-actions"
+          PROJECT=$(basename "$GITHUB_REPOSITORY")
+          cat > /tmp/sync-msg.txt <<MSG
+          chore: sync repo-template $SYNC_VERSION
+
+          timestamp: $TS
+          changes:
+          - sync template-managed files and the AGENTS.md managed section from repo-template $SYNC_VERSION
+          rationale:
+          - weekly deterministic scaffold sync (template-sync workflow)
+          checks:
+          - managed content is byte-identical to repo-template scaffold
+
+          project: $PROJECT
+          agent: actions
+          role: worker
+          commit: $LOGID
+          MSG
+          sed -i 's/^  //' /tmp/sync-msg.txt
+          git add -A
+          git commit -F /tmp/sync-msg.txt
+          git push
