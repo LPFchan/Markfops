@@ -63,12 +63,6 @@ final class ReaderRevealTests: XCTestCase {
         ).attributedString.string
         XCTAssertTrue(reader.contains(" -w "), "the code span keeps its backticks hidden in \(reader.debugDescription)")
         XCTAssertTrue(reader.contains("```sh"), "the fences show")
-        XCTAssertEqual(
-            ReaderReveal.span(of: ReaderReveal.ranges(in: map, sourceCursor: source.range(of: "mkdir").location)),
-            NSRange(location: 0, length: NSMaxRange(block)),
-            "the reveal transition measures the text between the marker and the block too"
-        )
-        XCTAssertNil(ReaderReveal.span(of: []))
     }
 
     func testOnlyTheInnermostListItemRevealsItsMarker() {
@@ -615,6 +609,38 @@ final class RevealTransitionRemapTests: XCTestCase {
             prefix: "**",
             suffix: "**"
         )
+    }
+
+    func testRevealTransitionMeasuresVisibleParagraphsBetweenChangedRanges() {
+        let text = "```sh\na\n```\n\nBetween the blocks.\n\n```sh\nb\n```\n\nAfter.\n"
+        let source = text as NSString
+        let built = ReaderPresentation.build(text: text, sourceMap: MarkdownSourceMap.parse(text))
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 2_000))
+        textView.textStorage?.setAttributedString(built.attributedString)
+        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+        let first = source.range(of: "```sh\na\n```")
+        let second = source.range(of: "```sh\nb\n```")
+
+        let measured = RevealTransitionPlanner.sourceRangesExtendedToVisibleBottom(
+            [first, second],
+            in: textView,
+            map: built.offsetMap
+        )
+        for fragment in ["Between", "After"] {
+            let location = source.range(of: fragment).location
+            XCTAssertTrue(
+                measured.contains { NSLocationInRange(location, $0) },
+                "\(fragment) moves when a fence above it shows or hides, so it is measured"
+            )
+        }
+        let paragraphs = RevealTransitionPlanner.paragraphRanges(
+            for: measured,
+            map: built.offsetMap,
+            string: built.attributedString.string as NSString
+        )
+        for (earlier, later) in zip(paragraphs, paragraphs.dropFirst()) {
+            XCTAssertLessThan(NSMaxRange(earlier), later.location, "each paragraph is measured once: \(paragraphs)")
+        }
     }
 
     func testWrapRemapsEveryGlyphWithoutCollisionsOrDeletions() {

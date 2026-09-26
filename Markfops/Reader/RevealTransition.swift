@@ -144,9 +144,11 @@ enum RevealTransitionPlanner {
     /// real glyph instead of getting a layer.
     static let stillTolerance: CGFloat = 0.5
 
-    /// `sourceRanges` plus the paragraphs below them that intersect the text
-    /// view's visible rect, so glyphs a height change pushes down or pulls up
-    /// slide instead of jumping; characters that end up still cost no layer.
+    /// `sourceRanges` plus every visible paragraph from the first of them
+    /// down, so glyphs a height change pushes down or pulls up slide instead
+    /// of jumping, including those between two changed ranges (moving the
+    /// caret from one code block to another); characters that end up still
+    /// cost no layer.
     /// In source offsets so an edit can measure the same paragraphs in the
     /// old text and, shifted, in the new one. Paragraphs above the viewport
     /// are skipped: nothing visible depends on them.
@@ -155,7 +157,7 @@ enum RevealTransitionPlanner {
         in textView: NSTextView,
         map: ReaderOffsetMap
     ) -> [NSRange] {
-        guard let last = sourceRanges.max(by: { NSMaxRange($0) < NSMaxRange($1) }),
+        guard let first = sourceRanges.min(by: { $0.location < $1.location }),
               let layoutManager = textView.layoutManager,
               let container = textView.textContainer,
               let storage = textView.textStorage else { return sourceRanges }
@@ -171,7 +173,7 @@ enum RevealTransitionPlanner {
         )
         let visibleStart = map.sourceOffset(forReaderOffset: visibleParagraphs.location)
         let visibleEnd = map.sourceOffset(forReaderOffset: NSMaxRange(visibleParagraphs))
-        let start = max(NSMaxRange(last), visibleStart)
+        let start = max(first.location, visibleStart)
         guard visibleEnd > start else { return sourceRanges }
         return sourceRanges + [NSRange(location: start, length: visibleEnd - start)]
     }
@@ -185,23 +187,23 @@ enum RevealTransitionPlanner {
         map: ReaderOffsetMap,
         string: NSString
     ) -> [NSRange] {
-        var ranges: [NSRange] = []
-        for sourceRange in sourceRanges {
+        let paragraphs = sourceRanges.compactMap { sourceRange -> NSRange? in
             let start = map.readerOffset(forSourceOffset: sourceRange.location)
             let end = map.readerOffset(forSourceOffset: NSMaxRange(sourceRange))
             let location = max(0, min(min(start, end), string.length))
             let length = max(0, min(abs(end - start), string.length - location))
             let paragraph = string.paragraphRange(for: NSRange(location: location, length: length))
-            guard paragraph.length > 0 else { continue }
-            if let index = ranges.firstIndex(where: {
-                NSMaxRange($0) >= paragraph.location && NSMaxRange(paragraph) >= $0.location
-            }) {
-                ranges[index] = NSUnionRange(ranges[index], paragraph)
+            return paragraph.length > 0 ? paragraph : nil
+        }
+        var ranges: [NSRange] = []
+        for paragraph in paragraphs.sorted(by: { $0.location < $1.location }) {
+            if let last = ranges.last, NSMaxRange(last) >= paragraph.location {
+                ranges[ranges.count - 1] = NSUnionRange(last, paragraph)
             } else {
                 ranges.append(paragraph)
             }
         }
-        return ranges.sorted { $0.location < $1.location }
+        return ranges
     }
 
     /// Measures the paragraphs holding `sourceRanges` in the text view's
