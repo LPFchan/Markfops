@@ -492,6 +492,8 @@ struct ReaderView: NSViewRepresentable {
         var pendingViewportSourceLine: Int?
         var pendingScrollRatio: Double?
         var pendingHeading: HeadingNode?
+        /// A viewport restore landed since the last first build of a document.
+        private var didRestoreViewport = false
         /// Source cursor arriving from a mode switch, placed (with its reveal)
         /// by the next build so the morph plans against the revealed text.
         var pendingSourceCursor: Int?
@@ -566,10 +568,14 @@ struct ReaderView: NSViewRepresentable {
             }
 
             guard needsRatioScroll else { return }
+            didRestoreViewport = false
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.isActive else { return }
                 self.scrollView?.layoutSubtreeIfNeeded()
-                if self.pendingViewportSourceLine == nil,
+                // A mode switch places the new build on its anchor in the
+                // same turn; the saved ratio is only for a build nothing placed.
+                if !self.didRestoreViewport,
+                   self.pendingViewportSourceLine == nil,
                    self.pendingScrollRatio == nil {
                     self.scrollToRatio(self.document.scrollRatio)
                 }
@@ -1463,9 +1469,11 @@ struct ReaderView: NSViewRepresentable {
                 if !scrollToSourceLineCentered(sourceLine), let ratio = fallbackRatio {
                     scrollToRatio(ratio)
                 }
+                didRestoreViewport = true
             } else if let ratio = pendingScrollRatio {
                 pendingScrollRatio = nil
                 scrollToRatio(ratio)
+                didRestoreViewport = true
             }
 
             if let pendingHeading, scrollToSourceLineCentered(pendingHeading.lineNumber) {
