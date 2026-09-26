@@ -144,9 +144,11 @@ enum RevealTransitionPlanner {
     /// real glyph instead of getting a layer.
     static let stillTolerance: CGFloat = 0.5
 
-    /// `sourceRanges` plus the paragraphs below them that intersect the text
-    /// view's visible rect, so glyphs a height change pushes down or pulls up
-    /// slide instead of jumping; characters that end up still cost no layer.
+    /// `sourceRanges` plus every visible paragraph from the first of them
+    /// down, so glyphs a height change pushes down or pulls up slide instead
+    /// of jumping, including those between two changed ranges (moving the
+    /// caret from one code block to another); characters that end up still
+    /// cost no layer.
     /// In source offsets so an edit can measure the same paragraphs in the
     /// old text and, shifted, in the new one. Paragraphs above the viewport
     /// are skipped: nothing visible depends on them.
@@ -155,7 +157,7 @@ enum RevealTransitionPlanner {
         in textView: NSTextView,
         map: ReaderOffsetMap
     ) -> [NSRange] {
-        guard let last = sourceRanges.max(by: { NSMaxRange($0) < NSMaxRange($1) }),
+        guard let first = sourceRanges.min(by: { $0.location < $1.location }),
               let layoutManager = textView.layoutManager,
               let container = textView.textContainer,
               let storage = textView.textStorage else { return sourceRanges }
@@ -171,7 +173,7 @@ enum RevealTransitionPlanner {
         )
         let visibleStart = map.sourceOffset(forReaderOffset: visibleParagraphs.location)
         let visibleEnd = map.sourceOffset(forReaderOffset: NSMaxRange(visibleParagraphs))
-        let start = max(NSMaxRange(last), visibleStart)
+        let start = max(first.location, visibleStart)
         guard visibleEnd > start else { return sourceRanges }
         return sourceRanges + [NSRange(location: start, length: visibleEnd - start)]
     }
