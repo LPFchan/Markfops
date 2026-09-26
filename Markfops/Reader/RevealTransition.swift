@@ -468,7 +468,7 @@ final class RevealTransitionOverlay: NSView {
 
         for entry in plan.entries {
             let width = (entry.to ?? entry.from)?.width ?? 0
-            let glyph = MorphGlyphLayer(text: entry.text, font: entry.font, width: width, scale: scale)
+            let glyph = MorphGlyphLayer(text: entry.text, font: entry.font, width: width, scale: scale, appearance: textView.effectiveAppearance)
             let from = entry.from.map { position(for: $0, font: entry.font, in: textView) }
             let to = entry.to.map { position(for: $0, font: entry.font, in: textView) }
             let start = from ?? to ?? .zero
@@ -480,7 +480,7 @@ final class RevealTransitionOverlay: NSView {
 
             var fromLayer: MorphGlyphLayer?
             if entry.crossfades, let oldBox = entry.from, let newBox = entry.to {
-                let old = MorphGlyphLayer(text: oldBox.attributed, font: oldBox.font, width: oldBox.width, scale: scale)
+                let old = MorphGlyphLayer(text: oldBox.attributed, font: oldBox.font, width: oldBox.width, scale: scale, appearance: textView.effectiveAppearance)
                 old.position = position(for: oldBox, font: oldBox.font, in: textView)
                 old.opacity = 1
                 layer?.addSublayer(old)
@@ -571,9 +571,10 @@ final class RevealTransitionOverlay: NSView {
 }
 
 extension MorphGlyphLayer {
-    convenience init(text: NSAttributedString, font: NSFont, width: CGFloat, scale: CGFloat) {
+    convenience init(text: NSAttributedString, font: NSFont, width: CGFloat, scale: CGFloat, appearance: NSAppearance) {
         self.init()
         self.text = text
+        self.appearance = appearance
         descent = -font.descender
         bounds = CGRect(
             x: 0,

@@ -28,12 +28,18 @@ struct ModeMorphRequest {
 final class MorphGlyphLayer: CALayer {
     var text: NSAttributedString?
     var descent: CGFloat = 0
+    /// The appearance the text's dynamic colors resolve in. A layer draws
+    /// outside any view's drawing pass, where the current appearance can be
+    /// stale (dark text on a light window after a system appearance change).
+    var appearance: NSAppearance?
 
     override func draw(in context: CGContext) {
         guard let text else { return }
-        let line = CTLineCreateWithAttributedString(text)
-        context.textPosition = CGPoint(x: 0, y: descent)
-        CTLineDraw(line, context)
+        (appearance ?? NSApp.effectiveAppearance).performAsCurrentDrawingAppearance {
+            let line = CTLineCreateWithAttributedString(text)
+            context.textPosition = CGPoint(x: 0, y: descent)
+            CTLineDraw(line, context)
+        }
     }
 }
 
@@ -336,6 +342,7 @@ final class ModeMorphOverlay: NSView {
         guard let text else { return nil }
         let glyph = MorphGlyphLayer()
         glyph.text = text
+        glyph.appearance = effectiveAppearance
         glyph.descent = -box.font.descender
         glyph.bounds = CGRect(
             x: 0,

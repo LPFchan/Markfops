@@ -643,6 +643,35 @@ final class RevealTransitionRemapTests: XCTestCase {
         }
     }
 
+    func testGlyphCopiesDrawInTheirViewsAppearanceNotTheCurrentOne() throws {
+        let font = NSFont.systemFont(ofSize: 40, weight: .black)
+        let text = NSAttributedString(string: "W", attributes: [.font: font, .foregroundColor: NSColor.textColor])
+        let glyph = MorphGlyphLayer(
+            text: text,
+            font: font,
+            width: 60,
+            scale: 1,
+            appearance: try XCTUnwrap(NSAppearance(named: .aqua))
+        )
+        let width = Int(glyph.bounds.width), height = Int(glyph.bounds.height)
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        // A stale dark appearance, as after switching the system to light mode.
+        let previous = NSAppearance.current
+        NSAppearance.current = NSAppearance(named: .darkAqua)
+        glyph.draw(in: context)
+        NSAppearance.current = previous
+
+        let pixels = try XCTUnwrap(context.data).bindMemory(to: UInt8.self, capacity: width * height * 4)
+        var brightest = 0
+        for index in stride(from: 0, to: width * height * 4, by: 4) where pixels[index + 3] > 200 {
+            brightest = max(brightest, Int(pixels[index]))
+        }
+        XCTAssertLessThan(brightest, 100, "light-mode text is dark, not the dark appearance's white")
+    }
+
     func testWrapRemapsEveryGlyphWithoutCollisionsOrDeletions() {
         let before = snapshot(offsets: 0..<14)
         let wrap = edit("Some bold text", select: "bold")
