@@ -633,6 +633,14 @@ final class RevealTransitionRemapTests: XCTestCase {
                 "\(fragment) moves when a fence above it shows or hides, so it is measured"
             )
         }
+        let paragraphs = RevealTransitionPlanner.paragraphRanges(
+            for: measured,
+            map: built.offsetMap,
+            string: built.attributedString.string as NSString
+        )
+        for (earlier, later) in zip(paragraphs, paragraphs.dropFirst()) {
+            XCTAssertLessThan(NSMaxRange(earlier), later.location, "each paragraph is measured once: \(paragraphs)")
+        }
     }
 
     func testWrapRemapsEveryGlyphWithoutCollisionsOrDeletions() {

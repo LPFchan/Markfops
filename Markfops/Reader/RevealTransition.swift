@@ -187,23 +187,23 @@ enum RevealTransitionPlanner {
         map: ReaderOffsetMap,
         string: NSString
     ) -> [NSRange] {
-        var ranges: [NSRange] = []
-        for sourceRange in sourceRanges {
+        let paragraphs = sourceRanges.compactMap { sourceRange -> NSRange? in
             let start = map.readerOffset(forSourceOffset: sourceRange.location)
             let end = map.readerOffset(forSourceOffset: NSMaxRange(sourceRange))
             let location = max(0, min(min(start, end), string.length))
             let length = max(0, min(abs(end - start), string.length - location))
             let paragraph = string.paragraphRange(for: NSRange(location: location, length: length))
-            guard paragraph.length > 0 else { continue }
-            if let index = ranges.firstIndex(where: {
-                NSMaxRange($0) >= paragraph.location && NSMaxRange(paragraph) >= $0.location
-            }) {
-                ranges[index] = NSUnionRange(ranges[index], paragraph)
+            return paragraph.length > 0 ? paragraph : nil
+        }
+        var ranges: [NSRange] = []
+        for paragraph in paragraphs.sorted(by: { $0.location < $1.location }) {
+            if let last = ranges.last, NSMaxRange(last) >= paragraph.location {
+                ranges[ranges.count - 1] = NSUnionRange(last, paragraph)
             } else {
                 ranges.append(paragraph)
             }
         }
-        return ranges.sorted { $0.location < $1.location }
+        return ranges
     }
 
     /// Measures the paragraphs holding `sourceRanges` in the text view's
