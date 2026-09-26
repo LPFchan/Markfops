@@ -292,21 +292,21 @@ struct ReaderPresentation {
     let attributedString: NSAttributedString
     let offsetMap: ReaderOffsetMap
 
-    /// - Parameter revealedSourceRange: source range whose otherwise hidden
+    /// - Parameter revealedSourceRanges: source ranges whose otherwise hidden
     ///   syntax is emitted one-to-one, Typora-style, around the text cursor.
     static func build(
         text: String,
         sourceMap: MarkdownSourceMap,
         theme: ReaderTheme = .default,
         baseURL: URL? = nil,
-        revealedSourceRange: NSRange? = nil
+        revealedSourceRanges: [NSRange] = []
     ) -> ReaderPresentation {
         Builder(
             text: text,
             sourceMap: sourceMap,
             theme: theme,
             baseURL: baseURL,
-            revealedSourceRange: revealedSourceRange
+            revealedSourceRanges: revealedSourceRanges
         ).build()
     }
 }
@@ -344,7 +344,7 @@ private final class ReaderPresentationBuilder {
     let sourceMap: MarkdownSourceMap
     let theme: ReaderTheme
     let baseURL: URL?
-    let revealedSourceRange: NSRange?
+    let revealedSourceRanges: [NSRange]
 
     var output = NSMutableAttributedString()
     var records: [ReaderOffsetMap.Record] = []
@@ -369,13 +369,13 @@ private final class ReaderPresentationBuilder {
         sourceMap: MarkdownSourceMap,
         theme: ReaderTheme,
         baseURL: URL?,
-        revealedSourceRange: NSRange? = nil
+        revealedSourceRanges: [NSRange] = []
     ) {
         self.text = text as NSString
         self.sourceMap = sourceMap
         self.theme = theme
         self.baseURL = baseURL
-        self.revealedSourceRange = revealedSourceRange
+        self.revealedSourceRanges = revealedSourceRanges
         self.sourceToReader = Array(repeating: -1, count: self.text.length + 1)
 
         for index in 0..<self.text.length where self.text.character(at: index) == 0x0A {
@@ -726,9 +726,9 @@ private final class ReaderPresentationBuilder {
     }
 
     private func isRevealed(_ range: NSRange) -> Bool {
-        guard let revealedSourceRange else { return false }
-        return revealedSourceRange.location <= range.location
-            && NSMaxRange(range) <= NSMaxRange(revealedSourceRange)
+        revealedSourceRanges.contains { revealed in
+            revealed.location <= range.location && NSMaxRange(range) <= NSMaxRange(revealed)
+        }
     }
 
     /// A fence line shown in place, dimmed, in the block's monospaced style.
@@ -778,8 +778,7 @@ private final class ReaderPresentationBuilder {
         in context: ReaderSemanticContext
     ) -> (opening: Bool, closing: Bool) {
         guard let blockRange = context.blockRange,
-              let revealedSourceRange,
-              NSIntersectionRange(blockRange, revealedSourceRange).length > 0,
+              revealedSourceRanges.contains(where: { NSIntersectionRange(blockRange, $0).length > 0 }),
               let fences = fencedBlock(touching: blockRange) else {
             return (false, false)
         }
@@ -795,9 +794,7 @@ private final class ReaderPresentationBuilder {
         _ run: MarkdownSourceMap.Run,
         context: ReaderSemanticContext
     ) {
-        if let revealedSourceRange,
-           revealedSourceRange.location <= run.range.location,
-           NSMaxRange(run.range) <= NSMaxRange(revealedSourceRange) {
+        if isRevealed(run.range) {
             var attributes = attributes(for: run.kind, context: context)
             attributes[.foregroundColor] = theme.secondaryColor
             attributes[.link] = nil

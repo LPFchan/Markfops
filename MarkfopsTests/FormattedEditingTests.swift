@@ -9,61 +9,86 @@ final class ReaderRevealTests: XCTestCase {
         let map = MarkdownSourceMap.parse(text)
         let bold = (text as NSString).range(of: "**bold**")
 
-        XCTAssertEqual(ReaderReveal.range(in: map, sourceCursor: bold.location + 4), bold)
-        XCTAssertEqual(ReaderReveal.range(in: map, sourceCursor: bold.location), bold)
-        XCTAssertEqual(ReaderReveal.range(in: map, sourceCursor: NSMaxRange(bold)), bold)
-        XCTAssertNil(ReaderReveal.range(in: map, sourceCursor: 0))
-        XCTAssertNil(ReaderReveal.range(in: map, sourceCursor: (text as NSString).length))
+        XCTAssertEqual(ReaderReveal.ranges(in: map, sourceCursor: bold.location + 4), [bold])
+        XCTAssertEqual(ReaderReveal.ranges(in: map, sourceCursor: bold.location), [bold])
+        XCTAssertEqual(ReaderReveal.ranges(in: map, sourceCursor: NSMaxRange(bold)), [bold])
+        XCTAssertEqual(ReaderReveal.ranges(in: map, sourceCursor: 0), [])
+        XCTAssertEqual(ReaderReveal.ranges(in: map, sourceCursor: (text as NSString).length), [])
     }
 
     func testHeadingRevealsWholeLineAndNestedInlineRevealsOutermost() {
         let heading = "# Head *em*\nbody"
         let headingMap = MarkdownSourceMap.parse(heading)
         let headingRange = (heading as NSString).range(of: "# Head *em*")
-        XCTAssertEqual(ReaderReveal.range(in: headingMap, sourceCursor: 3), headingRange)
-        XCTAssertEqual(ReaderReveal.range(in: headingMap, sourceCursor: 9), headingRange)
-        XCTAssertNil(ReaderReveal.range(in: headingMap, sourceCursor: (heading as NSString).length))
+        XCTAssertEqual(ReaderReveal.ranges(in: headingMap, sourceCursor: 3), [headingRange])
+        XCTAssertEqual(ReaderReveal.ranges(in: headingMap, sourceCursor: 9), [headingRange])
+        XCTAssertEqual(ReaderReveal.ranges(in: headingMap, sourceCursor: (heading as NSString).length), [])
 
         let nested = "*a **b** c*"
         let nestedMap = MarkdownSourceMap.parse(nested)
         XCTAssertEqual(
-            ReaderReveal.range(in: nestedMap, sourceCursor: 5),
-            NSRange(location: 0, length: (nested as NSString).length)
+            ReaderReveal.ranges(in: nestedMap, sourceCursor: 5),
+            [NSRange(location: 0, length: (nested as NSString).length)]
         )
 
         let code = "x `code` y"
         let codeMap = MarkdownSourceMap.parse(code)
         XCTAssertEqual(
-            ReaderReveal.range(in: codeMap, sourceCursor: 4),
-            (code as NSString).range(of: "`code`")
+            ReaderReveal.ranges(in: codeMap, sourceCursor: 4),
+            [(code as NSString).range(of: "`code`")]
         )
 
         let list = "- item"
         XCTAssertEqual(
-            ReaderReveal.range(in: MarkdownSourceMap.parse(list), sourceCursor: 3),
-            NSRange(location: 0, length: 2),
+            ReaderReveal.ranges(in: MarkdownSourceMap.parse(list), sourceCursor: 3),
+            [NSRange(location: 0, length: 2)],
             "the item's marker reveals while the cursor is in the item"
         )
+    }
+
+    func testListMarkerRevealDoesNotRevealTheTextBeforeTheCursor() {
+        let text = "1. Start. `-w` saves:\n\n   ```sh\n   mkdir x\n   ```\n"
+        let source = text as NSString
+        let map = MarkdownSourceMap.parse(text)
+        let block = source.range(of: "```sh\n   mkdir x\n   ```")
+        XCTAssertEqual(
+            ReaderReveal.ranges(in: map, sourceCursor: source.range(of: "mkdir").location),
+            [NSRange(location: 0, length: 3), block],
+            "the item's marker and the code block, not the code span between them"
+        )
+        let reader = ReaderPresentation.build(
+            text: text,
+            sourceMap: map,
+            revealedSourceRanges: ReaderReveal.ranges(in: map, sourceCursor: source.range(of: "mkdir").location)
+        ).attributedString.string
+        XCTAssertTrue(reader.contains(" -w "), "the code span keeps its backticks hidden in \(reader.debugDescription)")
+        XCTAssertTrue(reader.contains("```sh"), "the fences show")
+        XCTAssertEqual(
+            ReaderReveal.span(of: ReaderReveal.ranges(in: map, sourceCursor: source.range(of: "mkdir").location)),
+            NSRange(location: 0, length: NSMaxRange(block)),
+            "the reveal transition measures the text between the marker and the block too"
+        )
+        XCTAssertNil(ReaderReveal.span(of: []))
     }
 
     func testOnlyTheInnermostListItemRevealsItsMarker() {
         let text = "- a\n  - b\n- c"
         let source = text as NSString
         let map = MarkdownSourceMap.parse(text)
-        XCTAssertEqual(ReaderReveal.range(in: map, sourceCursor: 2), NSRange(location: 0, length: 2))
+        XCTAssertEqual(ReaderReveal.ranges(in: map, sourceCursor: 2), [NSRange(location: 0, length: 2)])
         XCTAssertEqual(
-            ReaderReveal.range(in: map, sourceCursor: source.range(of: "b").location),
-            source.range(of: "- ", options: [], range: NSRange(location: 4, length: 5)),
+            ReaderReveal.ranges(in: map, sourceCursor: source.range(of: "b").location),
+            [source.range(of: "- ", options: [], range: NSRange(location: 4, length: 5))],
             "the nested item's marker, not the parent's"
         )
         XCTAssertEqual(
-            ReaderReveal.range(in: map, sourceCursor: source.range(of: "c").location),
-            NSRange(location: source.range(of: "- c").location, length: 2)
+            ReaderReveal.ranges(in: map, sourceCursor: source.range(of: "c").location),
+            [NSRange(location: source.range(of: "- c").location, length: 2)]
         )
         let ordered = "1. one\n2. two"
-        XCTAssertEqual(ReaderReveal.range(in: MarkdownSourceMap.parse(ordered), sourceCursor: 9), NSRange(location: 7, length: 3))
+        XCTAssertEqual(ReaderReveal.ranges(in: MarkdownSourceMap.parse(ordered), sourceCursor: 9), [NSRange(location: 7, length: 3)])
         let task = "- [ ] do"
-        XCTAssertEqual(ReaderReveal.range(in: MarkdownSourceMap.parse(task), sourceCursor: 7), NSRange(location: 0, length: 6))
+        XCTAssertEqual(ReaderReveal.ranges(in: MarkdownSourceMap.parse(task), sourceCursor: 7), [NSRange(location: 0, length: 6)])
     }
 
     func testFencedCodeBlockRevealsBothFencesAndQuoteRevealsItsMarkers() {
@@ -76,30 +101,30 @@ final class ReaderRevealTests: XCTestCase {
             length: NSMaxRange(closingFence) - source.range(of: "```swift").location
         )
         XCTAssertEqual(block, source.range(of: "```swift\nlet x = 1\n```"))
-        XCTAssertEqual(ReaderReveal.range(in: map, sourceCursor: source.range(of: "x = 1").location), block)
-        XCTAssertEqual(ReaderReveal.range(in: map, sourceCursor: source.range(of: "```swift").location + 3), block, "on the opening fence")
-        XCTAssertEqual(ReaderReveal.range(in: map, sourceCursor: closingFence.location + 1), block, "on the closing fence")
-        XCTAssertEqual(ReaderReveal.range(in: map, sourceCursor: NSMaxRange(block)), block, "at the end of the closing fence")
-        XCTAssertNil(ReaderReveal.range(in: map, sourceCursor: NSMaxRange(block) + 1), "on the empty line after the block")
-        XCTAssertNil(ReaderReveal.range(in: map, sourceCursor: source.range(of: "After").location))
-        XCTAssertNil(ReaderReveal.range(in: map, sourceCursor: 2))
+        XCTAssertEqual(ReaderReveal.ranges(in: map, sourceCursor: source.range(of: "x = 1").location), [block])
+        XCTAssertEqual(ReaderReveal.ranges(in: map, sourceCursor: source.range(of: "```swift").location + 3), [block], "on the opening fence")
+        XCTAssertEqual(ReaderReveal.ranges(in: map, sourceCursor: closingFence.location + 1), [block], "on the closing fence")
+        XCTAssertEqual(ReaderReveal.ranges(in: map, sourceCursor: NSMaxRange(block)), [block], "at the end of the closing fence")
+        XCTAssertEqual(ReaderReveal.ranges(in: map, sourceCursor: NSMaxRange(block) + 1), [], "on the empty line after the block")
+        XCTAssertEqual(ReaderReveal.ranges(in: map, sourceCursor: source.range(of: "After").location), [])
+        XCTAssertEqual(ReaderReveal.ranges(in: map, sourceCursor: 2), [])
 
         let indented = "para\n\n    code\n"
-        XCTAssertNil(ReaderReveal.range(in: MarkdownSourceMap.parse(indented), sourceCursor: 10))
+        XCTAssertEqual(ReaderReveal.ranges(in: MarkdownSourceMap.parse(indented), sourceCursor: 10), [])
 
         let quote = "> one\n> two *em*\n\npara"
         let quoteSource = quote as NSString
         let quoteMap = MarkdownSourceMap.parse(quote)
         let quoteRange = quoteSource.range(of: "> one\n> two *em*")
-        XCTAssertEqual(ReaderReveal.range(in: quoteMap, sourceCursor: 3), quoteRange)
-        XCTAssertEqual(ReaderReveal.range(in: quoteMap, sourceCursor: quoteSource.range(of: "em").location), quoteRange, "an inline inside the quote reveals with it")
-        XCTAssertNil(ReaderReveal.range(in: quoteMap, sourceCursor: quoteSource.range(of: "para").location))
+        XCTAssertEqual(ReaderReveal.ranges(in: quoteMap, sourceCursor: 3), [quoteRange])
+        XCTAssertEqual(ReaderReveal.ranges(in: quoteMap, sourceCursor: quoteSource.range(of: "em").location), [quoteRange], "an inline inside the quote reveals with it")
+        XCTAssertEqual(ReaderReveal.ranges(in: quoteMap, sourceCursor: quoteSource.range(of: "para").location), [])
 
         let nested = "> outer\n> > inner\n"
         let nestedMap = MarkdownSourceMap.parse(nested)
         XCTAssertEqual(
-            ReaderReveal.range(in: nestedMap, sourceCursor: (nested as NSString).range(of: "inner").location),
-            (nested as NSString).range(of: "> outer\n> > inner")
+            ReaderReveal.ranges(in: nestedMap, sourceCursor: (nested as NSString).range(of: "inner").location),
+            [(nested as NSString).range(of: "> outer\n> > inner")]
         )
     }
 }
@@ -236,11 +261,11 @@ final class ReaderNewlineTests: XCTestCase {
 }
 
 final class ReaderOffsetMapEditingTests: XCTestCase {
-    private func presentation(_ text: String, reveal: NSRange? = nil) -> ReaderPresentation {
+    private func presentation(_ text: String, reveal: [NSRange] = []) -> ReaderPresentation {
         ReaderPresentation.build(
             text: text,
             sourceMap: MarkdownSourceMap.parse(text),
-            revealedSourceRange: reveal
+            revealedSourceRanges: reveal
         )
     }
 
@@ -260,7 +285,7 @@ final class ReaderOffsetMapEditingTests: XCTestCase {
             source.range(of: "  - ").location + 5,
             source.range(of: "1. ").location + 4,
         ]
-        let reveals: [NSRange?] = [nil] + cursors.map { ReaderReveal.range(in: map, sourceCursor: $0) }
+        let reveals: [[NSRange]] = [[]] + cursors.map { ReaderReveal.ranges(in: map, sourceCursor: $0) }
 
         for reveal in reveals {
             let built = presentation(text, reveal: reveal)
@@ -302,7 +327,7 @@ final class ReaderOffsetMapEditingTests: XCTestCase {
         let words = Array(repeating: "wrapping words", count: 12).joined(separator: " ")
         let text = "123456789. \(words)"
         let map = MarkdownSourceMap.parse(text)
-        for reveal in [nil, ReaderReveal.range(in: map, sourceCursor: 14)] {
+        for reveal in [[], ReaderReveal.ranges(in: map, sourceCursor: 14)] {
             let storage = NSTextStorage(attributedString: presentation(text, reveal: reveal).attributedString)
             let layout = NSLayoutManager()
             let container = NSTextContainer(size: NSSize(width: 400, height: 100_000))
@@ -502,7 +527,7 @@ final class ReaderOffsetMapEditingTests: XCTestCase {
         let text = "# Title\nSome **bold** and *em* text\n- item\n```\ncode\n```"
         let source = text as NSString
         let bold = source.range(of: "**bold**")
-        let built = presentation(text, reveal: bold)
+        let built = presentation(text, reveal: [bold])
         let rendered = built.attributedString.string
 
         XCTAssertEqual(rendered, "Title\nSome **bold** and em text\n•\titem\ncode\n")
@@ -529,13 +554,13 @@ final class ReaderOffsetMapEditingTests: XCTestCase {
             bold
         )
 
-        let everything = presentation(text, reveal: NSRange(location: 0, length: source.length))
+        let everything = presentation(text, reveal: [NSRange(location: 0, length: source.length)])
         XCTAssertEqual(
             everything.attributedString.string,
             "# Title\nSome **bold** and *em* text\n- item\n```\ncode\n```"
         )
         let link = "[link](https://x.y)"
-        let revealedLink = presentation(link, reveal: NSRange(location: 0, length: (link as NSString).length))
+        let revealedLink = presentation(link, reveal: [NSRange(location: 0, length: (link as NSString).length)])
         XCTAssertEqual(revealedLink.attributedString.string, link)
         XCTAssertNil(revealedLink.attributedString.attribute(.link, at: 0, effectiveRange: nil))
         XCTAssertNotNil(revealedLink.attributedString.attribute(.link, at: 1, effectiveRange: nil))
