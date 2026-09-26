@@ -636,7 +636,7 @@ struct ReaderView: NSViewRepresentable {
                     textUnchanged: textUnchanged,
                     previous: previousPresentation,
                     revealChanged: previousReveal != revealedSourceRanges,
-                    sourceRanges: previousReveal + revealedSourceRanges
+                    sourceRanges: [previousReveal, revealedSourceRanges].compactMap(ReaderReveal.span(of:))
                 )
             } else {
                 skipRevealTransition("not a caret move")

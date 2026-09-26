@@ -63,6 +63,12 @@ final class ReaderRevealTests: XCTestCase {
         ).attributedString.string
         XCTAssertTrue(reader.contains(" -w "), "the code span keeps its backticks hidden in \(reader.debugDescription)")
         XCTAssertTrue(reader.contains("```sh"), "the fences show")
+        XCTAssertEqual(
+            ReaderReveal.span(of: ReaderReveal.ranges(in: map, sourceCursor: source.range(of: "mkdir").location)),
+            NSRange(location: 0, length: NSMaxRange(block)),
+            "the reveal transition measures the text between the marker and the block too"
+        )
+        XCTAssertNil(ReaderReveal.span(of: []))
     }
 
     func testOnlyTheInnermostListItemRevealsItsMarker() {

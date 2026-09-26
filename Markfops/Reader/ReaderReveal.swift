@@ -20,6 +20,14 @@ enum ReaderReveal {
         return result
     }
 
+    /// The single range from the first revealed range to the end of the last.
+    /// A list marker's reveal can reindent the whole item, so text between
+    /// separate ranges changes too; a transition measures across all of it.
+    static func span(of ranges: [NSRange]) -> NSRange? {
+        guard let first = ranges.first else { return nil }
+        return ranges.dropFirst().reduce(first, NSUnionRange)
+    }
+
     private static func collect(
         in span: MarkdownSourceMap.Span,
         cursor: Int,
