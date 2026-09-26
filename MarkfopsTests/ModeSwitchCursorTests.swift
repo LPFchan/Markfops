@@ -234,13 +234,16 @@ final class ModeSwitchCursorTests: XCTestCase {
         let host = try makeHost(text: "# Title\n\n" + text, mode: .edit)
         host.editor.setSelectedRange(NSRange(location: 0, length: 0))
         host.editor.scroll(.zero)
+        let editorLine = try XCTUnwrap(host.document.sharedEditorBridge.currentSourceLineAtViewportCenter())
 
         _ = host.switchMode(to: .preview)
         host.waitForMorphToFinish()
         host.pump(seconds: 1)
 
-        let scrollView = try XCTUnwrap(host.reader.enclosingScrollView)
-        XCTAssertEqual(scrollView.contentView.bounds.minY, 0, accuracy: 1, "the reader opens where the editor was: the top")
+        // The switch centers the reader on the editor's center line; near the
+        // top that can scroll a little, depending on fonts. It must not move on.
+        let readerLine = try XCTUnwrap(host.document.sharedReaderBridge.currentSourceLineAtViewportCenter())
+        XCTAssertLessThanOrEqual(abs(readerLine - editorLine), 2, "the reader opens on the editor's center line \(editorLine), not line \(readerLine)")
     }
 
     func testCursorCrossesASwitchThatDoesNotMorph() throws {
