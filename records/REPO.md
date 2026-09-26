@@ -1,6 +1,6 @@
 # Repo Operating Model
 
-**Template version: 1.1.5**
+**Template version: 1.1.8**
 
 This document is the canonical repo contract for repo-template-style repos.
 
@@ -223,6 +223,12 @@ Required layers:
 - `commit-msg` hook: validate the contract before commit lands
 
 Every landed commit on the default branch must satisfy the contract regardless of origin (CLI, merge queue, bot, web UI).
+
+## Pull Request Workflow
+
+The global agent instructions own the landing policy. This section documents the mechanics.
+
+The PR loop: branch from the default branch, commit with the contract, push, open a PR, let the automated review bot review it, address findings, then squash merge and delete the branch. Branch commits may be incremental; the squash merge produces one commit on the default branch. The squash commit message must be generated with `scripts/new-commit-message.sh` and validated before merging — GitHub's auto-generated squash message never satisfies the contract. `scripts/merge-pr.sh` wraps this finish: message generation, validation, squash merge, branch deletion. Absorbed branch `LOG-*` ids are preserved off-Git per the Off-Git Provenance section. PR review comments are evidence, not authority — the operator decides what gets addressed.
 
 ## Off-Git Provenance
 
