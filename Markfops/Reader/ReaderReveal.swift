@@ -2,18 +2,20 @@ import Foundation
 
 /// Decides which source syntax the reader shows in place around the text cursor.
 enum ReaderReveal {
-    /// The source range whose hidden syntax should be visible for a cursor at
+    /// The source ranges whose hidden syntax should be visible for a cursor at
     /// `sourceCursor`: every inline construct (emphasis, strong, strikethrough,
     /// code span, link, autolink, image) that contains the cursor, including at
-    /// its end so a cursor right after a bold word reveals it, unioned with the
+    /// its end so a cursor right after a bold word reveals it, together with the
     /// block the cursor sits in when that block has syntax of its own: a
     /// heading (its `#` marks), a fenced code block (both fence lines), a
     /// block quote (every `>` marker), or the innermost list item (its
     /// marker). Nested constructs reveal together through the outermost one;
     /// a code block inside a quote reveals both. Other blocks, including
-    /// indented code, reveal nothing.
-    static func range(in sourceMap: MarkdownSourceMap, sourceCursor: Int) -> NSRange? {
-        var result: NSRange?
+    /// indented code, reveal nothing. A list marker sits away from the cursor,
+    /// so it stays a range of its own rather than revealing everything between.
+    /// Sorted and disjoint; empty when nothing is revealed.
+    static func ranges(in sourceMap: MarkdownSourceMap, sourceCursor: Int) -> [NSRange] {
+        var result: [NSRange] = []
         collect(in: sourceMap.span, cursor: sourceCursor, into: &result)
         return result
     }
@@ -21,7 +23,7 @@ enum ReaderReveal {
     private static func collect(
         in span: MarkdownSourceMap.Span,
         cursor: Int,
-        into result: inout NSRange?
+        into result: inout [NSRange]
     ) {
         guard span.role == .content,
               span.range.location <= cursor,
@@ -73,11 +75,15 @@ enum ReaderReveal {
         return range
     }
 
-    private static func union(_ range: NSRange, into result: inout NSRange?) {
-        if let current = result {
-            result = NSUnionRange(current, range)
-        } else {
-            result = range
+    /// Adds `range`, merging it with any range it overlaps or touches.
+    private static func union(_ range: NSRange, into result: inout [NSRange]) {
+        var merged = range
+        result.removeAll { existing in
+            guard existing.location <= NSMaxRange(merged), merged.location <= NSMaxRange(existing) else { return false }
+            merged = NSUnionRange(merged, existing)
+            return true
         }
+        let index = result.firstIndex { $0.location > merged.location } ?? result.endIndex
+        result.insert(merged, at: index)
     }
 }

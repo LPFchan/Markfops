@@ -459,11 +459,11 @@ final class ReaderPresentationTests: XCTestCase {
 
     private let em = ReaderTheme.default.bodyFontSize
 
-    private func build(_ text: String, reveal: NSRange? = nil) -> ReaderPresentation {
+    private func build(_ text: String, reveal: [NSRange] = []) -> ReaderPresentation {
         ReaderPresentation.build(
             text: text,
             sourceMap: MarkdownSourceMap.parse(text),
-            revealedSourceRange: reveal
+            revealedSourceRanges: reveal
         )
     }
 
@@ -583,11 +583,11 @@ final class ReaderPresentationTests: XCTestCase {
         let text = "Intro.\n\n```swift\nlet x = 1\nlet y = 2\n```\n\nAfter.\n"
         let source = text as NSString
         let block = source.range(of: "```swift\nlet x = 1\nlet y = 2\n```")
-        XCTAssertEqual(ReaderReveal.range(in: MarkdownSourceMap.parse(text), sourceCursor: block.location + 12), block)
+        XCTAssertEqual(ReaderReveal.ranges(in: MarkdownSourceMap.parse(text), sourceCursor: block.location + 12), [block])
         let hidden = build(text)
         XCTAssertEqual(hidden.attributedString.string, "Intro.\n\nlet x = 1\nlet y = 2\n\nAfter.\n")
 
-        let revealed = build(text, reveal: block)
+        let revealed = build(text, reveal: [block])
         XCTAssertEqual(revealed.attributedString.string, "Intro.\n\n```swift\nlet x = 1\nlet y = 2\n```\n\nAfter.\n")
 
         let opening = try style(of: "```swift", in: revealed)
@@ -649,7 +649,7 @@ final class ReaderPresentationTests: XCTestCase {
 
     func testRevealedUnclosedFenceLeavesTheEdgeSpacingOnTheLastContentLine() throws {
         let text = "```\ncode\nmore"
-        let revealed = build(text, reveal: NSRange(location: 0, length: (text as NSString).length))
+        let revealed = build(text, reveal: [NSRange(location: 0, length: (text as NSString).length)])
         XCTAssertEqual(revealed.attributedString.string, "```\ncode\nmore")
         XCTAssertEqual(try style(of: "```", in: revealed).paragraphSpacingBefore, em * 1.25, accuracy: 0.01)
         XCTAssertEqual(try style(of: "code", in: revealed).paragraphSpacingBefore, 0)
@@ -658,7 +658,7 @@ final class ReaderPresentationTests: XCTestCase {
 
     func testRevealedQuoteShowsItsMarkersInTheQuoteStyle() throws {
         let text = "> one\n> two\n"
-        let revealed = build(text, reveal: NSRange(location: 0, length: 11))
+        let revealed = build(text, reveal: [NSRange(location: 0, length: 11)])
         XCTAssertEqual(revealed.attributedString.string, "> one\n> two\n")
         let marker = revealed.attributedString
         XCTAssertEqual(marker.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor, ReaderTheme.default.secondaryColor)

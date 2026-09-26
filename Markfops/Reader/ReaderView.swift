@@ -486,9 +486,9 @@ struct ReaderView: NSViewRepresentable {
         var lastDocumentID: UUID?
         var lastTextRevision: UInt64?
         var lastThemeKey: String?
-        /// Source range whose syntax the current build shows in place.
-        private(set) var revealedSourceRange: NSRange?
-        var lastRevealedSourceRange: NSRange?
+        /// Source ranges whose syntax the current build shows in place.
+        private(set) var revealedSourceRanges: [NSRange] = []
+        var lastRevealedSourceRanges: [NSRange] = []
         var pendingViewportSourceLine: Int?
         var pendingScrollRatio: Double?
         var pendingHeading: HeadingNode?
@@ -542,12 +542,12 @@ struct ReaderView: NSViewRepresentable {
             let textChanged = lastTextRevision != document.textRevision
             if documentChanged || textChanged {
                 // A fresh text invalidates the reveal; the next caret move restores it.
-                revealedSourceRange = nil
+                revealedSourceRanges = []
             }
             let needsBuild = documentChanged
                 || textChanged
                 || lastThemeKey != themeKey
-                || lastRevealedSourceRange != revealedSourceRange
+                || lastRevealedSourceRanges != revealedSourceRanges
                 || presentation == nil
             let arrivingCursor = pendingSourceCursor
             pendingSourceCursor = nil
@@ -616,17 +616,17 @@ struct ReaderView: NSViewRepresentable {
             let sourceCursor = requestedCursor.map {
                 max(0, min($0, (document.rawText as NSString).length))
             }
-            let previousReveal = revealedSourceRange
+            let previousReveal = revealedSourceRanges
             let previousPresentation = presentation
             if let sourceCursor {
-                revealedSourceRange = ReaderReveal.range(in: map, sourceCursor: sourceCursor)
+                revealedSourceRanges = ReaderReveal.ranges(in: map, sourceCursor: sourceCursor)
             }
             let built = ReaderPresentation.build(
                 text: document.rawText,
                 sourceMap: map,
                 theme: theme,
                 baseURL: document.fileURL?.deletingLastPathComponent(),
-                revealedSourceRange: revealedSourceRange
+                revealedSourceRanges: revealedSourceRanges
             )
             let prepared: PreparedRevealTransition?
             if let editTransition {
@@ -635,8 +635,8 @@ struct ReaderView: NSViewRepresentable {
                 prepared = captureRevealTransition(
                     textUnchanged: textUnchanged,
                     previous: previousPresentation,
-                    revealChanged: previousReveal != revealedSourceRange,
-                    sourceRanges: [previousReveal, revealedSourceRange].compactMap { $0 }
+                    revealChanged: previousReveal != revealedSourceRanges,
+                    sourceRanges: previousReveal + revealedSourceRanges
                 )
             } else {
                 skipRevealTransition("not a caret move")
@@ -647,7 +647,7 @@ struct ReaderView: NSViewRepresentable {
             lastDocumentID = document.id
             lastTextRevision = document.textRevision
             lastThemeKey = themeKey
-            lastRevealedSourceRange = revealedSourceRange
+            lastRevealedSourceRanges = revealedSourceRanges
             compositionSourceRange = nil
 
             applyPresentation(built)
@@ -916,8 +916,8 @@ struct ReaderView: NSViewRepresentable {
         private func deliverSourceCursor(_ sourceCursor: Int, themeKey: String) {
             guard let textView, let sourceMap, let presentation else { return }
             let bounded = max(0, min(sourceCursor, (document.rawText as NSString).length))
-            let reveal = ReaderReveal.range(in: sourceMap, sourceCursor: bounded)
-            if reveal != revealedSourceRange {
+            let reveal = ReaderReveal.ranges(in: sourceMap, sourceCursor: bounded)
+            if reveal != revealedSourceRanges {
                 performRebuild(themeKey: themeKey, sourceCursor: bounded)
                 Self.log.debug("delivered source cursor \(bounded, privacy: .public) with a reveal rebuild")
                 return
@@ -1303,8 +1303,8 @@ struct ReaderView: NSViewRepresentable {
         func updateReveal(forReaderCaret caret: Int) {
             guard let presentation, let sourceMap, let themeKey = lastThemeKey else { return }
             let sourceCursor = presentation.offsetMap.sourceInsertionOffset(forReaderOffset: caret)
-            let reveal = ReaderReveal.range(in: sourceMap, sourceCursor: sourceCursor)
-            guard reveal != revealedSourceRange else { return }
+            let reveal = ReaderReveal.ranges(in: sourceMap, sourceCursor: sourceCursor)
+            guard reveal != revealedSourceRanges else { return }
             performRebuild(themeKey: themeKey, sourceCursor: sourceCursor, animatesReveal: true)
         }
 
