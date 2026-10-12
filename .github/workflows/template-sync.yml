@@ -1,5 +1,5 @@
-# Weekly repo-template self-sync. Template-managed: updated by
-# sync-from-template.sh on every run; do not edit locally.
+# Weekly repo-template self-sync. Install or upgrade this workflow through a
+# separately reviewed change; automatic sync only reports workflow drift.
 name: template-sync
 
 on:
@@ -15,40 +15,109 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
 
       - name: Sync from repo-template
         id: sync
         run: |
+          set -euo pipefail
+          test "$GITHUB_REF_TYPE" = branch
+          test "$(git symbolic-ref --quiet --short HEAD)" = "$GITHUB_REF_NAME"
+          if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+            echo "Refusing template sync from a dirty checkout" >&2
+            exit 1
+          fi
           git config user.name "template-sync[bot]"
           git config user.email "template-sync[bot]@users.noreply.github.com"
-          bash scripts/sync-from-template.sh | tee sync.log
-          grep '^SYNC-' sync.log >> "$GITHUB_OUTPUT"
+          SYNC_STATE=$(mktemp -d "$RUNNER_TEMP/template-sync.XXXXXX")
+          printf 'state_dir=%s\n' "$SYNC_STATE" >> "$GITHUB_OUTPUT"
+          bash scripts/sync-from-template.sh | tee "$SYNC_STATE/sync.log"
+          sh scripts/install-hooks.sh
+          # Capture only sync results. Later message/log files and unrelated
+          # changes are excluded from the commit's literal pathspec list.
+          git diff --name-only --no-renames -z HEAD > "$SYNC_STATE/changed-paths"
+          git ls-files --others --exclude-standard -z >> "$SYNC_STATE/changed-paths"
+          grep '^SYNC-VERSION=' "$SYNC_STATE/sync.log" >> "$GITHUB_OUTPUT"
+          if [ -s "$SYNC_STATE/changed-paths" ]; then
+            echo 'SYNC-CHANGED=1' >> "$GITHUB_OUTPUT"
+          else
+            echo 'SYNC-CHANGED=0' >> "$GITHUB_OUTPUT"
+          fi
+          if grep -qx 'SYNC-WORKFLOW-DRIFT=1' "$SYNC_STATE/sync.log"; then
+            echo 'Workflow update available: review scaffold/template-sync.yml from LPFchan/repo-template and update .github/workflows/template-sync.yml separately. Automatic sync leaves workflow files unchanged.' >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Commit changes
         if: steps.sync.outputs.SYNC-CHANGED == '1'
         env:
           SYNC_VERSION: ${{ steps.sync.outputs.SYNC-VERSION }}
+          SYNC_STATE: ${{ steps.sync.outputs.state_dir }}
         run: |
-          TS=$(date -u -d '+9 hours' '+%Y-%m-%d %H-%M-%S KST')
-          LOGID="LOG-$(date -u -d '+9 hours' '+%Y%m%d-%H%M%S')-actions"
-          PROJECT=$(basename "$GITHUB_REPOSITORY")
-          cat > /tmp/sync-msg.txt <<MSG
-          chore: sync repo-template $SYNC_VERSION
+          set -euo pipefail
+          test "$GITHUB_REF_TYPE" = branch
+          test "$(git symbolic-ref --quiet --short HEAD)" = "$GITHUB_REF_NAME"
+          [ -s "$SYNC_STATE/changed-paths" ] || exit 0
+          git diff --cached --quiet
+          PROJECT_ID=$(python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import sys
 
-          timestamp: $TS
-          changes:
-          - sync template-managed files and the AGENTS.md managed section from repo-template $SYNC_VERSION
-          rationale:
-          - weekly deterministic scaffold sync (template-sync workflow)
-          checks:
-          - managed content is byte-identical to repo-template scaffold
-
-          project: $PROJECT
-          agent: actions
-          role: worker
-          commit: $LOGID
-          MSG
-          sed -i 's/^  //' /tmp/sync-msg.txt
-          git add -A
-          git commit -F /tmp/sync-msg.txt
-          git push
+          try:
+              lines = Path("records/SPEC.md").read_text().splitlines()
+          except (OSError, UnicodeError) as error:
+              sys.exit(f"Cannot read canonical project ID from records/SPEC.md: {error}")
+          fields = []
+          fence = None
+          for line in lines:
+              marker = re.match(r" {0,3}(`{3,}|~{3,})(.*)$", line)
+              if fence is not None:
+                  if (marker and marker[1][0] == fence[0]
+                          and len(marker[1]) >= len(fence) and not marker[2].strip()):
+                      fence = None
+                  continue
+              if marker:
+                  fence = marker[1]
+                  continue
+              field = re.fullmatch(r" {0,3}-[ \t]+Project id:[ \t]*(.*)", line)
+              if field:
+                  fields.append(field[1].strip())
+          if len(fields) != 1:
+              sys.exit("records/SPEC.md must contain exactly one Project id field outside code blocks")
+          project_id = fields[0]
+          if project_id.startswith("`") and project_id.endswith("`"):
+              project_id = project_id[1:-1]
+          if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", project_id):
+              sys.exit("records/SPEC.md Project id must be a lowercase kebab-case ID, optionally wrapped in backticks")
+          print(project_id)
+          PY
+          )
+          git --literal-pathspecs add -A --pathspec-from-file="$SYNC_STATE/changed-paths" --pathspec-file-nul
+          git diff --cached --quiet && exit 0
+          MESSAGE="$SYNC_STATE/commit-message.txt"
+          sh scripts/new-commit-message.sh \
+            --subject "chore: sync repo-template $SYNC_VERSION" \
+            --agent actions --role worker --project "$PROJECT_ID" \
+            --output "$MESSAGE"
+          python3 - "$MESSAGE" "$SYNC_VERSION" <<'PY'
+          from pathlib import Path
+          import sys
+          path = Path(sys.argv[1])
+          message = path.read_text()
+          sections = {
+              "changes": f"sync template-managed files and the AGENTS.md managed section from repo-template {sys.argv[2]}",
+              "rationale": "weekly deterministic scaffold sync (template-sync workflow)",
+              "checks": "sync completed successfully; staged only the captured sync changes",
+          }
+          for section, body in sections.items():
+              placeholder = f"{section}:\n- TODO"
+              if message.count(placeholder) != 1:
+                  sys.exit(f"unexpected generated {section} section")
+              message = message.replace(placeholder, f"{section}:\n- {body}", 1)
+          path.write_text(message)
+          PY
+          sh scripts/check-commit-standards.sh "$MESSAGE"
+          git commit -F "$MESSAGE"
+          git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"
