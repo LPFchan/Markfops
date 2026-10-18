@@ -106,6 +106,57 @@ suffix=$(agent_suffix "$AGENT") || {
 
 timestamp_body=$(TZ=Asia/Seoul date '+%Y-%m-%d %H-%M-%S KST')
 timestamp_id=$(TZ=Asia/Seoul date '+%Y%m%d-%H%M%S')
+# Allocate against committed IDs and already registered executions. The
+# validator remains authoritative; never overwrite a same-second ticket.
+timestamp_id=$(python3 - "$repo_root" "$timestamp_id" "$suffix" <<'PY_ID'
+from datetime import datetime, timedelta
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+root, stamp, suffix = sys.argv[1:]
+def git(*args):
+    return subprocess.run(["git", "-C", root, *args], text=True,
+                          capture_output=True)
+refs = ["HEAD"] if git("rev-parse", "--verify", "HEAD").returncode == 0 else []
+default = git("symbolic-ref", "--quiet", "refs/remotes/origin/HEAD")
+if default.returncode == 0:
+    refs.append(default.stdout.strip())
+else:
+    for ref in ("refs/remotes/origin/main", "refs/remotes/origin/master"):
+        if git("show-ref", "--verify", "--quiet", ref).returncode == 0:
+            refs.append(ref)
+            break
+history = git("log", "--format=%B", *refs) if refs else None
+if history is not None and history.returncode:
+    sys.exit("Cannot inspect commit history for a fresh LOG ID")
+used = set()
+for value in re.findall(r"^commit: (.+)$", history.stdout if history is not None else "", re.MULTILINE):
+    used.update(item.strip() for item in value.split(","))
+location = git("rev-parse", "--git-path", "repo-template/generated-commit-ids")
+if location.returncode:
+    sys.exit("Cannot locate the generated-ID registry")
+registry = Path(location.stdout.strip())
+if not registry.is_absolute():
+    registry = Path(root) / registry
+candidate = datetime.strptime(stamp, "%Y%m%d-%H%M%S")
+while True:
+    token = candidate.strftime("%Y%m%d-%H%M%S")
+    identity = f"LOG-{token}-{suffix}"
+    if identity not in used:
+        registry.mkdir(parents=True, exist_ok=True)
+        try:
+            with (registry / identity).open("x") as reservation:
+                reservation.write("reserved=1\n")
+        except FileExistsError:
+            pass
+        else:
+            print(token)
+            break
+    candidate += timedelta(seconds=1)
+PY_ID
+)
 log_id="LOG-${timestamp_id}-${suffix}"
 
 if [ -z "$OUTPUT" ]; then

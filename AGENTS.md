@@ -45,8 +45,20 @@ Repo-agnostic skills (`sharpen-the-tip`, `prototype-mode`, `housekeeping`, `proa
 - Do not write chatty transcripts where the repo expects normalized records.
 - Do not bypass commit provenance checks unless the commit is an explicit bootstrap or migration exception.
 
+## Engineering Principles
+
+- Find the real constraint, then fight for the smallest model.
+- Don't add machinery just because it looks thorough.
+- Security matters, but don't over-index on it.
+
+## Pull Requests
+
+- One problem per PR.
+- Be ready to push back on review findings. Dismiss false positives with a one-line reason.
+
 ## Code Review Rules
 
-- Before reporting a commit as missing required provenance fields, verify against the exact commit messages as they exist on GitHub. If the fields are present, do not claim they are missing.
-- The provenance contract is defined in `records/REPO.md` and enforced by `scripts/new-commit-message.sh`. Cite the specific field that is missing and the rule it violates; do not review commits against an assumed format.
+- Review against the Engineering Principles above.
+- Only flag a race or edge case if it can realistically happen in how this repo actually runs.
+- Don't review commit provenance on PRs; `scripts/merge-pr.sh` validates the squash commit that lands.
 <!-- template-managed:end -->
