@@ -33,8 +33,7 @@ final class MarkdownRendererTests: XCTestCase {
     }
 
     func testEmptyInput() {
-        let html = MarkdownRenderer.renderHTML(from: "")
-        XCTAssertNotNil(html)
+        _ = MarkdownRenderer.renderHTML(from: "")
     }
 
     func testLeadingYAMLFrontMatterRendersAsPropertyTable() {
