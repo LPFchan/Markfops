@@ -55,6 +55,7 @@ A Markdown document backed by canonical raw text in `Document.rawText`, presente
 ## Invariants
 
 - Markdown source is the only persisted source of truth.
+- Closing a dirty tab or window, or approving Save before quit, requires a confirmed save or explicit discard. Cancelled or failed saves keep the document open and recoverable; Quit Anyway preserves unsaved drafts for recovery.
 - The product is native macOS-first, not web-first.
 - Preview and rendering must never silently rewrite or replace source content.
 - The future engine must preserve stable semantic identity before promising smooth text-object or block-object motion.

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5FCDF8F0E8454CD4996D5C98 /* DocumentSaveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B325C8FE3884AB5A134E751 /* DocumentSaveTests.swift */; };
 		012F13E675D8CB2ECB471333 /* MarkfopsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1E1392B3F2270B4776011B /* MarkfopsApp.swift */; };
 		02BBEC589FB91DCD1A819A3D /* Document.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61E7B956C2E09B3B85798093 /* Document.swift */; };
 		03C5C890363E26E4E9F0F250 /* MarkdownSourceMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 659A26D73BF54F62D6BD2E31 /* MarkdownSourceMap.swift */; };
@@ -81,6 +82,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		9B325C8FE3884AB5A134E751 /* DocumentSaveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentSaveTests.swift; sourceTree = "<group>"; };
 		01485A1CB5D8FFA84DCBA0D1 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		08A61B727D3E9565CF6422C8 /* GlyphGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlyphGeometry.swift; sourceTree = "<group>"; };
 		0DCA6FE1E92902863C9859DD /* HTMLTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLTemplate.swift; sourceTree = "<group>"; };
@@ -295,6 +297,7 @@
 		B7C1A532B2A92E924E97C122 /* MarkfopsTests */ = {
 			isa = PBXGroup;
 			children = (
+				9B325C8FE3884AB5A134E751 /* DocumentSaveTests.swift */,
 				5A7E87A04E672A1F0AF77A75 /* DocumentWatcherTests.swift */,
 				382CAC3B1A5BC2EE0E253225 /* FormattedEditingTests.swift */,
 				9F507C158D47BDA814445DFC /* LocalizationTests.swift */,
@@ -492,6 +495,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5FCDF8F0E8454CD4996D5C98 /* DocumentSaveTests.swift in Sources */,
 				41F3F6082F4640F55296D775 /* DocumentWatcherTests.swift in Sources */,
 				D3F5136D20B1252554078744 /* FormattedEditingTests.swift in Sources */,
 				2EDF355345EDAA2BBECA00F5 /* LocalizationTests.swift in Sources */,
