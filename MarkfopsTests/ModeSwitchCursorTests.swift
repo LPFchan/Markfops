@@ -8,7 +8,7 @@ import XCTest
 /// The window is never ordered front and no input events are synthesized.
 final class ModeSwitchCursorTests: XCTestCase {
     private struct Host {
-        let document: Document
+        let document: Markfops.Document
         let window: NSWindow
         let hosting: NSHostingView<EditorContainerView>
         let editor: MarkdownNSTextView

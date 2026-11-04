@@ -31,12 +31,22 @@ final class DocumentSurfaceRegistry {
 
 @Observable
 final class DocumentStore {
+    enum SaveOutcome: Equatable {
+        case saved
+        case cancelled
+    }
+
     let windowID: UUID
     @ObservationIgnored weak var coordinator: DocumentCoordinator?
     @ObservationIgnored weak var managedWindow: NSWindow?
     @ObservationIgnored private var pendingRecoverySave: DispatchWorkItem?
     @ObservationIgnored private var isRestoringRecovery = false
     @ObservationIgnored let surfaceRegistry = DocumentSurfaceRegistry()
+
+    // Dialog seams keep native store/write/recovery behavior testable without modal UI.
+    @ObservationIgnored var saveDestinationProvider: ((Document) -> URL?)?
+    @ObservationIgnored var alertPresenter: ((NSAlert, @escaping (NSApplication.ModalResponse) -> Void) -> Void)?
+    @ObservationIgnored var errorPresenter: ((Error) -> Void)?
 
     init(windowID: UUID = UUID(), coordinator: DocumentCoordinator? = nil) {
         self.windowID = windowID
@@ -142,31 +152,40 @@ final class DocumentStore {
         open(url: url, activate: activate, recordRecent: recordRecent)
     }
 
-    func save(_ document: Document) throws {
+    @discardableResult
+    func save(_ document: Document) throws -> SaveOutcome {
         guard let url = document.fileURL else {
-            try saveAs(document)
-            return
+            return try saveAs(document)
         }
         try document.rawText.write(to: url, atomically: true, encoding: .utf8)
         document.savedText = document.rawText
         document.isDirty = false
-        updateProxyIcon(for: document)
+        refreshWindowAppearance()
         refreshWatcher(for: document)
+        return .saved
     }
 
-    func saveAs(_ document: Document) throws {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.init(filenameExtension: "md")!]
-        panel.nameFieldStringValue = document.displayTitle + ".md"
-        panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+    @discardableResult
+    func saveAs(_ document: Document) throws -> SaveOutcome {
+        let destination: URL?
+        if let saveDestinationProvider {
+            destination = saveDestinationProvider(document)
+        } else {
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.init(filenameExtension: "md")!]
+            panel.nameFieldStringValue = document.displayTitle + ".md"
+            panel.canCreateDirectories = true
+            destination = panel.runModal() == .OK ? panel.url : nil
+        }
+        guard let url = destination else { return .cancelled }
         try document.rawText.write(to: url, atomically: true, encoding: .utf8)
         document.savedText = document.rawText
         document.fileURL = url
         document.isDirty = false
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
-        updateProxyIcon(for: document)
+        refreshWindowAppearance()
         refreshWatcher(for: document)
+        return .saved
     }
 
     // MARK: - Duplicate
@@ -329,7 +348,11 @@ final class DocumentStore {
         showAlert(alert) { [weak self] response in
             guard let self else { return }
             switch response {
-            case .alertFirstButtonReturn: try? self.save(doc)
+            case .alertFirstButtonReturn:
+                guard self.saveBeforeClosing([doc]) else {
+                    completion(false)
+                    return
+                }
             case .alertSecondButtonReturn: break
             default:
                 completion(false)
@@ -446,8 +469,17 @@ final class DocumentStore {
         coordinator?.persistSession()
     }
 
-    func saveIgnoringErrors(_ document: Document) {
-        try? save(document)
+    /// Stops at the first cancelled or failed save, leaving all remaining documents live.
+    fileprivate func saveBeforeClosing(_ documents: [Document]) -> Bool {
+        for document in documents {
+            do {
+                guard try save(document) == .saved else { return false }
+            } catch {
+                presentError(error)
+                return false
+            }
+        }
+        return true
     }
 
     // MARK: - Proxy icon + dirty close button
@@ -484,8 +516,7 @@ final class DocumentStore {
             guard let self else { completion(false); return }
             switch response {
             case .alertFirstButtonReturn:
-                for doc in dirty { try? self.save(doc) }
-                completion(true)
+                completion(self.saveBeforeClosing(dirty))
             case .alertSecondButtonReturn:
                 completion(true)
             default:
@@ -497,7 +528,11 @@ final class DocumentStore {
     // MARK: - Helpers
 
     /// Shows an NSAlert as a sheet on this store's registered document window.
-    private func showAlert(_ alert: NSAlert, completion: @escaping (NSApplication.ModalResponse) -> Void) {
+    fileprivate func showAlert(_ alert: NSAlert, completion: @escaping (NSApplication.ModalResponse) -> Void) {
+        if let alertPresenter {
+            alertPresenter(alert, completion)
+            return
+        }
         if let window = managedWindow {
             alert.beginSheetModal(for: window, completionHandler: completion)
         } else {
@@ -506,6 +541,10 @@ final class DocumentStore {
     }
 
     private func presentError(_ error: Error) {
+        if let errorPresenter {
+            errorPresenter(error)
+            return
+        }
         if let window = managedWindow {
             NSAlert(error: error).beginSheetModal(for: window)
         } else {
@@ -926,20 +965,15 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
         alert.addButton(withTitle: NSLocalizedString("Save", comment: "Save button"))
         alert.addButton(withTitle: NSLocalizedString("Don't Save", comment: "Discard button"))
         alert.addButton(withTitle: NSLocalizedString("Cancel", comment: "Cancel button"))
-        if let window = session.window {
-            alert.beginSheetModal(for: window) { [weak self] response in
-                self?.finishCloseWindow(id: id, dirty: dirty, response: response)
-            }
-        } else {
-            finishCloseWindow(id: id, dirty: dirty, response: alert.runModal())
+        session.store.showAlert(alert) { [weak self] response in
+            self?.finishCloseWindow(id: id, dirty: dirty, response: response)
         }
     }
 
     private func finishCloseWindow(id: UUID, dirty: [Document], response: NSApplication.ModalResponse) {
         switch response {
         case .alertFirstButtonReturn:
-            guard let store = sessions[id]?.store else { return }
-            dirty.forEach { try? store.save($0) }
+            guard let store = sessions[id]?.store, store.saveBeforeClosing(dirty) else { return }
             closeWindowImmediately(id: id)
         case .alertSecondButtonReturn:
             closeWindowImmediately(id: id)
@@ -972,20 +1006,25 @@ final class DocumentCoordinator: NSObject, NSWindowDelegate {
         alert.addButton(withTitle: NSLocalizedString("Save", comment: "Save button"))
         alert.addButton(withTitle: NSLocalizedString("Quit Anyway", comment: "Quit without saving"))
         alert.addButton(withTitle: NSLocalizedString("Cancel", comment: "Cancel button"))
-        let window = sessions[lastActiveWindowID ?? UUID()]?.window
+        let presentingStore = sessions[lastActiveWindowID ?? UUID()]?.store
         let finish: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard let self else { completion(false); return }
             switch response {
             case .alertFirstButtonReturn:
-                dirty.forEach { document in
-                    self.sessions.values.first(where: { $0.store.documents.contains(document) })?.store.saveIgnoringErrors(document)
+                for document in dirty {
+                    guard let store = self.sessions.values.first(where: {
+                        $0.store.documents.contains(document)
+                    })?.store, store.saveBeforeClosing([document]) else {
+                        completion(false)
+                        return
+                    }
                 }
                 completion(true)
             case .alertSecondButtonReturn: completion(true)
             default: completion(false)
             }
         }
-        if let window { alert.beginSheetModal(for: window, completionHandler: finish) }
+        if let presentingStore { presentingStore.showAlert(alert, completion: finish) }
         else { finish(alert.runModal()) }
     }
 

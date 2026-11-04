@@ -704,7 +704,7 @@ final class RevealTransitionRemapTests: XCTestCase {
 
 final class FormattedEditingContainerTests: XCTestCase {
     private struct Host {
-        let document: Document
+        let document: Markfops.Document
         let window: NSWindow
         let hosting: NSHostingView<EditorContainerView>
         let reader: ReaderNSTextView

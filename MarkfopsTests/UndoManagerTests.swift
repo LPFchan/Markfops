@@ -762,7 +762,7 @@ final class UndoManagerTests: XCTestCase {
         let coordinator: TextViewCoordinator
     }
 
-    private func makeEditor(for document: Document) -> EditorFixture {
+    private func makeEditor(for document: Markfops.Document) -> EditorFixture {
         let textView = MarkdownNSTextView(textStorage: document.textStorage)
         let coordinator = TextViewCoordinator(document: document)
         textView.delegate = coordinator
@@ -834,9 +834,9 @@ final class UndoManagerTests: XCTestCase {
 
 @Observable
 private final class HostedDocumentSelection {
-    var document: Document
+    var document: Markfops.Document
 
-    init(document: Document) {
+    init(document: Markfops.Document) {
         self.document = document
     }
 }
@@ -855,12 +855,12 @@ private struct HostedDocumentContent: View {
 
 @Observable
 private final class HostedTabSelection {
-    let documents: [Document]
+    let documents: [Markfops.Document]
     let registry = DocumentSurfaceRegistry()
     var activeID: UUID
     var isCompact = false
 
-    init(documents: [Document], activeID: UUID) {
+    init(documents: [Markfops.Document], activeID: UUID) {
         self.documents = documents
         self.activeID = activeID
     }
