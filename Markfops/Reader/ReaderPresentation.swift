@@ -322,6 +322,9 @@ private struct ReaderSemanticContext {
     /// The innermost paragraph holding the offset, so its soft-broken source
     /// lines read as one paragraph.
     var paragraphRange: NSRange?
+    /// Whether the offset's source line opens and closes that paragraph; only
+    /// the paragraph's edges carry its spacing.
+    var paragraphEdges: (isFirst: Bool, isLast: Bool)?
     /// A paragraph after the first in its list item: it has no marker, so its
     /// first line hangs with the rest.
     var listContinuation: Bool
@@ -337,6 +340,7 @@ private struct ReaderSemanticContext {
             listDepth: 0,
             listItemRange: nil,
             paragraphRange: nil,
+            paragraphEdges: nil,
             listContinuation: false,
             quoteDepth: 0
         )
@@ -631,25 +635,10 @@ private final class ReaderPresentationBuilder {
                 attributes: attributes(
                     for: kind,
                     context: lineContext,
-                    blockLine: isBlankLine ? nil : paragraphLine(absoluteRange, in: lineContext.paragraphRange),
                     blankLine: isBlankLine
                 )
             )
         }
-    }
-
-    /// Whether a source line opens and closes its paragraph. The lines of one
-    /// paragraph are separate reader lines, but only the paragraph's edges
-    /// carry its spacing.
-    private func paragraphLine(_ line: NSRange, in paragraph: NSRange?) -> (isFirst: Bool, isLast: Bool)? {
-        guard let paragraph else { return nil }
-        let end = NSMaxRange(paragraph)
-        let lead = NSRange(location: paragraph.location, length: max(0, line.location - paragraph.location))
-        let isFirst = text.range(of: "\n", options: [], range: lead).location == NSNotFound
-        let lineStart = min(max(line.location, paragraph.location), end)
-        let nextBreak = text.range(of: "\n", options: [], range: NSRange(location: lineStart, length: end - lineStart))
-        let isLast = nextBreak.location == NSNotFound || NSMaxRange(nextBreak) >= end
-        return (isFirst, isLast)
     }
 
     private func emitRawBlockIfNeeded(context: ReaderSemanticContext) {
@@ -1392,12 +1381,24 @@ private final class ReaderPresentationBuilder {
         while index < blocks.count, blocks[index].range.location <= offset {
             let block = blocks[index]
             if block.range.length > 0, offset < NSMaxRange(block.range),
-               let found = findContext(in: block, at: offset, current: .empty) {
+               var found = findContext(in: block, at: offset, current: .empty) {
+                found.paragraphEdges = found.paragraphRange.map { paragraphEdges(at: offset, in: $0) }
                 return found
             }
             index += 1
         }
         return .empty
+    }
+
+    /// Whether the source line holding `offset` opens and closes `paragraph`.
+    private func paragraphEdges(at offset: Int, in paragraph: NSRange) -> (isFirst: Bool, isLast: Bool) {
+        let end = NSMaxRange(paragraph)
+        let lineStart = min(max(offset, paragraph.location), end)
+        let lead = NSRange(location: paragraph.location, length: lineStart - paragraph.location)
+        let isFirst = text.range(of: "\n", options: [], range: lead).location == NSNotFound
+        let nextBreak = text.range(of: "\n", options: [], range: NSRange(location: lineStart, length: end - lineStart))
+        let isLast = nextBreak.location == NSNotFound || NSMaxRange(nextBreak) >= end
+        return (isFirst, isLast)
     }
 
     private func findContext(
@@ -1536,7 +1537,7 @@ private final class ReaderPresentationBuilder {
         let blockStyle = paragraphStyle(
             for: blockKind,
             thematicBreak: thematicBreak,
-            blockLine: blockLine,
+            blockLine: blockLine ?? context.paragraphEdges,
             listDepth: context.listDepth,
             listContinuation: context.listContinuation || blankLine,
             quoteDepth: context.quoteDepth
@@ -1632,7 +1633,8 @@ private final class ReaderPresentationBuilder {
         listContinuation: Bool = false,
         quoteDepth: Int = 0
     ) -> NSParagraphStyle {
-        let key = "\(String(describing: blockKind))|\(thematicBreak)|\(blockLine?.isFirst ?? false)|\(blockLine?.isLast ?? false)|\(listDepth)|\(listContinuation)|\(quoteDepth)"
+        let edges = blockLine.map { "\($0.isFirst),\($0.isLast)" } ?? "none"
+        let key = "\(String(describing: blockKind))|\(thematicBreak)|\(edges)|\(listDepth)|\(listContinuation)|\(quoteDepth)"
         if let cached = paragraphStyleCache[key] { return cached }
         let style = buildParagraphStyle(
             for: blockKind,

@@ -583,6 +583,23 @@ final class ReaderPresentationTests: XCTestCase {
         }
     }
 
+    func testRevealedSyntaxOnAMiddleLineKeepsTheLineGapless() throws {
+        // The revealed delimiter opens the reader line, so its style is the
+        // line's style; it must agree with the text it sits on.
+        let text = "one\n**two**\nthree\n"
+        let strong = (text as NSString).range(of: "**two**")
+        for reveal in [[], [strong]] {
+            let presentation = build(text, reveal: reveal)
+            for fragment in [reveal.isEmpty ? "two" : "**", "two"] {
+                let middle = try style(of: fragment, in: presentation)
+                XCTAssertEqual(middle.paragraphSpacingBefore, 0, "\(fragment) revealed: \(!reveal.isEmpty)")
+                XCTAssertEqual(middle.paragraphSpacing, 0, "\(fragment) revealed: \(!reveal.isEmpty)")
+            }
+            XCTAssertGreaterThan(try style(of: "one", in: presentation).paragraphSpacingBefore, 0)
+            XCTAssertGreaterThan(try style(of: "three", in: presentation).paragraphSpacing, 0)
+        }
+    }
+
     func testTextSitsInTheMiddleOfATallLine() throws {
         func baseline(_ layoutManager: NSLayoutManager) -> (baseline: CGFloat, used: CGFloat) {
             let storage = NSTextStorage(attributedString: build("Text\n").attributedString)
