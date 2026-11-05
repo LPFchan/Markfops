@@ -458,6 +458,8 @@ final class ReaderPresentationTests: XCTestCase {
     // MARK: - Empty lines carry the block gap
 
     private let em = ReaderTheme.default.bodyFontSize
+    /// One line of body text, the height every empty line takes.
+    private let line = NSLayoutManager().defaultLineHeight(for: .systemFont(ofSize: ReaderTheme.default.bodyFontSize)) * 1.65
 
     private func build(_ text: String, reveal: [NSRange] = []) -> ReaderPresentation {
         ReaderPresentation.build(
@@ -495,13 +497,13 @@ final class ReaderPresentationTests: XCTestCase {
         throw XCTSkip("empty line \(index) not found")
     }
 
-    func testEmptyLineBetweenParagraphsTakesBothSpacingsAndZeroesThemOnTheNeighbours() throws {
+    func testEmptyLineBetweenParagraphsIsOneLineTallAndTakesBothSpacings() throws {
         let presentation = build("First paragraph.\n\nSecond paragraph.\n")
         XCTAssertEqual(presentation.attributedString.string, "First paragraph.\n\nSecond paragraph.\n")
 
         let blank = try blankStyle(0, in: presentation)
-        XCTAssertEqual(blank.minimumLineHeight, em * 1.5, accuracy: 0.01)
-        XCTAssertEqual(blank.maximumLineHeight, em * 1.5, accuracy: 0.01)
+        XCTAssertEqual(blank.minimumLineHeight, line, accuracy: 0.01)
+        XCTAssertEqual(blank.maximumLineHeight, line, accuracy: 0.01)
         XCTAssertEqual(blank.paragraphSpacing, 0)
         XCTAssertEqual(blank.paragraphSpacingBefore, 0)
 
@@ -517,31 +519,35 @@ final class ReaderPresentationTests: XCTestCase {
         XCTAssertEqual(firstNewline.paragraphSpacing, 0)
     }
 
-    func testEmptyLineHeightFollowsTheNeighboursKinds() throws {
+    func testEveryEmptyLineIsOneLineTallAndAWideGapKeepsItsRest() throws {
+        // 0.75 em after the paragraph and 1.5 em before the heading are more
+        // than one line: the line takes what it needs and the heading keeps
+        // the rest, so the gap keeps its size.
         let beforeHeading = build("Paragraph.\n\n# Heading\n")
-        XCTAssertEqual(try blankStyle(0, in: beforeHeading).maximumLineHeight, em * (0.75 + 1.5), accuracy: 0.01)
-        XCTAssertEqual(try style(of: "Heading", in: beforeHeading).paragraphSpacingBefore, 0)
+        XCTAssertEqual(try blankStyle(0, in: beforeHeading).maximumLineHeight, line, accuracy: 0.01)
+        XCTAssertEqual(try style(of: "Paragraph", in: beforeHeading).paragraphSpacing, 0)
+        XCTAssertEqual(try style(of: "Heading", in: beforeHeading).paragraphSpacingBefore, em * 2.25 - line, accuracy: 0.01)
         XCTAssertEqual(try style(of: "Heading", in: beforeHeading).paragraphSpacing, em * 0.5, accuracy: 0.01)
 
         let afterQuote = build("> quote\n\nParagraph.\n")
-        XCTAssertEqual(try blankStyle(0, in: afterQuote).maximumLineHeight, em * (0.25 + 0.75), accuracy: 0.01)
+        XCTAssertEqual(try blankStyle(0, in: afterQuote).maximumLineHeight, line, accuracy: 0.01)
         XCTAssertEqual(try style(of: "quote", in: afterQuote).paragraphSpacing, 0)
         XCTAssertEqual(try style(of: "Paragraph", in: afterQuote).paragraphSpacingBefore, 0)
 
         let betweenItems = build("- one\n\n- two\n")
-        XCTAssertEqual(try blankStyle(0, in: betweenItems).maximumLineHeight, em, accuracy: 0.01, "clamped to the body size")
+        XCTAssertEqual(try blankStyle(0, in: betweenItems).maximumLineHeight, line, accuracy: 0.01)
         XCTAssertEqual(try style(of: "one", in: betweenItems).paragraphSpacing, 0)
         XCTAssertEqual(try style(of: "two", in: betweenItems).paragraphSpacingBefore, 0)
 
         let twoEmpties = build("First paragraph.\n\n\nSecond paragraph.\n")
-        XCTAssertEqual(try blankStyle(0, in: twoEmpties).maximumLineHeight, em, accuracy: 0.01, "0.75 em clamped up")
-        XCTAssertEqual(try blankStyle(1, in: twoEmpties).maximumLineHeight, em, accuracy: 0.01)
+        XCTAssertEqual(try blankStyle(0, in: twoEmpties).maximumLineHeight, line, accuracy: 0.01)
+        XCTAssertEqual(try blankStyle(1, in: twoEmpties).maximumLineHeight, line, accuracy: 0.01)
         XCTAssertEqual(try style(of: "First", in: twoEmpties).paragraphSpacing, 0)
         XCTAssertEqual(try style(of: "Second", in: twoEmpties).paragraphSpacingBefore, 0)
 
         let atTheEdges = build("\nOnly.\n\n")
-        XCTAssertEqual(try blankStyle(0, in: atTheEdges).maximumLineHeight, em, accuracy: 0.01)
-        XCTAssertEqual(try blankStyle(1, in: atTheEdges).maximumLineHeight, em, accuracy: 0.01)
+        XCTAssertEqual(try blankStyle(0, in: atTheEdges).maximumLineHeight, line, accuracy: 0.01)
+        XCTAssertEqual(try blankStyle(1, in: atTheEdges).maximumLineHeight, line, accuracy: 0.01)
         XCTAssertEqual(try style(of: "Only", in: atTheEdges).paragraphSpacingBefore, 0)
         XCTAssertEqual(try style(of: "Only", in: atTheEdges).paragraphSpacing, 0)
     }
@@ -552,13 +558,46 @@ final class ReaderPresentationTests: XCTestCase {
         // outside the panel.
         let presentation = build("Paragraph.\n\n```\ncode\n```\n\nAfter.\n")
         XCTAssertEqual(presentation.attributedString.string, "Paragraph.\n\ncode\n\nAfter.\n")
-        XCTAssertEqual(try blankStyle(0, in: presentation).maximumLineHeight, em, accuracy: 0.01)
-        XCTAssertEqual(try blankStyle(1, in: presentation).maximumLineHeight, em, accuracy: 0.01)
+        XCTAssertEqual(try blankStyle(0, in: presentation).maximumLineHeight, line, accuracy: 0.01)
+        XCTAssertEqual(try blankStyle(1, in: presentation).maximumLineHeight, line, accuracy: 0.01)
         XCTAssertEqual(try style(of: "Paragraph", in: presentation).paragraphSpacing, 0)
         let code = try style(of: "code", in: presentation)
         XCTAssertEqual(code.paragraphSpacingBefore, em * 1.25, accuracy: 0.01)
         XCTAssertEqual(code.paragraphSpacing, em * 1.25, accuracy: 0.01)
         XCTAssertEqual(try style(of: "After", in: presentation).paragraphSpacingBefore, 0)
+    }
+
+    func testSoftBrokenLinesOfOneParagraphHaveNoGapBetweenThem() throws {
+        for (text, first, second) in [
+            ("One line,\nthe same paragraph.\n", "One", "the same"),
+            ("- item line,\n  the same item.\n", "item line", "the same"),
+            ("> quote line,\n> the same quote.\n", "quote line", "the same"),
+        ] {
+            let presentation = build(text)
+            let top = try style(of: first, in: presentation)
+            let bottom = try style(of: second, in: presentation)
+            XCTAssertEqual(top.paragraphSpacing, 0, text)
+            XCTAssertEqual(bottom.paragraphSpacingBefore, 0, text)
+            XCTAssertGreaterThan(top.paragraphSpacingBefore, 0, "the paragraph keeps its outer spacing in \(text)")
+            XCTAssertGreaterThan(bottom.paragraphSpacing, 0, text)
+        }
+    }
+
+    func testTextSitsInTheMiddleOfATallLine() throws {
+        func baseline(_ layoutManager: NSLayoutManager) -> (baseline: CGFloat, used: CGFloat) {
+            let storage = NSTextStorage(attributedString: build("Text\n").attributedString)
+            storage.addLayoutManager(layoutManager)
+            let container = NSTextContainer(size: NSSize(width: 400, height: 1000))
+            layoutManager.addTextContainer(container)
+            layoutManager.ensureLayout(for: container)
+            let used = layoutManager.lineFragmentUsedRect(forGlyphAt: 0, effectiveRange: nil).height
+            return (layoutManager.location(forGlyphAt: 0).y, used)
+        }
+        let plain = baseline(NSLayoutManager())
+        let reader = baseline(ReaderLayoutManager())
+        XCTAssertEqual(reader.used, plain.used, accuracy: 0.01, "the line keeps its height")
+        XCTAssertEqual(plain.baseline - reader.baseline, (plain.used - plain.used / 1.65) / 2, accuracy: 0.01,
+                       "the text moves up by half the extra line height")
     }
 
     func testEmptyLinesInsideCodeAreNotTouched() throws {

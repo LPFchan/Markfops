@@ -192,6 +192,42 @@ final class ReaderNSTextView: NSTextView {
         }
     }
 
+    /// The caret's height as a multiple of its font's natural line height.
+    /// Reader lines are much taller than their text, and a caret spanning the
+    /// whole line towers over it.
+    static let caretHeightMultiple: CGFloat = 1.2
+
+    /// The system caret view (macOS 14 and later) always spans the whole line,
+    /// so it is hidden and `drawInsertionPoint` draws the caret instead.
+    override func didAddSubview(_ subview: NSView) {
+        super.didAddSubview(subview)
+        if let indicator = subview as? NSTextInsertionIndicator {
+            indicator.displayMode = .hidden
+        }
+    }
+
+    override func drawInsertionPoint(in rect: NSRect, color: NSColor, turnedOn flag: Bool) {
+        let font = (typingAttributes[.font] as? NSFont) ?? NSFont.systemFont(ofSize: readerTheme.bodyFontSize)
+        let natural = layoutManager?.defaultLineHeight(for: font) ?? font.pointSize
+        let height = min(rect.height, natural * Self.caretHeightMultiple)
+        var caret = rect
+        caret.origin.y = rect.midY - height / 2
+        caret.size.height = height
+        caret.size.width = Self.caretWidth
+        // The system caret's look: accent colored and two points wide.
+        super.drawInsertionPoint(in: caret, color: .controlAccentColor, turnedOn: flag)
+    }
+
+    private static let caretWidth: CGFloat = 2
+
+    /// The caret is drawn wider than the rect AppKit invalidates for it, so
+    /// its redraws cover the extra width, or blinking leaves a sliver behind.
+    override func setNeedsDisplay(_ rect: NSRect, avoidAdditionalLayout flag: Bool) {
+        var rect = rect
+        rect.size.width += Self.caretWidth
+        super.setNeedsDisplay(rect, avoidAdditionalLayout: flag)
+    }
+
     override func setFrameSize(_ newSize: NSSize) {
         let widthChanged = abs(newSize.width - frame.width) > 0.5
         super.setFrameSize(newSize)
@@ -1514,11 +1550,18 @@ struct ReaderView: NSViewRepresentable {
             rect.origin.y += textView.textContainerOrigin.y
 
             let visibleHeight = scrollView.contentView.bounds.height
-            let contentHeight = max(
-                layoutManager.usedRect(for: textContainer).height,
-                textView.bounds.height
+            // Centering needs half a viewport of text below the target. On a
+            // fresh build the view has not grown that far yet, and the clip
+            // view would hold the scroll at the top.
+            layoutManager.ensureLayout(
+                forBoundingRect: NSRect(x: 0, y: 0, width: textContainer.size.width, height: rect.midY + visibleHeight / 2),
+                in: textContainer
             )
-            let scrollableHeight = max(0, contentHeight - visibleHeight)
+            let neededHeight = layoutManager.usedRect(for: textContainer).maxY + textView.textContainerOrigin.y * 2
+            if textView.frame.height < neededHeight {
+                textView.setFrameSize(NSSize(width: textView.frame.width, height: neededHeight))
+            }
+            let scrollableHeight = max(0, textView.bounds.height - visibleHeight)
             let targetY = max(0, min(scrollableHeight, rect.midY - visibleHeight / 2))
             scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
             scrollView.reflectScrolledClipView(scrollView.contentView)
