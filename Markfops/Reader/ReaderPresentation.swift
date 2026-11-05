@@ -319,6 +319,12 @@ private struct ReaderSemanticContext {
     var imageRange: NSRange?
     var listDepth: Int
     var listItemRange: NSRange?
+    /// The innermost paragraph holding the offset, so its soft-broken source
+    /// lines read as one paragraph.
+    var paragraphRange: NSRange?
+    /// Whether the offset's source line opens and closes that paragraph; only
+    /// the paragraph's edges carry its spacing.
+    var paragraphEdges: (isFirst: Bool, isLast: Bool)?
     /// A paragraph after the first in its list item: it has no marker, so its
     /// first line hangs with the rest.
     var listContinuation: Bool
@@ -333,6 +339,8 @@ private struct ReaderSemanticContext {
             imageRange: nil,
             listDepth: 0,
             listItemRange: nil,
+            paragraphRange: nil,
+            paragraphEdges: nil,
             listContinuation: false,
             quoteDepth: 0
         )
@@ -340,6 +348,9 @@ private struct ReaderSemanticContext {
 }
 
 private final class ReaderPresentationBuilder {
+    /// Body text line height, as a multiple of the font's own.
+    static let bodyLineHeightMultiple: CGFloat = 1.65
+
     let text: NSString
     let sourceMap: MarkdownSourceMap
     let theme: ReaderTheme
@@ -1370,12 +1381,24 @@ private final class ReaderPresentationBuilder {
         while index < blocks.count, blocks[index].range.location <= offset {
             let block = blocks[index]
             if block.range.length > 0, offset < NSMaxRange(block.range),
-               let found = findContext(in: block, at: offset, current: .empty) {
+               var found = findContext(in: block, at: offset, current: .empty) {
+                found.paragraphEdges = found.paragraphRange.map { paragraphEdges(at: offset, in: $0) }
                 return found
             }
             index += 1
         }
         return .empty
+    }
+
+    /// Whether the source line holding `offset` opens and closes `paragraph`.
+    private func paragraphEdges(at offset: Int, in paragraph: NSRange) -> (isFirst: Bool, isLast: Bool) {
+        let end = NSMaxRange(paragraph)
+        let lineStart = min(max(offset, paragraph.location), end)
+        let lead = NSRange(location: paragraph.location, length: lineStart - paragraph.location)
+        let isFirst = text.range(of: "\n", options: [], range: lead).location == NSNotFound
+        let nextBreak = text.range(of: "\n", options: [], range: NSRange(location: lineStart, length: end - lineStart))
+        let isLast = nextBreak.location == NSNotFound || NSMaxRange(nextBreak) >= end
+        return (isFirst, isLast)
     }
 
     private func findContext(
@@ -1412,6 +1435,7 @@ private final class ReaderPresentationBuilder {
             case .blockQuote:
                 next.quoteDepth += 1
             case .paragraph:
+                next.paragraphRange = span.range
                 if let item = next.listItemRange, span.range.location > item.location {
                     let lead = NSRange(location: item.location, length: span.range.location - item.location)
                     next.listContinuation = text.range(of: "\n", options: [], range: lead).location != NSNotFound
@@ -1513,7 +1537,7 @@ private final class ReaderPresentationBuilder {
         let blockStyle = paragraphStyle(
             for: blockKind,
             thematicBreak: thematicBreak,
-            blockLine: blockLine,
+            blockLine: blockLine ?? context.paragraphEdges,
             listDepth: context.listDepth,
             listContinuation: context.listContinuation || blankLine,
             quoteDepth: context.quoteDepth
@@ -1609,7 +1633,8 @@ private final class ReaderPresentationBuilder {
         listContinuation: Bool = false,
         quoteDepth: Int = 0
     ) -> NSParagraphStyle {
-        let key = "\(String(describing: blockKind))|\(thematicBreak)|\(blockLine?.isFirst ?? false)|\(blockLine?.isLast ?? false)|\(listDepth)|\(listContinuation)|\(quoteDepth)"
+        let edges = blockLine.map { "\($0.isFirst),\($0.isLast)" } ?? "none"
+        let key = "\(String(describing: blockKind))|\(thematicBreak)|\(edges)|\(listDepth)|\(listContinuation)|\(quoteDepth)"
         if let cached = paragraphStyleCache[key] { return cached }
         let style = buildParagraphStyle(
             for: blockKind,
@@ -1635,7 +1660,7 @@ private final class ReaderPresentationBuilder {
         // Where a panel inside a list or quote starts: the text column around it.
         let quoteInset = theme.bodyFontSize * CGFloat(quoteDepth)
         let listIndent = theme.bodyFontSize * 2 * CGFloat(listDepth) + quoteInset
-        style.lineHeightMultiple = 1.65
+        style.lineHeightMultiple = Self.bodyLineHeightMultiple
         style.paragraphSpacing = theme.bodyFontSize * 0.75
         style.paragraphSpacingBefore = theme.bodyFontSize * 0.75
 
@@ -1695,6 +1720,10 @@ private final class ReaderPresentationBuilder {
         default:
             break
         }
+        if let blockLine {
+            if !blockLine.isFirst { style.paragraphSpacingBefore = 0 }
+            if !blockLine.isLast { style.paragraphSpacing = 0 }
+        }
         return style
     }
 
@@ -1714,20 +1743,21 @@ private final class ReaderPresentationBuilder {
         return style
     }
 
-    /// Makes each empty source line be the gap between its neighbours: its
-    /// line box grows to the previous paragraph's spacing after plus the next
-    /// paragraph's spacing before, and those two values are zeroed on the
-    /// neighbours, so the distance between blocks is unchanged while the text
-    /// cursor on the empty line is a full line tall. The box never drops
-    /// under the body size, so a cursor between two list items stays legible.
-    /// Panel blocks (code, tables, raw HTML) keep their edge spacing: the
-    /// panel is drawn over it, so an empty line next to a panel stays outside
-    /// the panel. An empty line next to another empty line, or at either end
-    /// of the document, takes nothing from that side.
+    /// Makes each empty source line one body line tall, the same height as a
+    /// line of text, so empty lines read as lines and the cursor on them is
+    /// as tall as anywhere else. The line takes its height out of the spacing
+    /// after the previous paragraph and then before the next one, as far as
+    /// that spacing reaches; what is left of it stays on the neighbour, so a
+    /// wide gap (above a heading) keeps its size. Panel blocks (code, tables,
+    /// raw HTML) keep their edge spacing: the panel is drawn over it, so an
+    /// empty line next to a panel stays outside the panel. An empty line next
+    /// to another empty line, or at either end of the document, takes nothing
+    /// from that side.
     private func absorbSpacingIntoBlankLines() {
         guard !blankLineReaderOffsets.isEmpty else { return }
         let string = output.string as NSString
         let blanks = Set(blankLineReaderOffsets)
+        let lineHeight = bodyLineHeight
 
         func neighbour(at location: Int) -> NSRange? {
             guard location >= 0, location < string.length else { return nil }
@@ -1744,25 +1774,34 @@ private final class ReaderPresentationBuilder {
         }
 
         for offset in blankLineReaderOffsets {
-            var height: CGFloat = 0
+            var absorbed: CGFloat = 0
             if let previous = neighbour(at: offset - 1),
-               let spacing = style(at: previous.location)?.paragraphSpacing,
-               spacing > 0 {
-                height += spacing
-                adjustParagraphStyles(in: previous) { $0.paragraphSpacing = 0 }
+               let spacing = style(at: previous.location)?.paragraphSpacing {
+                let taken = min(spacing, lineHeight - absorbed)
+                if taken > 0 {
+                    absorbed += taken
+                    adjustParagraphStyles(in: previous) { $0.paragraphSpacing = spacing - taken }
+                }
             }
             if let next = neighbour(at: offset + 1),
-               let spacing = style(at: next.location)?.paragraphSpacingBefore,
-               spacing > 0 {
-                height += spacing
-                adjustParagraphStyles(in: next) { $0.paragraphSpacingBefore = 0 }
+               let spacing = style(at: next.location)?.paragraphSpacingBefore {
+                let taken = min(spacing, lineHeight - absorbed)
+                if taken > 0 {
+                    absorbed += taken
+                    adjustParagraphStyles(in: next) { $0.paragraphSpacingBefore = spacing - taken }
+                }
             }
-            height = max(height, theme.bodyFontSize)
             adjustParagraphStyles(in: NSRange(location: offset, length: 1)) {
-                $0.minimumLineHeight = height
-                $0.maximumLineHeight = height
+                $0.minimumLineHeight = lineHeight
+                $0.maximumLineHeight = lineHeight
             }
         }
+    }
+
+    /// The height TextKit gives one line of body text.
+    private var bodyLineHeight: CGFloat {
+        let font = makeFont(size: theme.bodyFontSize, weight: .regular, italic: false, monospaced: false)
+        return NSLayoutManager().defaultLineHeight(for: font) * Self.bodyLineHeightMultiple
     }
 
     /// Rewrites the paragraph styles inside `range` through mutable copies so

@@ -1,6 +1,6 @@
 import AppKit
 
-final class ReaderLayoutManager: NSLayoutManager {
+final class ReaderLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     var theme: ReaderTheme = .default
     /// Whole-view glyph opacity, driven by the mode morph while its layers move.
     var morphGlyphOpacity: CGFloat = 1
@@ -12,6 +12,38 @@ final class ReaderLayoutManager: NSLayoutManager {
                 invalidateDisplay(forCharacterRange: range)
             }
         }
+    }
+
+    override init() {
+        super.init()
+        delegate = self
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        delegate = self
+    }
+
+    /// A line height multiple puts all of its extra height above the text, so
+    /// the text sits at the bottom of a tall line and the caret, which spans
+    /// the whole line, reaches far above it. Moving the baseline up by half
+    /// the extra centers the text in its line, with the caret around it.
+    func layoutManager(
+        _ layoutManager: NSLayoutManager,
+        shouldSetLineFragmentRect lineFragmentRect: UnsafeMutablePointer<NSRect>,
+        lineFragmentUsedRect: UnsafeMutablePointer<NSRect>,
+        baselineOffset: UnsafeMutablePointer<CGFloat>,
+        in textContainer: NSTextContainer,
+        forGlyphRange glyphRange: NSRange
+    ) -> Bool {
+        guard glyphRange.length > 0, let storage = textStorage else { return false }
+        let character = characterIndexForGlyph(at: glyphRange.location)
+        guard character < storage.length,
+              let style = storage.attribute(.paragraphStyle, at: character, effectiveRange: nil) as? NSParagraphStyle,
+              style.lineHeightMultiple > 1 else { return false }
+        let lineHeight = lineFragmentUsedRect.pointee.height
+        baselineOffset.pointee -= (lineHeight - lineHeight / style.lineHeightMultiple) / 2
+        return true
     }
 
     override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
