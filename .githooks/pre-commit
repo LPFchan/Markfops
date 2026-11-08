@@ -1,0 +1,27 @@
+#!/bin/sh
+
+# Warn, never block, when a staged code file is longer than the line limit.
+# Long files are hard for agents and humans to read whole; split them early.
+# Docs and records are exempt, as is anything that is not source code.
+
+limit=1000
+
+git diff --cached --name-only --diff-filter=ACMR | while IFS= read -r path; do
+  case "$path" in
+    docs/*|records/*) continue ;;
+  esac
+  case "$path" in
+    *.c|*.h|*.cc|*.cpp|*.cxx|*.hpp|*.hh|*.m|*.mm|*.cs|*.go|*.java|*.kt|*.kts|\
+    *.scala|*.swift|*.rs|*.zig|*.py|*.pyi|*.rb|*.php|*.pl|*.lua|*.dart|*.r|*.R|\
+    *.jl|*.ex|*.exs|*.erl|*.hs|*.ml|*.clj|*.js|*.jsx|*.mjs|*.cjs|*.ts|*.tsx|\
+    *.mts|*.cts|*.vue|*.svelte|*.astro|*.html|*.css|*.scss|*.sass|*.less|\
+    *.sh|*.bash|*.zsh|*.fish|*.ps1|*.sql|*.gd|*.glsl|*.wgsl|*.hlsl) ;;
+    *) continue ;;
+  esac
+  lines=$(git show ":$path" | wc -l | tr -d ' ')
+  if [ "$lines" -gt "$limit" ]; then
+    echo "repo-template note: $path has $lines lines (limit $limit). Consider splitting it." >&2
+  fi
+done
+
+exit 0
