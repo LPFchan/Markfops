@@ -498,8 +498,8 @@ final class ReaderPresentationTests: XCTestCase {
     }
 
     func testEmptyLineBetweenParagraphsIsOneLineTallAndTakesBothSpacings() throws {
-        let presentation = build("First paragraph.\n\nSecond paragraph.\n")
-        XCTAssertEqual(presentation.attributedString.string, "First paragraph.\n\nSecond paragraph.\n")
+        let presentation = build("First paragraph.\n\nSecond paragraph.")
+        XCTAssertEqual(presentation.attributedString.string, "First paragraph.\n\nSecond paragraph.")
 
         let blank = try blankStyle(0, in: presentation)
         XCTAssertEqual(blank.minimumLineHeight, line, accuracy: 0.01)
@@ -568,25 +568,42 @@ final class ReaderPresentationTests: XCTestCase {
     }
 
     func testSoftBrokenLinesOfOneParagraphHaveNoGapBetweenThem() throws {
+        // TextKit spaces a line by its first character, so a line opening
+        // with a list or quote marker, shown or hidden, must agree with its text.
         for (text, first, second) in [
-            ("One line,\nthe same paragraph.\n", "One", "the same"),
-            ("- item line,\n  the same item.\n", "item line", "the same"),
-            ("> quote line,\n> the same quote.\n", "quote line", "the same"),
+            ("One line,\nthe same paragraph.", "One", "the same"),
+            ("- item line,\n  the same item.", "item line", "the same"),
+            ("> quote line,\n> the same quote.", "quote line", "the same"),
         ] {
-            let presentation = build(text)
-            let top = try style(of: first, in: presentation)
-            let bottom = try style(of: second, in: presentation)
-            XCTAssertEqual(top.paragraphSpacing, 0, text)
-            XCTAssertEqual(bottom.paragraphSpacingBefore, 0, text)
-            XCTAssertGreaterThan(top.paragraphSpacingBefore, 0, "the paragraph keeps its outer spacing in \(text)")
-            XCTAssertGreaterThan(bottom.paragraphSpacing, 0, text)
+            for reveal in [[], [NSRange(location: 0, length: (text as NSString).length)]] {
+                let presentation = build(text, reveal: reveal)
+                let label = "\(text.debugDescription) revealed: \(!reveal.isEmpty)"
+                let top = try lineStyle(of: first, in: presentation)
+                let bottom = try lineStyle(of: second, in: presentation)
+                XCTAssertEqual(top.paragraphSpacing, 0, label)
+                XCTAssertEqual(bottom.paragraphSpacingBefore, 0, label)
+                XCTAssertGreaterThan(top.paragraphSpacingBefore, 0, "the paragraph keeps its outer spacing in \(label)")
+                XCTAssertGreaterThan(bottom.paragraphSpacing, 0, label)
+            }
         }
+    }
+
+    /// The paragraph style at the start of the reader line holding `fragment`.
+    private func lineStyle(of fragment: String, in presentation: ReaderPresentation) throws -> NSParagraphStyle {
+        let rendered = presentation.attributedString.string as NSString
+        let range = rendered.range(of: fragment)
+        XCTAssertNotEqual(range.location, NSNotFound, "missing \(fragment)")
+        let line = rendered.paragraphRange(for: NSRange(location: range.location, length: 0))
+        return try XCTUnwrap(
+            presentation.attributedString.attribute(.paragraphStyle, at: line.location, effectiveRange: nil)
+                as? NSParagraphStyle
+        )
     }
 
     func testRevealedSyntaxOnAMiddleLineKeepsTheLineGapless() throws {
         // The revealed delimiter opens the reader line, so its style is the
         // line's style; it must agree with the text it sits on.
-        let text = "one\n**two**\nthree\n"
+        let text = "one\n**two**\nthree"
         let strong = (text as NSString).range(of: "**two**")
         for reveal in [[], [strong]] {
             let presentation = build(text, reveal: reveal)

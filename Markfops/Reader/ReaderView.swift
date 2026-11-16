@@ -130,8 +130,8 @@ final class ReaderNSTextView: NSTextView {
     var onCompositionStart: ((NSRange) -> Bool)?
     var onCompositionCommit: ((String, NSRange) -> Void)?
     var onCompositionEnd: (() -> Void)?
-    /// Enter is decided by the coordinator: a paragraph break in prose, a
-    /// single newline inside code, lists, quotes, and other line-based blocks.
+    /// Enter is decided by the coordinator: a newline, the next list item,
+    /// or the next quote line (`ReaderNewline`).
     var onInsertNewline: (() -> Void)?
     /// Command-B and Command-I wrap the selection's source range in Markdown
     /// delimiters; the coordinator routes the edit like any other.
@@ -190,6 +190,21 @@ final class ReaderNSTextView: NSTextView {
         if window != nil {
             onWindowAttachment?()
         }
+    }
+
+    /// On the empty line after a final newline below a heading, the caret and
+    /// any composition take the paragraph that typing there starts, not the
+    /// heading's newline before them.
+    override var typingAttributes: [NSAttributedString.Key: Any] {
+        get {
+            if let attributes = (layoutManager as? ReaderLayoutManager)?.emptyLastLineAttributes,
+               selectedRange().length == 0,
+               selectedRange().location == textStorage?.length {
+                return attributes
+            }
+            return super.typingAttributes
+        }
+        set { super.typingAttributes = newValue }
     }
 
     /// The caret's height as a multiple of its font's natural line height.
@@ -847,6 +862,7 @@ struct ReaderView: NSViewRepresentable {
             let oldMiddle = NSRange(location: prefix, length: old.length - prefix - suffix)
             let newMiddle = NSRange(location: prefix, length: new.length - prefix - suffix)
 
+            (textView.layoutManager as? ReaderLayoutManager)?.emptyLastLineAttributes = built.emptyLastLineAttributes
             storage.beginEditing()
             if oldMiddle.length > 0 || newMiddle.length > 0 {
                 storage.replaceCharacters(in: oldMiddle, with: fixed.attributedSubstring(from: newMiddle))
