@@ -150,26 +150,26 @@ final class ReaderNewlineTests: XCTestCase {
         XCTAssertEqual(result.caret, caret, file: file, line: line)
     }
 
-    func testProseGetsAParagraphBreakAndRawBlocksKeepASingleNewline() {
+    func testProseAndRawBlocksGetASingleNewline() {
         XCTAssertEqual(edit("Hello world", at: 5), MarkdownSourceEdit(
-            range: NSRange(location: 5, length: 0), replacement: "\n\n",
-            selection: NSRange(location: 7, length: 0), kept: []
+            range: NSRange(location: 5, length: 0), replacement: "\n",
+            selection: NSRange(location: 6, length: 0), kept: []
         ))
-        XCTAssertEqual(edit("Hello world", at: 11).replacement, "\n\n")
-        XCTAssertEqual(edit("# Title", at: 7).replacement, "\n\n")
-        XCTAssertEqual(edit("", at: 0).replacement, "\n\n")
-        XCTAssertEqual(edit("para\n\nnext", at: 5).replacement, "\n\n")
-        XCTAssertEqual(edit("---", at: 3).replacement, "\n\n")
+        XCTAssertEqual(edit("Hello world", at: 11).replacement, "\n")
+        XCTAssertEqual(edit("# Title", at: 7).replacement, "\n")
+        XCTAssertEqual(edit("", at: 0).replacement, "\n")
+        XCTAssertEqual(edit("para\n\nnext", at: 5).replacement, "\n")
+        XCTAssertEqual(edit("---", at: 3).replacement, "\n")
         XCTAssertEqual(edit("```\ncode\n```", at: 6).replacement, "\n")
         XCTAssertEqual(edit("    indented", at: 8).replacement, "\n")
         XCTAssertEqual(edit("| a |\n|---|\n| 1 |", at: 2).replacement, "\n")
         XCTAssertEqual(edit("<div>\nx\n</div>", at: 7).replacement, "\n")
         XCTAssertEqual(edit("---\ntitle: x\n---\nbody", at: 6).replacement, "\n")
-        XCTAssertEqual(edit("---\ntitle: x\n---\nbody", at: 20).replacement, "\n\n")
-        // A code block inside an item is still code.
+        XCTAssertEqual(edit("---\ntitle: x\n---\nbody", at: 20).replacement, "\n")
+        // A code block inside an item is still code, not the next item.
         XCTAssertEqual(edit("- item\n\n  ```\n  code\n  ```", at: 16).replacement, "\n")
         // A selection is replaced by the break.
-        assertAfter("Hello world", at: 5, length: 3, is: "Hello\n\nrld", caret: 7)
+        assertAfter("Hello world", at: 5, length: 3, is: "Hello\nrld", caret: 6)
     }
 
     func testEnterContinuesAListWithTheSameMarker() {
@@ -959,25 +959,61 @@ final class FormattedEditingContainerTests: XCTestCase {
         XCTAssertEqual(quote.coordinator.refusedEditCount, 0)
     }
 
-    func testEnterInAParagraphStartsANewParagraph() throws {
+    func testEnterInAParagraphBreaksTheLineAndASecondEnterStartsAParagraph() throws {
         let host = try makeHost(text: "Hello world")
         host.placeCaret(at: 6)
         host.reader.insertNewline(nil)
+        XCTAssertEqual(host.document.rawText, "Hello \nworld")
+        XCTAssertEqual(host.reader.string, "Hello \nworld")
+        XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 7, length: 0))
+        host.reader.insertNewline(nil)
         XCTAssertEqual(host.document.rawText, "Hello \n\nworld")
-        XCTAssertEqual(host.reader.string, "Hello \n\nworld")
         XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 8, length: 0))
         XCTAssertEqual(host.coordinator.refusedEditCount, 0)
     }
 
-    func testEnterAtTheEndOfAHeadingLeavesABlankLineAndACaretOnANewLine() throws {
+    func testEnterAtTheEndOfAHeadingPutsTheCaretOnANewLine() throws {
         let host = try makeHost(text: "# Title")
         host.placeCaret(at: 5)
         XCTAssertEqual(host.reader.string, "# Title")
         host.placeCaret(at: 7)
         host.reader.insertNewline(nil)
-        XCTAssertEqual(host.document.rawText, "# Title\n\n")
-        XCTAssertEqual(host.reader.string, "Title\n\n")
-        XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 7, length: 0))
+        XCTAssertEqual(host.document.rawText, "# Title\n")
+        XCTAssertEqual(host.reader.string, "Title\n")
+        XCTAssertEqual(host.reader.selectedRange(), NSRange(location: 6, length: 0))
+    }
+
+    func testTheEmptyLastLineSitsWhereTypingThereLands() throws {
+        // Measured from the line above, which can move when typing reveals
+        // the syntax of its block.
+        let cases = [
+            ("One\n\nTwo\n", "Two"), ("Two\n", "Two"), ("- item\n", "item"), ("> quote\n", "quote"),
+            ("# Title\n", "Title"), ("Intro\n\n## Part\n", "Part"),
+        ]
+        for (text, above) in cases {
+            let host = try makeHost(text: text)
+            let layout = try XCTUnwrap(host.reader.layoutManager)
+            let container = try XCTUnwrap(host.reader.textContainer)
+            func line(of fragment: String) throws -> (top: CGFloat, textBottom: CGFloat) {
+                layout.ensureLayout(for: container)
+                let glyph = layout.glyphIndexForCharacter(at: try host.readerRange(of: fragment).location)
+                return (
+                    layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil).minY,
+                    layout.lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil).maxY
+                )
+            }
+            host.placeCaret(at: (host.reader.string as NSString).length)
+            layout.ensureLayout(for: container)
+            let empty = layout.extraLineFragmentRect
+            XCTAssertGreaterThan(empty.height, 0, text.debugDescription)
+            let emptyGap = empty.minY - (try line(of: above).textBottom)
+            let caretFont = try XCTUnwrap(host.reader.typingAttributes[.font] as? NSFont)
+            XCTAssertEqual(caretFont.pointSize, ReaderTheme.default.bodyFontSize, "a body-sized caret in \(text.debugDescription)")
+
+            host.type("x")
+            let typedGap = try line(of: "x").top - line(of: above).textBottom
+            XCTAssertEqual(emptyGap, typedGap, accuracy: 0.5, "the caret's line in \(text.debugDescription)")
+        }
     }
 
     func testEnterInsideAFencedCodeBlockInsertsASingleNewline() throws {
@@ -1469,7 +1505,7 @@ final class FormattedEditingContainerTests: XCTestCase {
         let host = try makeHost(text: "Hello world")
         host.placeCaret(at: 5)
         host.reader.insertNewline(nil)
-        XCTAssertEqual(host.document.rawText, "Hello\n\n world")
+        XCTAssertEqual(host.document.rawText, "Hello\n world")
         XCTAssertEqual(host.coordinator.lastRevealTransitionOutcome, "skipped: not a caret move")
         XCTAssertFalse(host.coordinator.revealTransition?.isRunning ?? false)
     }

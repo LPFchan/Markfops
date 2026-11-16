@@ -14,14 +14,21 @@ final class ReaderLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         }
     }
 
+    /// See `ReaderPresentation.emptyLastLineAttributes`. It only changes
+    /// with the last line's text, so the storage edit that comes with it
+    /// lays the empty line out again.
+    var emptyLastLineAttributes: [NSAttributedString.Key: Any]?
+
     override init() {
         super.init()
         delegate = self
+        typesetter = ReaderTypesetter()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         delegate = self
+        typesetter = ReaderTypesetter()
     }
 
     /// A line height multiple puts all of its extra height above the text, so
@@ -443,5 +450,14 @@ final class ReaderLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     private func font(at location: Int, in storage: NSTextStorage) -> NSFont {
         (storage.attribute(.font, at: location, effectiveRange: nil) as? NSFont)
             ?? NSFont.systemFont(ofSize: theme.bodyFontSize)
+    }
+}
+
+/// Lays out the empty line after a final newline with the attributes typing
+/// there will produce, when those differ from the last character's.
+final class ReaderTypesetter: NSATSTypesetter {
+    override var attributesForExtraLineFragment: [NSAttributedString.Key: Any] {
+        (layoutManager as? ReaderLayoutManager)?.emptyLastLineAttributes
+            ?? super.attributesForExtraLineFragment
     }
 }

@@ -4,12 +4,13 @@ import Foundation
 enum ReaderNewline {
     /// The edit Enter makes with `selection` in `text`.
     ///
-    /// A lone newline inside a paragraph is a soft break, which the reader
-    /// shows as a space, so Enter in prose starts a new paragraph. Inside
-    /// code, tables, HTML blocks, and front matter it inserts a single
-    /// newline. Inside a list item it starts the next item: the same bullet,
-    /// the next number with the same delimiter, or an unchecked task box,
-    /// behind the item's indent and any quote markers around it. On an item
+    /// In prose and in code, tables, HTML blocks, and front matter Enter
+    /// inserts a single newline: the reader shows a soft break as a line
+    /// break, so the caret moves one line down, and a second Enter leaves an
+    /// empty line that starts a new paragraph. Inside a list item it starts
+    /// the next item: the same bullet, the next number with the same
+    /// delimiter, or an unchecked task box, behind the item's indent and any
+    /// quote markers around it. On an item
     /// with no content the marker is removed instead, which ends the list;
     /// a nested empty item outdents one level. Inside a block quote the
     /// line's quote markers continue on the new line, and a line that is
@@ -23,6 +24,7 @@ enum ReaderNewline {
         for (index, block) in chain.enumerated().reversed() {
             switch block.kind {
             case .codeBlock, .table, .htmlBlock, .frontMatter:
+                // Code inside a list item or quote does not continue it.
                 return plain("\n", replacing: selection)
             case .listItem:
                 let parent = index > 0 ? chain[index - 1] : nil
@@ -37,7 +39,7 @@ enum ReaderNewline {
                 break
             }
         }
-        return plain("\n\n", replacing: selection)
+        return plain("\n", replacing: selection)
     }
 
     /// Whether an Enter edit changes what block its line is: it writes a

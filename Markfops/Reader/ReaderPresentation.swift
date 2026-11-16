@@ -291,6 +291,10 @@ struct ReaderOffsetMap {
 struct ReaderPresentation {
     let attributedString: NSAttributedString
     let offsetMap: ReaderOffsetMap
+    /// The attributes of the empty line after a final newline when typing
+    /// there starts a paragraph below a heading or thematic break. TextKit
+    /// would size that line and its caret like the block above it.
+    var emptyLastLineAttributes: [NSAttributedString.Key: Any]?
 
     /// - Parameter revealedSourceRanges: source ranges whose otherwise hidden
     ///   syntax is emitted one-to-one, Typora-style, around the text cursor.
@@ -424,8 +428,18 @@ private final class ReaderPresentationBuilder {
                 sourceLineStarts: sourceLineStarts,
                 sourceLength: text.length,
                 readerLength: output.length
-            )
+            ),
+            emptyLastLineAttributes: emptyLastLineAttributes()
         )
+    }
+
+    private func emptyLastLineAttributes() -> [NSAttributedString.Key: Any]? {
+        let string = output.string as NSString
+        guard string.length > 0, string.character(at: string.length - 1) == 0x0A else { return nil }
+        let lastLine = string.paragraphRange(for: NSRange(location: string.length - 1, length: 0)).location
+        guard output.attribute(.readerHeadingLevel, at: lastLine, effectiveRange: nil) != nil
+            || output.attribute(.readerThematicBreak, at: lastLine, effectiveRange: nil) != nil else { return nil }
+        return attributes(for: .paragraph, context: .empty)
     }
 
     private func emit(_ run: MarkdownSourceMap.Run) {
@@ -1382,7 +1396,11 @@ private final class ReaderPresentationBuilder {
             let block = blocks[index]
             if block.range.length > 0, offset < NSMaxRange(block.range),
                var found = findContext(in: block, at: offset, current: .empty) {
-                found.paragraphEdges = found.paragraphRange.map { paragraphEdges(at: offset, in: $0) }
+                // A list or quote marker belongs to no paragraph, but it opens
+                // the reader line, and TextKit spaces a line by its first
+                // character; it takes the edges of the paragraph it introduces.
+                let paragraph = found.paragraphRange ?? paragraph(onLineOf: offset, in: block)
+                found.paragraphEdges = paragraph.map { paragraphEdges(at: offset, in: $0) }
                 return found
             }
             index += 1
@@ -1390,14 +1408,38 @@ private final class ReaderPresentationBuilder {
         return .empty
     }
 
+    /// The paragraph holding the rest of `offset`'s source line.
+    private func paragraph(onLineOf offset: Int, in block: MarkdownSourceMap.Span) -> NSRange? {
+        var lineEnd = 0
+        text.getLineStart(nil, end: nil, contentsEnd: &lineEnd, for: NSRange(location: offset, length: 0))
+        func search(_ span: MarkdownSourceMap.Span) -> NSRange? {
+            guard span.range.location <= lineEnd, NSMaxRange(span.range) > offset else { return nil }
+            if span.role == .content, span.kind == .paragraph {
+                return span.range
+            }
+            return span.children.lazy.compactMap(search).first
+        }
+        return search(block)
+    }
+
     /// Whether the source line holding `offset` opens and closes `paragraph`.
+    /// A paragraph that ends the document with a newline does not close on
+    /// its last line: typing on the empty line below continues it, so that
+    /// line keeps no gap above it and the caret there sits where the typed
+    /// text will appear.
     private func paragraphEdges(at offset: Int, in paragraph: NSRange) -> (isFirst: Bool, isLast: Bool) {
         let end = NSMaxRange(paragraph)
         let lineStart = min(max(offset, paragraph.location), end)
         let lead = NSRange(location: paragraph.location, length: lineStart - paragraph.location)
         let isFirst = text.range(of: "\n", options: [], range: lead).location == NSNotFound
         let nextBreak = text.range(of: "\n", options: [], range: NSRange(location: lineStart, length: end - lineStart))
-        let isLast = nextBreak.location == NSNotFound || NSMaxRange(nextBreak) >= end
+        var isLast = nextBreak.location == NSNotFound || NSMaxRange(nextBreak) >= end
+        if isLast {
+            let lineBreak = text.range(of: "\n", options: [], range: NSRange(location: lineStart, length: text.length - lineStart))
+            if lineBreak.location != NSNotFound, NSMaxRange(lineBreak) == text.length {
+                isLast = false
+            }
+        }
         return (isFirst, isLast)
     }
 
