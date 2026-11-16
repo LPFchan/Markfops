@@ -6,6 +6,19 @@
         <description>Sparkle appcast for Markfops.</description>
         <language>en</language>
         <item>
+            <title>1.2.3</title>
+            <pubDate>Mon, 16 Nov 2026 10:47:33 +0000</pubDate>
+            <sparkle:version>194</sparkle:version>
+            <sparkle:shortVersionString>1.2.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:releaseNotesLink>https://LPFchan.github.io/Markfops/sparkle/Markfops-v1.2.3.md</sparkle:releaseNotesLink>
+            <sparkle:releaseNotesLink xml:lang="en">https://LPFchan.github.io/Markfops/sparkle/Markfops-v1.2.3.en.md</sparkle:releaseNotesLink>
+            <sparkle:releaseNotesLink xml:lang="ja">https://LPFchan.github.io/Markfops/sparkle/Markfops-v1.2.3.ja.md</sparkle:releaseNotesLink>
+            <sparkle:releaseNotesLink xml:lang="ko">https://LPFchan.github.io/Markfops/sparkle/Markfops-v1.2.3.ko.md</sparkle:releaseNotesLink>
+            <sparkle:releaseNotesLink xml:lang="zh">https://LPFchan.github.io/Markfops/sparkle/Markfops-v1.2.3.zh.md</sparkle:releaseNotesLink>
+            <enclosure url="https://github.com/LPFchan/Markfops/releases/download/v1.2.3/Markfops-v1.2.3.dmg" length="3513917" type="application/octet-stream" sparkle:edSignature="MAGz8paPflnABxajP5uRfYx85YfMKnpZ8zLHLuKxg9EZqnX7IZqzQFzsGWc5wiclPn96DrQwN9tYipv6cNZtCg=="/>
+        </item>
+        <item>
             <title>1.2.2</title>
             <pubDate>Thu, 05 Nov 2026 17:08:26 +0000</pubDate>
             <sparkle:version>190</sparkle:version>
